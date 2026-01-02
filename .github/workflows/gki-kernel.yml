@@ -556,7 +556,7 @@ jobs:
           
           echo "Applying cgroup device patch to avoid bootloop..."
           cd ./common
-          cp ../../apply_cgroup_device_patch.sh ./
+          cp $GITHUB_WORKSPACE/apply_cgroup_device_patch.sh ./
           chmod +x ./apply_cgroup_device_patch.sh
           ./apply_cgroup_device_patch.sh
           echo "Cgroup device patch applied successfully!"
