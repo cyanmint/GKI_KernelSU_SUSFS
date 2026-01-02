@@ -45,6 +45,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_cgroup_device:
+        description: '是否启用CONFIG_CGROUP_DEVICE（需要补丁以避免bootloop）？'
+        required: true
+        type: boolean
+        default: true
 jobs:
 
   build-kernel-a13-5-10:
@@ -57,6 +62,7 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      enable_cgroup_device: ${{ inputs.enable_cgroup_device }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml
