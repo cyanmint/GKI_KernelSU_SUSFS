@@ -37,6 +37,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_cgroup_device:
+        description: '是否启用CONFIG_CGROUP_DEVICE（需要补丁以避免bootloop）？'
+        required: true
+        type: boolean
+        default: false
   
 jobs:
   build-kernel-a13-5-15-kernelsu-susfs:
@@ -90,3 +95,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      enable_cgroup_device: ${{ inputs.enable_cgroup_device || false }}
