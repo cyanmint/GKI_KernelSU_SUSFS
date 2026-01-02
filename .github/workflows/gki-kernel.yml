@@ -609,8 +609,8 @@ jobs:
           echo "CONFIG_DUMMY_CONSOLE_ROWS=25" >> "$CONFIG_FILE"
           
           # Enable logo display on framebuffer
-          echo "CONFIG_LOGO=y" >> "$CONFIG_FILE"
-          echo "CONFIG_LOGO_LINUX_CLUT224=y" >> "$CONFIG_FILE"
+          echo "CONFIG_LOGO=n" >> "$CONFIG_FILE"
+          echo "CONFIG_LOGO_LINUX_CLUT224=n" >> "$CONFIG_FILE"
           
           # Enable font support for console
           echo "CONFIG_FONTS=y" >> "$CONFIG_FILE"
