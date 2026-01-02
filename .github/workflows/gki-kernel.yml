@@ -564,6 +564,39 @@ jobs:
           ./apply_cgroup_device_patch.sh
           echo "Cgroup device patch applied successfully!"
 
+      - name: 启用内核调试输出
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          
+          echo "Enabling kernel debug output configurations..."
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          
+          # Enable early printk for boot debugging
+          echo "CONFIG_EARLY_PRINTK=y" >> "$CONFIG_FILE"
+          
+          # Enable verbose kernel logging
+          echo "CONFIG_PRINTK=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PRINTK_TIME=y" >> "$CONFIG_FILE"
+          
+          # Enable dynamic debug
+          echo "CONFIG_DYNAMIC_DEBUG=y" >> "$CONFIG_FILE"
+          
+          # Enable more detailed boot messages
+          echo "CONFIG_CONSOLE_LOGLEVEL_DEFAULT=7" >> "$CONFIG_FILE"
+          echo "CONFIG_CONSOLE_LOGLEVEL_QUIET=4" >> "$CONFIG_FILE"
+          echo "CONFIG_MESSAGE_LOGLEVEL_DEFAULT=7" >> "$CONFIG_FILE"
+          
+          # Enable kernel debugging symbols (helps with crash analysis)
+          echo "CONFIG_DEBUG_KERNEL=y" >> "$CONFIG_FILE"
+          echo "CONFIG_DEBUG_INFO=y" >> "$CONFIG_FILE"
+          
+          # Enable panic output
+          echo "CONFIG_PANIC_ON_OOPS=n" >> "$CONFIG_FILE"
+          echo "CONFIG_PANIC_TIMEOUT=0" >> "$CONFIG_FILE"
+          
+          echo "Kernel debug output configurations enabled!"
+
       - name: 配置内核名称
         run: |
           echo "更改为配置目录: $CONFIG..."

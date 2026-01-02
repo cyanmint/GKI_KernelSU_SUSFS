@@ -54,7 +54,7 @@ on:
         description: '是否启用CONFIG_CGROUP_DEVICE（需要补丁以避免bootloop）？'
         required: true
         type: boolean
-        default: true
+        default: false
 jobs:
   build-kernel-a12-5-10:
     uses: ./.github/workflows/kernel-a12-5.10.yml

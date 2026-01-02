@@ -24,6 +24,12 @@ fi
 
 echo "Found cgroup_add_file function at line $FUNC_LINE"
 
+# Check if patch is already applied
+if grep -q "CGRP_ROOT_NOPREFIX" "$CGROUP_FILE"; then
+    echo "Patch already applied, skipping..."
+    exit 0
+fi
+
 # Find the closing brace of the specific code block we need to patch after
 # We're looking for the block that ends with:
 #     }
@@ -56,11 +62,9 @@ fi
 
 echo "Will insert patch after line $PATCH_LINE"
 
-# Check if patch is already applied
-if grep -q "CGRP_ROOT_NOPREFIX" "$CGROUP_FILE"; then
-    echo "Patch already applied, skipping..."
-    exit 0
-fi
+# Show context around patch location for debugging
+echo "Context around patch location:"
+sed -n "$((PATCH_LINE-5)),$((PATCH_LINE+2))p" "$CGROUP_FILE" | nl -v $((PATCH_LINE-5))
 
 # Apply the patch using sed (insert after the found line)
 # We need to insert the new code block after the closing brace
