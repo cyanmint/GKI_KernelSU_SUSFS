@@ -57,7 +57,7 @@ on:
         default: true
 jobs:
 
- build-kernel-a15-6-6:
+  build-kernel-a15-6-6:
     uses: ./.github/workflows/kernel-a15-6.6.yml
     secrets: inherit
     with:
@@ -69,7 +69,7 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op }}
       enable_cgroup_device: ${{ inputs.enable_cgroup_device }}
- get-ksu-manager:
+  get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml
     secrets: inherit
