@@ -595,7 +595,29 @@ jobs:
           echo "CONFIG_PANIC_ON_OOPS=n" >> "$CONFIG_FILE"
           echo "CONFIG_PANIC_TIMEOUT=0" >> "$CONFIG_FILE"
           
-          echo "Kernel debug output configurations enabled!"
+          # Enable framebuffer console for on-screen debug output
+          echo "CONFIG_VT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_VT_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_VT_HW_CONSOLE_BINDING=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE_ROTATION=y" >> "$CONFIG_FILE"
+          
+          # Enable dummy console as fallback
+          echo "CONFIG_DUMMY_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_DUMMY_CONSOLE_COLUMNS=80" >> "$CONFIG_FILE"
+          echo "CONFIG_DUMMY_CONSOLE_ROWS=25" >> "$CONFIG_FILE"
+          
+          # Enable logo display on framebuffer
+          echo "CONFIG_LOGO=y" >> "$CONFIG_FILE"
+          echo "CONFIG_LOGO_LINUX_CLUT224=y" >> "$CONFIG_FILE"
+          
+          # Enable font support for console
+          echo "CONFIG_FONTS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FONT_8x16=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FONT_8x8=y" >> "$CONFIG_FILE"
+          
+          echo "Kernel debug output configurations with framebuffer console enabled!"
 
       - name: 配置内核名称
         run: |
