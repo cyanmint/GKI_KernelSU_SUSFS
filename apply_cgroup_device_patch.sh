@@ -14,7 +14,8 @@ fi
 echo "Applying CONFIG_CGROUP_DEVICE patch to $CGROUP_FILE..."
 
 # Find the line number of the cgroup_add_file function
-FUNC_LINE=$(grep -n "^static int cgroup_add_file(struct cgroup_subsys_state \*css, struct cgroup \*cgrp," "$CGROUP_FILE" | cut -d: -f1)
+# Look for the function - it might span multiple lines
+FUNC_LINE=$(awk '/^static int cgroup_add_file/ {print NR; exit}' "$CGROUP_FILE")
 
 if [ -z "$FUNC_LINE" ]; then
     echo "Error: Could not find cgroup_add_file function!"
