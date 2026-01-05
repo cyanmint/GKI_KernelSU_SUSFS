@@ -50,7 +50,7 @@ on:
         type: boolean
         default: false
       BBG:
-        required: true
+        required: false
         type: boolean
         default: false
       set_defbbr:
