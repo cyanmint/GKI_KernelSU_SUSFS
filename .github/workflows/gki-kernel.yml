@@ -283,15 +283,35 @@ jobs:
           # If using custom repo, use it directly
           if [ -n "$custom_repo" ]; then
             echo "Adding KernelSU from custom repository: $custom_repo"
-            # Extract the raw URL path from the custom repo
-            # Convert https://github.com/user/repo to https://raw.githubusercontent.com/user/repo
-            RAW_URL=$(echo "$custom_repo" | sed 's|https://github.com/|https://raw.githubusercontent.com/|')
             custom_branch="${{ inputs.kernelsu_repo_branch }}"
-            if [ -n "$custom_branch" ]; then
-              RAW_URL="$RAW_URL/$custom_branch/kernel/setup.sh"
+            
+            # Handle different Git hosting platforms
+            if [[ "$custom_repo" == *"github.com"* ]]; then
+              # Convert GitHub URL to raw URL
+              RAW_URL=$(echo "$custom_repo" | sed 's|https://github.com/|https://raw.githubusercontent.com/|')
+              if [ -n "$custom_branch" ]; then
+                RAW_URL="$RAW_URL/$custom_branch/kernel/setup.sh"
+              else
+                RAW_URL="$RAW_URL/main/kernel/setup.sh"
+              fi
+            elif [[ "$custom_repo" == *"gitlab.com"* ]] || [[ "$custom_repo" == *"gitlab"* ]]; then
+              # Handle GitLab URLs
+              # Format: https://gitlab.com/user/repo/-/raw/branch/kernel/setup.sh
+              if [ -n "$custom_branch" ]; then
+                RAW_URL="$custom_repo/-/raw/$custom_branch/kernel/setup.sh"
+              else
+                RAW_URL="$custom_repo/-/raw/main/kernel/setup.sh"
+              fi
             else
-              RAW_URL="$RAW_URL/main/kernel/setup.sh"
+              # For other platforms or direct URLs, assume user provides correct path
+              # Try common patterns
+              if [ -n "$custom_branch" ]; then
+                RAW_URL="$custom_repo/raw/$custom_branch/kernel/setup.sh"
+              else
+                RAW_URL="$custom_repo/raw/main/kernel/setup.sh"
+              fi
             fi
+            
             echo "Using setup script from: $RAW_URL"
             curl -LSs "$RAW_URL" | bash $BRANCH
           elif [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
