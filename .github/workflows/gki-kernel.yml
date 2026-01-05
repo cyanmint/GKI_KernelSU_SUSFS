@@ -53,6 +53,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_cgroup_device:
+        description: 'Enable CONFIG_CGROUP_DEVICE (requires patch to avoid bootloop)'
+        required: true
+        type: boolean
+        default: false
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -74,6 +79,9 @@ jobs:
           remove-swapfile: 'true'        # Frees ~4 GB
           remove-cached-tools: 'false'   # Avoid unless confirmed safe
           verbose: 'true'                # Enable detailed logging
+          
+      - name: Checkout repository
+        uses: actions/checkout@v4
           
       - name: 设定 CONFIG 环境变量
         run: |
@@ -538,6 +546,78 @@ jobs:
           
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
+
+      - name: 启用 CONFIG_CGROUP_DEVICE 并应用补丁
+        if: ${{ inputs.enable_cgroup_device }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          
+          echo "Enabling CONFIG_CGROUP_DEVICE..."
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          
+          echo "Applying cgroup device patch to avoid bootloop..."
+          cd ./common
+          cp $GITHUB_WORKSPACE/apply_cgroup_device_patch.sh ./
+          chmod +x ./apply_cgroup_device_patch.sh
+          ./apply_cgroup_device_patch.sh
+          echo "Cgroup device patch applied successfully!"
+
+      - name: 启用内核调试输出
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          
+          echo "Enabling kernel debug output configurations..."
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          
+          # Enable early printk for boot debugging
+          echo "CONFIG_EARLY_PRINTK=y" >> "$CONFIG_FILE"
+          
+          # Enable verbose kernel logging
+          echo "CONFIG_PRINTK=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PRINTK_TIME=y" >> "$CONFIG_FILE"
+          
+          # Enable dynamic debug
+          echo "CONFIG_DYNAMIC_DEBUG=y" >> "$CONFIG_FILE"
+          
+          # Enable more detailed boot messages
+          echo "CONFIG_CONSOLE_LOGLEVEL_DEFAULT=7" >> "$CONFIG_FILE"
+          echo "CONFIG_CONSOLE_LOGLEVEL_QUIET=4" >> "$CONFIG_FILE"
+          echo "CONFIG_MESSAGE_LOGLEVEL_DEFAULT=7" >> "$CONFIG_FILE"
+          
+          # Enable kernel debugging symbols (helps with crash analysis)
+          echo "CONFIG_DEBUG_KERNEL=y" >> "$CONFIG_FILE"
+          echo "CONFIG_DEBUG_INFO=y" >> "$CONFIG_FILE"
+          
+          # Enable panic output
+          echo "CONFIG_PANIC_ON_OOPS=n" >> "$CONFIG_FILE"
+          echo "CONFIG_PANIC_TIMEOUT=0" >> "$CONFIG_FILE"
+          
+          # Enable framebuffer console for on-screen debug output
+          echo "CONFIG_VT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_VT_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_VT_HW_CONSOLE_BINDING=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FRAMEBUFFER_CONSOLE_ROTATION=y" >> "$CONFIG_FILE"
+          
+          # Enable dummy console as fallback
+          echo "CONFIG_DUMMY_CONSOLE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_DUMMY_CONSOLE_COLUMNS=80" >> "$CONFIG_FILE"
+          echo "CONFIG_DUMMY_CONSOLE_ROWS=25" >> "$CONFIG_FILE"
+          
+          # Enable logo display on framebuffer
+          echo "CONFIG_LOGO=n" >> "$CONFIG_FILE"
+          echo "CONFIG_LOGO_LINUX_CLUT224=n" >> "$CONFIG_FILE"
+          
+          # Enable font support for console
+          echo "CONFIG_FONTS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FONT_8x16=y" >> "$CONFIG_FILE"
+          echo "CONFIG_FONT_8x8=y" >> "$CONFIG_FILE"
+          
+          echo "Kernel debug output configurations with framebuffer console enabled!"
 
       - name: 配置内核名称
         run: |

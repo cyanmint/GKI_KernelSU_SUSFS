@@ -34,6 +34,11 @@ on:
         default: true
       BBG:
         description: '是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？'
+        required: false
+        type: boolean
+        default: false
+      enable_cgroup_device:
+        description: '是否启用CONFIG_CGROUP_DEVICE（需要补丁以避免bootloop）？'
         required: true
         type: boolean
         default: false
@@ -68,10 +73,10 @@ jobs:
           #  os_patch_level: "2024-11"
           #- sub_level: "115"
           #  os_patch_level: "2024-12"
-          - sub_level: "118"
-            os_patch_level: "2025-01"
-          #- sub_level: "124"
-          #  os_patch_level: "2025-02"
+          #- sub_level: "118"
+          #  os_patch_level: "2025-01"
+          - sub_level: "124"
+            os_patch_level: "2025-02"
           #- sub_level: "128"
           #  os_patch_level: "2025-03"
           #- sub_level: "129"
@@ -97,3 +102,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      enable_cgroup_device: ${{ inputs.enable_cgroup_device || false }}
