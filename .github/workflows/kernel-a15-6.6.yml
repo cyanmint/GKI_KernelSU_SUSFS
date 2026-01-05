@@ -42,6 +42,11 @@ on:
         required: true
         type: boolean
         default: false
+      custom_kernel_configs:
+        description: 'Custom kernel configs to enable (comma-separated, e.g., CONFIG_PID_NS,CONFIG_USER_NS,CONFIG_IPC_NS)'
+        required: false
+        type: string
+        default: ''
 
 
 jobs:
@@ -89,3 +94,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op }}
       BBG: ${{ inputs.BBG || false }}
+      custom_kernel_configs: ${{ inputs.custom_kernel_configs || '' }}

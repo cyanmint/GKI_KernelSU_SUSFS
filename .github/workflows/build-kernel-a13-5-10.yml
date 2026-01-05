@@ -40,6 +40,11 @@ on:
         required: true
         type: boolean
         default: true
+      custom_kernel_configs:
+        description: '自定义内核配置(逗号分隔，如: CONFIG_PID_NS,CONFIG_USER_NS,CONFIG_IPC_NS)'
+        required: false
+        type: string
+        default: ''
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
@@ -57,6 +62,7 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      custom_kernel_configs: ${{ inputs.custom_kernel_configs }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml

@@ -53,6 +53,16 @@ on:
         required: true
         type: boolean
         default: false
+      set_defbbr:
+        description: 'Set BBR as default congestion algorithm'
+        required: false
+        type: boolean
+        default: false
+      custom_kernel_configs:
+        description: 'Custom kernel configs to enable (comma-separated, e.g., CONFIG_PID_NS,CONFIG_USER_NS,CONFIG_IPC_NS)'
+        required: false
+        type: string
+        default: ''
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -538,6 +548,44 @@ jobs:
           
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
+
+      - name: 应用自定义内核配置
+        if: ${{ inputs.custom_kernel_configs != '' }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          
+          # Split the comma-separated config list
+          IFS=',' read -ra CONFIGS <<< "${{ inputs.custom_kernel_configs }}"
+          
+          for config in "${CONFIGS[@]}"; do
+            # Trim whitespace
+            config=$(echo "$config" | xargs)
+            
+            # Skip empty entries
+            if [ -z "$config" ]; then
+              continue
+            fi
+            
+            # Validate config name (must match CONFIG_[A-Z0-9_]+ pattern)
+            if ! [[ "$config" =~ ^CONFIG_[A-Z0-9_]+$ ]]; then
+              echo "Warning: Invalid config name '$config' (must match CONFIG_[A-Z0-9_]+), skipping"
+              continue
+            fi
+            
+            echo "Processing config: $config"
+            
+            # Check if config exists in the file (combined grep for efficiency)
+            if grep -q "^${config}=\|^# ${config} is not set" "$CONFIG_FILE"; then
+              echo "Config $config found in defconfig, updating to =y"
+              # Replace the existing line with =y (both patterns in one pass)
+              sed -i -e "s/^${config}=.*/${config}=y/" -e "s/^# ${config} is not set/${config}=y/" "$CONFIG_FILE"
+            else
+              echo "Config $config not found in defconfig, appending"
+              echo "${config}=y" >> "$CONFIG_FILE"
+            fi
+          done
 
       - name: 配置内核名称
         run: |
