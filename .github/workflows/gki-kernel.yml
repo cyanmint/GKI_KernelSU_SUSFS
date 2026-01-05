@@ -576,12 +576,11 @@ jobs:
             
             echo "Processing config: $config"
             
-            # Check if config exists in the file
-            if grep -q "^${config}=" "$CONFIG_FILE" || grep -q "^# ${config} is not set" "$CONFIG_FILE"; then
+            # Check if config exists in the file (combined grep for efficiency)
+            if grep -q "^${config}=\|^# ${config} is not set" "$CONFIG_FILE"; then
               echo "Config $config found in defconfig, updating to =y"
-              # Replace the existing line with =y
-              sed -i "s/^${config}=.*/${config}=y/" "$CONFIG_FILE"
-              sed -i "s/^# ${config} is not set/${config}=y/" "$CONFIG_FILE"
+              # Replace the existing line with =y (both patterns in one pass)
+              sed -i -e "s/^${config}=.*/${config}=y/" -e "s/^# ${config} is not set/${config}=y/" "$CONFIG_FILE"
             else
               echo "Config $config not found in defconfig, appending"
               echo "${config}=y" >> "$CONFIG_FILE"
