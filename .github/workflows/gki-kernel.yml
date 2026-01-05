@@ -53,6 +53,11 @@ on:
         required: true
         type: boolean
         default: false
+      set_defbbr:
+        description: 'Set BBR as default congestion algorithm'
+        required: false
+        type: boolean
+        default: false
       custom_kernel_configs:
         description: 'Custom kernel configs to enable (comma-separated, e.g., CONFIG_PID_NS,CONFIG_USER_NS,CONFIG_IPC_NS)'
         required: false
