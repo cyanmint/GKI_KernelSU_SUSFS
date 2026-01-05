@@ -31,6 +31,14 @@ on:
       #   description: "如果选择了 “其他”，请指定您的自定义分支"
       #   required: false
       #   type: string  # This input is required if 'Other' is chosen
+      kernelsu_repo:
+        description: '自定义KernelSU仓库(留空使用默认)'
+        required: false
+        type: string
+      kernelsu_repo_branch:
+        description: '自定义KernelSU仓库分支(留空使用默认)'
+        required: false
+        type: string
       version:
         description: '自定义版本名(如5.10.198后面的字符/留空则使用默认版本号)'
         required: false
@@ -58,7 +66,8 @@ jobs:
       make_release: false
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
-      # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
+      kernelsu_repo: ${{ inputs.kernelsu_repo }}
+      kernelsu_repo_branch: ${{ inputs.kernelsu_repo_branch }}
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}

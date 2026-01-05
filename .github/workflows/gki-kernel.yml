@@ -28,9 +28,14 @@ on:
       kernelsu_branch:
         required: true
         type: string
-      # kernelsu_branch_other:
-      #   required: false
-      #   type: string
+      kernelsu_repo:
+        required: false
+        type: string
+        default: ""
+      kernelsu_repo_branch:
+        required: false
+        type: string
+        default: ""
       revision:
         required: false
         type: string
@@ -221,34 +226,75 @@ jobs:
         run: |
           branch_input="${{ inputs.kernelsu_branch }}"
           variant_input="${{ inputs.kernelsu_variant }}"
+          custom_repo="${{ inputs.kernelsu_repo }}"
+          custom_branch="${{ inputs.kernelsu_repo_branch }}"
           
-          case "$branch_input" in
-            "Stable(标准)")
-              echo "BRANCH=-s builtin" >> $GITHUB_ENV
-              ;;
-            "Dev(开发)")
-              case "$variant_input" in
-                "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
-                "Next")              echo "BRANCH=-s next-susfs-dev" >> $GITHUB_ENV ;;
-                "SukiSU")           echo "BRANCH=-s builtin" >> $GITHUB_ENV ;;
-                *) 
-                  echo "错误：未定义开发分支的变体 '$variant_input'" >&2
-                  exit 1
-                  ;;
-              esac
-              ;;
-            *)
-              echo "错误：需要自定义分支时未提供参数" >&2
-              exit 1
-              ;;
-          esac
+          # If custom repo is specified, use custom branch
+          if [ -n "$custom_repo" ]; then
+            if [ -n "$custom_branch" ]; then
+              echo "BRANCH=-b $custom_branch" >> $GITHUB_ENV
+            else
+              echo "BRANCH=" >> $GITHUB_ENV
+            fi
+            echo "KERNELSU_REPO=$custom_repo" >> $GITHUB_ENV
+          else
+            # Use default repositories based on variant
+            case "$variant_input" in
+              "Official") echo "KERNELSU_REPO=https://github.com/tiann/KernelSU" >> $GITHUB_ENV ;;
+              "Next")     echo "KERNELSU_REPO=https://github.com/rifsxd/KernelSU-Next" >> $GITHUB_ENV ;;
+              "MKSU")     echo "KERNELSU_REPO=https://github.com/5ec1cff/KernelSU" >> $GITHUB_ENV ;;
+              "SukiSU")   echo "KERNELSU_REPO=https://github.com/SukiSU-Ultra/SukiSU-Ultra" >> $GITHUB_ENV ;;
+              *)
+                echo "错误：未定义的KernelSU变体 '$variant_input'" >&2
+                exit 1
+                ;;
+            esac
+            
+            # Set branch based on kernelsu_branch input
+            case "$branch_input" in
+              "Stable(标准)")
+                echo "BRANCH=-s builtin" >> $GITHUB_ENV
+                ;;
+              "Dev(开发)")
+                case "$variant_input" in
+                  "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  "Next")              echo "BRANCH=-s next-susfs-dev" >> $GITHUB_ENV ;;
+                  "SukiSU")           echo "BRANCH=-s builtin" >> $GITHUB_ENV ;;
+                  *) 
+                    echo "错误：未定义开发分支的变体 '$variant_input'" >&2
+                    exit 1
+                    ;;
+                esac
+                ;;
+              *)
+                echo "错误：需要自定义分支时未提供参数" >&2
+                exit 1
+                ;;
+            esac
+          fi
 
       - name: 添加 KernelSU
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG"
 
-          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
+          custom_repo="${{ inputs.kernelsu_repo }}"
+          
+          # If using custom repo, use it directly
+          if [ -n "$custom_repo" ]; then
+            echo "Adding KernelSU from custom repository: $custom_repo"
+            # Extract the raw URL path from the custom repo
+            # Convert https://github.com/user/repo to https://raw.githubusercontent.com/user/repo
+            RAW_URL=$(echo "$custom_repo" | sed 's|https://github.com/|https://raw.githubusercontent.com/|')
+            custom_branch="${{ inputs.kernelsu_repo_branch }}"
+            if [ -n "$custom_branch" ]; then
+              RAW_URL="$RAW_URL/$custom_branch/kernel/setup.sh"
+            else
+              RAW_URL="$RAW_URL/main/kernel/setup.sh"
+            fi
+            echo "Using setup script from: $RAW_URL"
+            curl -LSs "$RAW_URL" | bash $BRANCH
+          elif [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
             echo "Adding KernelSU Official..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash $BRANCH
           elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then

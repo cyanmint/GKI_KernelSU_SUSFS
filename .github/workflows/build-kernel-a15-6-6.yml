@@ -26,6 +26,14 @@ on:
           - Dev(开发)
           - Other(其他/指定)
         default: Dev(开发)
+      kernelsu_repo:
+        description: '自定义KernelSU仓库(留空使用默认)'
+        required: false
+        type: string
+      kernelsu_repo_branch:
+        description: '自定义KernelSU仓库分支(留空使用默认)'
+        required: false
+        type: string
       version:
         description: '自定义版本名(如位于6.6.77-android15-8<自定义版本名>/留空则使用默认版本号)'
         required: false
@@ -59,6 +67,8 @@ jobs:
       make_release: false
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
+      kernelsu_repo: ${{ inputs.kernelsu_repo }}
+      kernelsu_repo_branch: ${{ inputs.kernelsu_repo_branch }}
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
