@@ -23,7 +23,7 @@ on:
           or "all" to build every kernel.
         required: true
         type: string
-        default: 'all'
+        default: 'a14-6.1'
       kernelsu_variant:
         description: "Select KernelSU"
         required: true
