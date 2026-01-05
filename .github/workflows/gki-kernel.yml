@@ -563,6 +563,12 @@ jobs:
               continue
             fi
             
+            # Validate config name (must match CONFIG_[A-Z0-9_]+ pattern)
+            if ! [[ "$config" =~ ^CONFIG_[A-Z0-9_]+$ ]]; then
+              echo "Warning: Invalid config name '$config' (must match CONFIG_[A-Z0-9_]+), skipping"
+              continue
+            fi
+            
             echo "Processing config: $config"
             
             # Check if config exists in the file
