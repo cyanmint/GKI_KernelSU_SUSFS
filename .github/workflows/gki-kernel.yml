@@ -467,7 +467,9 @@ jobs:
               patch -p1 --forward < fix_panic.patch
               echo "xt_qtaguid panic fix applied successfully"
             else
-              echo "xt_qtaguid panic fix not applied (already patched or conflicts exist)"
+              echo "WARNING: xt_qtaguid panic fix not applied (already patched or conflicts exist)"
+              echo "Attempting to check patch status..."
+              patch -p1 --forward --dry-run < fix_panic.patch 2>&1 | head -10 || true
             fi
           else
             echo "xt_qtaguid.c not found, skipping panic fix patch"
@@ -481,7 +483,9 @@ jobs:
               patch -p1 --forward < fix_cgroup.patch
               echo "cgroup fix applied successfully"
             else
-              echo "cgroup fix not applied (already patched or conflicts exist)"
+              echo "WARNING: cgroup fix not applied (already patched or conflicts exist)"
+              echo "Attempting to check patch status..."
+              patch -p1 --forward --dry-run < fix_cgroup.patch 2>&1 | head -10 || true
             fi
           else
             echo "cgroup.c not found, skipping cgroup fix patch"

@@ -59,6 +59,12 @@ CONFIG_USER_NS=y
 
 # Disable paranoid network (required for containers)
 # CONFIG_ANDROID_PARANOID_NETWORK is not set
+
+# SECURITY WARNING: Disabling CONFIG_ANDROID_PARANOID_NETWORK removes network access
+# restrictions that normally limit which apps can use networking features. This is
+# required for containers to function, but on production Android devices it may allow
+# untrusted apps to access the network. Only disable this on devices where you have
+# full control and understand the security implications.
 ```
 
 The boot panic fixes are automatically applied, so these configurations are now safe to use.
