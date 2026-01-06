@@ -26,14 +26,24 @@ This repository now includes automatic patches that fix the boot failure while p
 
 ### How It Works
 
-The patches are automatically applied during the kernel build process in the GitHub Actions workflow:
+The patches can be optionally enabled during the kernel build process in the GitHub Actions workflow:
 
-1. After kernel source is synced and other patches are applied
-2. Before the final kernel configuration step
-3. The workflow checks if the relevant source files exist
-4. Patches are applied with forward-only mode to prevent conflicts
+1. Set `enable_lxc_docker: true` in the workflow inputs
+2. After kernel source is synced and other patches are applied
+3. Before the final kernel configuration step
+4. The workflow checks if the relevant source files exist
+5. Patches are applied with forward-only mode to prevent conflicts
 
 ## Using Docker/LXC Support
+
+### Enabling the Patches
+
+The patches are **optional** and must be explicitly enabled when running the GitHub Actions workflow. To enable them:
+
+1. When triggering the workflow (via workflow_dispatch), check the `enable_lxc_docker` option
+2. Or when calling the workflow from another workflow, pass `enable_lxc_docker: true`
+
+The patches will only be applied if this option is enabled.
 
 ### Option 1: Use the Kconfig (Recommended)
 
@@ -69,15 +79,19 @@ CONFIG_USER_NS=y
 
 The boot panic fixes are automatically applied, so these configurations are now safe to use.
 
-### Option 3: Using custom_kernel_configs Input
+### Option 3: Using GitHub Actions Workflow
 
-When triggering the GitHub Actions workflow, you can use the `custom_kernel_configs` input parameter to enable specific configs:
+When triggering the GitHub Actions workflow, you can:
+
+1. Enable the LXC/Docker patches by checking the `enable_lxc_docker` option
+2. Use the `custom_kernel_configs` input parameter to enable specific configs:
 
 ```yaml
+enable_lxc_docker: true
 custom_kernel_configs: 'CONFIG_SYSVIPC,CONFIG_IPC_NS,CONFIG_PID_NS,CONFIG_NET_NS,CONFIG_UTS_NS,CONFIG_USER_NS'
 ```
 
-The patches will be automatically applied before the build starts.
+The patches will be automatically applied before the build starts when `enable_lxc_docker` is enabled.
 
 ## Testing
 
@@ -124,7 +138,8 @@ Adds symbolic links for cgroup files when `CGRP_ROOT_NOPREFIX` is set, ensuring 
 
 ## Notes
 
-- These patches are applied automatically in the GitHub Actions workflow
-- No manual intervention is required
+- These patches are **optional** and must be explicitly enabled via the `enable_lxc_docker` workflow input
+- No manual intervention is required when the option is enabled
 - Patches are safe and do not affect normal Android functionality
 - Only applied if the source files exist in the kernel version being built
+- When disabled (default), the kernel builds without LXC/Docker support patches

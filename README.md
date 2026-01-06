@@ -20,7 +20,7 @@
 | [BBR](https://blog.thinkin.top/archives/ke-pu-bbrdao-di-shi-shi-me) | TCP拥塞控制算法，使网络更快？ |
 | [Wireguard](https://zh.wikipedia.org/wiki/WireGuard) | 参考左侧wiki链接 |
 | [LZ4KD](https://github.com/ShirkNeko/SukiSU_patch/tree/main/other) | 听说是来自HUAWEI source的ZRAM算法，补丁由[云彩之枫](http://www.coolapk.com/u/24963680)移植 |
-| [LXC/Docker支持](./CONFIG_SYSVIPC_FIX.md) | 修复CONFIG_SYSVIPC导致的启动失败，支持容器运行 |
+| [LXC/Docker支持](./CONFIG_SYSVIPC_FIX.md) | 修复CONFIG_SYSVIPC导致的启动失败，支持容器运行（可选，需在编译时启用`enable_lxc_docker`选项） |
 
 <details>
 
