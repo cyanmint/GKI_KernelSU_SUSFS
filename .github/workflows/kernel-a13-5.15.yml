@@ -55,6 +55,11 @@ on:
         required: false
         type: string
         default: ''
+      enable_lxc_docker:
+        description: 'Enable LXC/Docker support patches (https://github.com/tomxi1997/lxc-docker-support-for-android)'
+        required: false
+        type: boolean
+        default: false
   
 jobs:
   build-kernel-a13-5-15-kernelsu-susfs:
@@ -112,3 +117,4 @@ jobs:
       BBG: ${{ inputs.BBG || false }}
       set_defbbr: ${{ inputs.set_defbbr || false }}
       custom_kernel_configs: ${{ inputs.custom_kernel_configs || '' }}
+      enable_lxc_docker: ${{ inputs.enable_lxc_docker || false }}

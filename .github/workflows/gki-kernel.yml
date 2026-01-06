@@ -68,6 +68,11 @@ on:
         required: false
         type: string
         default: ''
+      enable_lxc_docker:
+        description: 'Enable LXC/Docker support patches (https://github.com/tomxi1997/lxc-docker-support-for-android)'
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -89,6 +94,9 @@ jobs:
           remove-swapfile: 'true'        # Frees ~4 GB
           remove-cached-tools: 'false'   # Avoid unless confirmed safe
           verbose: 'true'                # Enable detailed logging
+
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
           
       - name: 设定 CONFIG 环境变量
         run: |
@@ -455,41 +463,39 @@ jobs:
           fi
 
       - name: 应用 LXC/Docker 支持补丁
+        if: ${{ inputs.enable_lxc_docker }}
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
           
-          echo "应用 xt_qtaguid 修复补丁以防止 CONFIG_SYSVIPC 相关的内核 panic..."
+          echo "========================================="
+          echo "WARNING: LXC/Docker patches are EXPERIMENTAL"
+          echo "These patches may cause boot loops on some devices"
+          echo "Only enable if you understand the risks"
+          echo "========================================="
+          
+          echo "应用 xt_qtaguid 安全修复补丁以防止 CONFIG_SYSVIPC 相关的内核 panic..."
           # Check if xt_qtaguid.c exists before applying patch
           if [ -f "net/netfilter/xt_qtaguid.c" ]; then
-            cp ../../lxc_docker_support/fix_panic.patch ./
+            # Use the safer patch version that preserves network statistics
+            cp ../../lxc_docker_support/fix_panic_safe.patch ./fix_panic.patch
             if patch -p1 --forward --dry-run < fix_panic.patch > /dev/null 2>&1; then
               patch -p1 --forward < fix_panic.patch
-              echo "xt_qtaguid panic fix applied successfully"
+              echo "xt_qtaguid safe panic fix applied successfully"
             else
               echo "WARNING: xt_qtaguid panic fix not applied (already patched or conflicts exist)"
               echo "Attempting to check patch status..."
               patch -p1 --forward --dry-run < fix_panic.patch 2>&1 | head -20 || true
             fi
           else
-            echo "xt_qtaguid.c not found, skipping panic fix patch"
+            echo "xt_qtaguid.c not found in this kernel version, skipping panic fix patch"
+            echo "Note: Newer kernels (6.1+, 6.6+) don't have xt_qtaguid module"
           fi
           
-          echo "应用 cgroup 修复补丁以支持 Docker/LXC..."
-          # Check if cgroup.c exists before applying patch
-          if [ -f "kernel/cgroup/cgroup.c" ]; then
-            cp ../../lxc_docker_support/fix_cgroup.patch ./
-            if patch -p1 --forward --dry-run < fix_cgroup.patch > /dev/null 2>&1; then
-              patch -p1 --forward < fix_cgroup.patch
-              echo "cgroup fix applied successfully"
-            else
-              echo "WARNING: cgroup fix not applied (already patched or conflicts exist)"
-              echo "Attempting to check patch status..."
-              patch -p1 --forward --dry-run < fix_cgroup.patch 2>&1 | head -20 || true
-            fi
-          else
-            echo "cgroup.c not found, skipping cgroup fix patch"
-          fi
+          # DISABLE cgroup patch as it causes boot loops
+          # The cgroup patch is too aggressive and conflicts with Android's requirements
+          echo "Skipping cgroup patch (known to cause boot loops)"
+          echo "For full Docker/LXC support, manual kernel modification may be required"
   
       - name: 应用新的HOOKS补丁
         run: |
@@ -606,7 +612,9 @@ jobs:
             echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            if [ "${{ inputs.use_kpm }}" == "true" ]; then
+              echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            fi
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -651,6 +659,49 @@ jobs:
           
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
+
+      - name: 启用 LXC/Docker 内核配置
+        if: ${{ inputs.enable_lxc_docker }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          
+          echo "启用 LXC/Docker 所需的内核配置..."
+          
+          # Core namespace support - REQUIRED for Docker/LXC
+          echo "CONFIG_NAMESPACES=y" >> "$CONFIG_FILE"
+          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+          
+          # SYSVIPC support - This is what the panic fix patch addresses
+          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          echo "CONFIG_SYSVIPC_SYSCTL=y" >> "$CONFIG_FILE"
+          
+          # POSIX message queues
+          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          
+          # Cgroup support
+          echo "CONFIG_CGROUPS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_PIDS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CPUSETS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PROC_PID_CPUSET=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_CPUACCT=y" >> "$CONFIG_FILE"
+          
+          # Memory cgroup
+          echo "CONFIG_MEMCG=y" >> "$CONFIG_FILE"
+          
+          # Network features for containers
+          echo "CONFIG_VETH=y" >> "$CONFIG_FILE"
+          echo "CONFIG_BRIDGE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_BRIDGE_NETFILTER=y" >> "$CONFIG_FILE"
+          
+          echo "LXC/Docker kernel configurations enabled"
 
       - name: 应用自定义内核配置
         if: ${{ inputs.custom_kernel_configs != '' }}
