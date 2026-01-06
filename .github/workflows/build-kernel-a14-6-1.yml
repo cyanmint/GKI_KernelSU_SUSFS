@@ -55,14 +55,14 @@ on:
         default: ''
       enable_lxc_docker:
         description: '是否启用LXC/Docker支持补丁? (https://github.com/tomxi1997/lxc-docker-support-for-android)'
-        required: false
+        required: true
         type: boolean
-        default: false
+        default: true
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
         type: boolean
-        default: true
+        default: false
 jobs:
 
   build-kernel-a14-6-1:
