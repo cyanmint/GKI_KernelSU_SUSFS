@@ -468,37 +468,34 @@ jobs:
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
           
-          echo "应用 xt_qtaguid 修复补丁以防止 CONFIG_SYSVIPC 相关的内核 panic..."
+          echo "========================================="
+          echo "WARNING: LXC/Docker patches are EXPERIMENTAL"
+          echo "These patches may cause boot loops on some devices"
+          echo "Only enable if you understand the risks"
+          echo "========================================="
+          
+          echo "应用 xt_qtaguid 安全修复补丁以防止 CONFIG_SYSVIPC 相关的内核 panic..."
           # Check if xt_qtaguid.c exists before applying patch
           if [ -f "net/netfilter/xt_qtaguid.c" ]; then
-            cp ../../lxc_docker_support/fix_panic.patch ./
+            # Use the safer patch version that preserves network statistics
+            cp ../../lxc_docker_support/fix_panic_safe.patch ./fix_panic.patch
             if patch -p1 --forward --dry-run < fix_panic.patch > /dev/null 2>&1; then
               patch -p1 --forward < fix_panic.patch
-              echo "xt_qtaguid panic fix applied successfully"
+              echo "xt_qtaguid safe panic fix applied successfully"
             else
               echo "WARNING: xt_qtaguid panic fix not applied (already patched or conflicts exist)"
               echo "Attempting to check patch status..."
               patch -p1 --forward --dry-run < fix_panic.patch 2>&1 | head -20 || true
             fi
           else
-            echo "xt_qtaguid.c not found, skipping panic fix patch"
+            echo "xt_qtaguid.c not found in this kernel version, skipping panic fix patch"
+            echo "Note: Newer kernels (6.1+, 6.6+) don't have xt_qtaguid module"
           fi
           
-          echo "应用 cgroup 修复补丁以支持 Docker/LXC..."
-          # Check if cgroup.c exists before applying patch
-          if [ -f "kernel/cgroup/cgroup.c" ]; then
-            cp ../../lxc_docker_support/fix_cgroup.patch ./
-            if patch -p1 --forward --dry-run < fix_cgroup.patch > /dev/null 2>&1; then
-              patch -p1 --forward < fix_cgroup.patch
-              echo "cgroup fix applied successfully"
-            else
-              echo "WARNING: cgroup fix not applied (already patched or conflicts exist)"
-              echo "Attempting to check patch status..."
-              patch -p1 --forward --dry-run < fix_cgroup.patch 2>&1 | head -20 || true
-            fi
-          else
-            echo "cgroup.c not found, skipping cgroup fix patch"
-          fi
+          # DISABLE cgroup patch as it causes boot loops
+          # The cgroup patch is too aggressive and conflicts with Android's requirements
+          echo "Skipping cgroup patch (known to cause boot loops)"
+          echo "For full Docker/LXC support, manual kernel modification may be required"
   
       - name: 应用新的HOOKS补丁
         run: |
