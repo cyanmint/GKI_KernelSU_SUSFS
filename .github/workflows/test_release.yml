@@ -15,7 +15,7 @@ on:
         description: 'Do you want to create a release?'
         required: true
         type: boolean
-        default: true
+        default: false
       kernels_to_build:
         description: |
           Comma-separated list of kernels to build/release, e.g.:
