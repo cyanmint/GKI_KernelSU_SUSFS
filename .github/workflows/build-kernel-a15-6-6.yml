@@ -58,6 +58,11 @@ on:
         required: false
         type: string
         default: ''
+      enable_lxc_docker:
+        description: '是否启用LXC/Docker支持补丁? (https://github.com/tomxi1997/lxc-docker-support-for-android)'
+        required: false
+        type: boolean
+        default: false
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
@@ -79,6 +84,7 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op }}
       custom_kernel_configs: ${{ inputs.custom_kernel_configs }}
+      enable_lxc_docker: ${{ inputs.enable_lxc_docker }}
  get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml
