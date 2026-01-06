@@ -663,6 +663,49 @@ jobs:
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
+      - name: 启用 LXC/Docker 内核配置
+        if: ${{ inputs.enable_lxc_docker }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          
+          echo "启用 LXC/Docker 所需的内核配置..."
+          
+          # Core namespace support - REQUIRED for Docker/LXC
+          echo "CONFIG_NAMESPACES=y" >> "$CONFIG_FILE"
+          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+          
+          # SYSVIPC support - This is what the panic fix patch addresses
+          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          echo "CONFIG_SYSVIPC_SYSCTL=y" >> "$CONFIG_FILE"
+          
+          # POSIX message queues
+          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          
+          # Cgroup support
+          echo "CONFIG_CGROUPS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_PIDS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CPUSETS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PROC_PID_CPUSET=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_CPUACCT=y" >> "$CONFIG_FILE"
+          
+          # Memory cgroup
+          echo "CONFIG_MEMCG=y" >> "$CONFIG_FILE"
+          
+          # Network features for containers
+          echo "CONFIG_VETH=y" >> "$CONFIG_FILE"
+          echo "CONFIG_BRIDGE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_BRIDGE_NETFILTER=y" >> "$CONFIG_FILE"
+          
+          echo "LXC/Docker kernel configurations enabled"
+
       - name: 应用自定义内核配置
         if: ${{ inputs.custom_kernel_configs != '' }}
         run: |

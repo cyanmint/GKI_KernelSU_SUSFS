@@ -43,6 +43,11 @@ The patches are **optional** and must be explicitly enabled when running the Git
 1. When triggering the workflow (via workflow_dispatch), check the `enable_lxc_docker` option
 2. Or when calling the workflow from another workflow, pass `enable_lxc_docker: true`
 
+**Important:** When `enable_lxc_docker` is enabled, the workflow will automatically:
+- Apply the panic fix and cgroup patches
+- Enable required kernel configurations (CONFIG_SYSVIPC, CONFIG_IPC_NS, CONFIG_PID_NS, CONFIG_NET_NS, etc.)
+- Configure cgroup and namespace support needed for containers
+
 The patches will only be applied if this option is enabled.
 
 ### Option 1: Use the Kconfig (Recommended)
@@ -84,12 +89,21 @@ The boot panic fixes are automatically applied, so these configurations are now 
 When triggering the GitHub Actions workflow, you can:
 
 1. Enable the LXC/Docker patches by checking the `enable_lxc_docker` option
-2. Use the `custom_kernel_configs` input parameter to enable specific configs:
+   - This will automatically apply the boot fix patches
+   - This will automatically enable required kernel configurations
+2. Optionally use the `custom_kernel_configs` input parameter to enable additional configs if needed
 
 ```yaml
 enable_lxc_docker: true
-custom_kernel_configs: 'CONFIG_SYSVIPC,CONFIG_IPC_NS,CONFIG_PID_NS,CONFIG_NET_NS,CONFIG_UTS_NS,CONFIG_USER_NS'
+# Optional: Add any additional custom configs
+custom_kernel_configs: 'CONFIG_OVERLAY_FS,CONFIG_EXT4_FS_SECURITY'
 ```
+
+**Note:** When `enable_lxc_docker` is enabled, the following configs are automatically enabled:
+- Namespace support (CONFIG_NAMESPACES, CONFIG_IPC_NS, CONFIG_PID_NS, CONFIG_NET_NS, CONFIG_UTS_NS, CONFIG_USER_NS)
+- SYSVIPC support (CONFIG_SYSVIPC, CONFIG_SYSVIPC_SYSCTL)
+- Cgroup support (CONFIG_CGROUPS, CONFIG_CGROUP_DEVICE, CONFIG_CGROUP_FREEZER, CONFIG_CGROUP_PIDS, etc.)
+- Network features (CONFIG_VETH, CONFIG_BRIDGE, CONFIG_BRIDGE_NETFILTER)
 
 The patches will be automatically applied before the build starts when `enable_lxc_docker` is enabled.
 
