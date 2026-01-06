@@ -89,6 +89,9 @@ jobs:
           remove-swapfile: 'true'        # Frees ~4 GB
           remove-cached-tools: 'false'   # Avoid unless confirmed safe
           verbose: 'true'                # Enable detailed logging
+
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
           
       - name: 设定 CONFIG 环境变量
         run: |
