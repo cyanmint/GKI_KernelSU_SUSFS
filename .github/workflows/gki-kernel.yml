@@ -463,8 +463,12 @@ jobs:
           # Check if xt_qtaguid.c exists before applying patch
           if [ -f "net/netfilter/xt_qtaguid.c" ]; then
             cp ../../lxc_docker_support/fix_panic.patch ./
-            patch -p1 --forward < fix_panic.patch || echo "Patch already applied or not needed"
-            echo "xt_qtaguid panic fix applied successfully"
+            if patch -p1 --forward --dry-run < fix_panic.patch > /dev/null 2>&1; then
+              patch -p1 --forward < fix_panic.patch
+              echo "xt_qtaguid panic fix applied successfully"
+            else
+              echo "xt_qtaguid panic fix not applied (already patched or conflicts exist)"
+            fi
           else
             echo "xt_qtaguid.c not found, skipping panic fix patch"
           fi
@@ -473,8 +477,12 @@ jobs:
           # Check if cgroup.c exists before applying patch
           if [ -f "kernel/cgroup/cgroup.c" ]; then
             cp ../../lxc_docker_support/fix_cgroup.patch ./
-            patch -p1 --forward < fix_cgroup.patch || echo "Patch already applied or not needed"
-            echo "cgroup fix applied successfully"
+            if patch -p1 --forward --dry-run < fix_cgroup.patch > /dev/null 2>&1; then
+              patch -p1 --forward < fix_cgroup.patch
+              echo "cgroup fix applied successfully"
+            else
+              echo "cgroup fix not applied (already patched or conflicts exist)"
+            fi
           else
             echo "cgroup.c not found, skipping cgroup fix patch"
           fi

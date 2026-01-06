@@ -1,3 +1,23 @@
+# LXC/Docker Support Configuration for Android GKI Kernels
+#
+# This Kconfig provides a comprehensive set of kernel options required for
+# running Docker and LXC containers on Android devices.
+#
+# The configuration is organized into:
+# 1. Core networking and device support
+# 2. Namespace and cgroup support (essential for containers)
+# 3. Network filtering and NAT
+# 4. Optional features (statistics, swap, storage backends)
+#
+# Note: The main DOCKER config uses many "select" statements to automatically
+# enable all required dependencies. This is intentional to ensure users don't
+# miss critical options that would prevent containers from working.
+#
+# Based on: https://github.com/tomxi1997/lxc-docker-support-for-android
+# References:
+# - Gentoo Docker Wiki: https://wiki.gentoo.org/wiki/Docker
+# - Android Kernel Documentation
+#
 menu "LXC/Docker support for Android"
 
 config DOCKER

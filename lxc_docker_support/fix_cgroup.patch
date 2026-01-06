@@ -1,3 +1,17 @@
+# Fix for cgroup compatibility with Docker/LXC containers
+#
+# This patch adds compatibility links for cgroup files to support Docker and LXC
+# containers that expect both prefixed and non-prefixed cgroup file paths.
+#
+# When CGRP_ROOT_NOPREFIX flag is set, this creates symbolic links with the
+# subsystem prefix (e.g., "cpu.shares" -> "shares") to maintain compatibility
+# with container runtimes that may expect either naming convention.
+#
+# This is required for proper Docker/LXC operation on Android kernels where
+# cgroup naming conventions may differ from standard Linux distributions.
+#
+# Based on: https://github.com/tomxi1997/lxc-docker-support-for-android
+#
 --- a/kernel/cgroup/cgroup.c
 +++ b/kernel/cgroup/cgroup.c
 @@ -3786,6 +3786,10 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp

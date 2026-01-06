@@ -1,3 +1,24 @@
+# Fix for kernel panic in xt_qtaguid when CONFIG_SYSVIPC is enabled
+# 
+# This patch prevents a kernel panic during boot that occurs when IPC namespace
+# configurations (CONFIG_SYSVIPC, CONFIG_IPC_NS) are enabled for Docker/LXC support.
+#
+# The issue occurs in net/netfilter/xt_qtaguid.c when the module tries to access
+# network device statistics during early boot. With namespaces enabled, these
+# device pointers may be invalid or uninitialized, causing a null pointer
+# dereference or similar crash.
+#
+# The fix changes the behavior to always use no_dev_stats instead of trying
+# to access potentially invalid device statistics. This is safe because:
+# 1. The statistics are primarily used for traffic monitoring/accounting
+# 2. Using zero stats is better than crashing the system
+# 3. The actual device stats will be properly tracked once the system is fully booted
+#
+# Side effects: Network traffic statistics may not be fully accurate during
+# early boot phase, but this is acceptable compared to a complete boot failure.
+#
+# Based on: https://github.com/tomxi1997/lxc-docker-support-for-android
+#
 --- a/net/netfilter/xt_qtaguid.c
 +++ b/net/netfilter/xt_qtaguid.c
 @@ -737,7 +737,7 @@ static int iface_stat_fmt_proc_show(struct seq_file *m, void *v)
