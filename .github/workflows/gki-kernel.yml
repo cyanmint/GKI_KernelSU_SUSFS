@@ -587,7 +587,9 @@ jobs:
               else
                 # Try applying with --fuzz=3 and --forward for more tolerance
                 echo "Attempting to apply $(basename $patch) with relaxed options..."
-                patch -p1 --fuzz=3 --forward < "$patch" || echo "Warning: Failed to apply $(basename $patch), continuing..."
+                if ! patch -p1 --fuzz=3 --forward < "$patch" 2>/dev/null; then
+                  echo "Warning: Failed to apply $(basename $patch), patch may not be compatible with this kernel version - continuing..."
+                fi
               fi
             fi
           done
