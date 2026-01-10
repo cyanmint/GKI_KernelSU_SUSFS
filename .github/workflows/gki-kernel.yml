@@ -561,13 +561,19 @@ jobs:
           for patch in ../../docker_lxc_patches/patchs/*.patch; do
             if [ -f "$patch" ]; then
               echo "Applying patch: $(basename $patch)"
-              # Try git apply first (cleaner), then patch command
+              # Try git apply first, then patch with different options, handle already applied patches
               if git apply --check "$patch" 2>/dev/null; then
                 git apply "$patch" && echo "Successfully applied $(basename $patch) with git apply"
+              elif git apply -R --check "$patch" 2>/dev/null; then
+                echo "Patch $(basename $patch) already applied, skipping"
               elif patch -p1 --dry-run -s -f < "$patch" >/dev/null 2>&1; then
                 patch -p1 < "$patch" && echo "Successfully applied $(basename $patch) with patch"
+              elif patch -p1 -R --dry-run -s -f < "$patch" >/dev/null 2>&1; then
+                echo "Patch $(basename $patch) already applied, skipping"
               else
-                echo "Warning: Skipping $(basename $patch) - patch does not apply to this kernel version"
+                # Try applying with --fuzz=3 and --forward for more tolerance
+                echo "Attempting to apply $(basename $patch) with relaxed options..."
+                patch -p1 --fuzz=3 --forward < "$patch" || echo "Warning: Failed to apply $(basename $patch), continuing..."
               fi
             fi
           done
