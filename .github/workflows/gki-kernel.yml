@@ -561,6 +561,20 @@ jobs:
           for patch in ../../docker_lxc_patches/patchs/*.patch; do
             if [ -f "$patch" ]; then
               echo "Applying patch: $(basename $patch)"
+              
+              # Extract the target file from the patch to check if it exists
+              target_file=$(grep -m1 "^diff --git" "$patch" | awk '{print $3}' | sed 's|^a/||' || echo "")
+              if [ -z "$target_file" ]; then
+                # Fallback: try to get file from +++ line
+                target_file=$(grep -m1 "^+++" "$patch" | awk '{print $2}' | sed 's|^b/||' || echo "")
+              fi
+              
+              # Check if target file exists (skip patches for non-existent files like kernel/module.c on 6.1+)
+              if [ -n "$target_file" ] && [ "$target_file" != "/dev/null" ] && [ ! -f "$target_file" ]; then
+                echo "Skipping $(basename $patch) - target file $target_file does not exist in this kernel version"
+                continue
+              fi
+              
               # Try git apply first, then patch with different options, handle already applied patches
               if git apply --check "$patch" 2>/dev/null; then
                 git apply "$patch" && echo "Successfully applied $(basename $patch) with git apply"
