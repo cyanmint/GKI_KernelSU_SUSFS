@@ -37,6 +37,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_docker:
+        description: '是否启用 Docker/LXC 支持?'
+        required: true
+        type: boolean
+        default: false
   
 jobs:
   build-kernel-a14-5-15-kernelsu-susfs:
@@ -81,3 +86,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      enable_docker: ${{ inputs.enable_docker || false }}

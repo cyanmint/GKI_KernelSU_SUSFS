@@ -50,6 +50,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_docker:
+        description: '是否启用 Docker/LXC 支持?'
+        required: true
+        type: boolean
+        default: false
 jobs:
   build-kernel-a12-5-10:
     uses: ./.github/workflows/kernel-a12-5.10.yml
@@ -62,6 +67,7 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      enable_docker: ${{ inputs.enable_docker }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml
