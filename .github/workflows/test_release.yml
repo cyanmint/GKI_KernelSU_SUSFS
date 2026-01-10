@@ -67,6 +67,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_docker:
+        description: '是否启用 Docker/LXC 支持?'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   get_manager:
@@ -88,6 +93,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   build-kernel-a13-5-10:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a13-5.10')
@@ -101,6 +107,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   build-kernel-a13-5-15:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a13-5.15')
@@ -114,6 +121,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   build-kernel-a14-5-15:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a14-5.15')
@@ -127,6 +135,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   build-kernel-a14-6-1:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a14-6.1')
@@ -140,6 +149,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   build-kernel-a15-6-6:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a15-6.6')
@@ -153,6 +163,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      enable_docker: ${{ inputs.enable_docker }}
 
   check-build-status:
     runs-on: ubuntu-latest

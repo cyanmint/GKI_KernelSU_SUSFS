@@ -19,6 +19,7 @@
 | [SUSFS4](https://gitlab.com/simonpunk/susfs4ksu) | 在内核层面辅助KSU隐藏的功能补丁 |
 | [BBR](https://blog.thinkin.top/archives/ke-pu-bbrdao-di-shi-shi-me) | TCP拥塞控制算法，使网络更快？ |
 | [Wireguard](https://zh.wikipedia.org/wiki/WireGuard) | 参考左侧wiki链接 |
+| [Docker/LXC](https://github.com/tomxi1997/enable-lxc-dockers-for-android-gki-kernel) | 可选的Docker和LXC容器支持 |
 | [LZ4KD](https://github.com/ShirkNeko/SukiSU_patch/tree/main/other) | 听说是来自HUAWEI source的ZRAM算法，补丁由[云彩之枫](http://www.coolapk.com/u/24963680)移植 |
 
 <details>
@@ -88,3 +89,17 @@ $ fastboot flash boot <boot.img文件全称>
 
 ### 更多内容
 可以提及您的意见...我会尝试！
+
+## Docker/LXC 支持
+
+在编译内核时，可以选择启用 Docker/LXC 支持：
+
+**如何启用：**
+1. 在 Actions 页面手动触发构建时，勾选 "是否启用 Docker/LXC 支持?" 选项
+2. 启用后将自动应用来自 [enable-lxc-dockers-for-android-gki-kernel](https://github.com/tomxi1997/enable-lxc-dockers-for-android-gki-kernel) 的补丁和配置
+3. 这将为内核添加运行 Docker 容器和 LXC 容器所需的内核配置和补丁
+
+**注意事项：**
+- Docker/LXC 支持是实验性功能，可能影响系统稳定性
+- 启用后内核体积会略有增加
+- 仅在需要运行容器时启用此选项
