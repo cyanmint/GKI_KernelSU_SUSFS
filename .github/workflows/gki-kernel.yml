@@ -557,10 +557,19 @@ jobs:
           cd "$CONFIG/common"
           
           echo "应用 Docker/LXC 补丁..."
-          # Apply Docker/LXC patches
+          # Apply Docker/LXC patches with better error handling
           for patch in ../../docker_lxc_patches/patchs/*.patch; do
-            echo "Applying patch: $(basename $patch)"
-            git apply "$patch" || patch -p1 < "$patch" || echo "Warning: Failed to apply $(basename $patch), continuing..."
+            if [ -f "$patch" ]; then
+              echo "Applying patch: $(basename $patch)"
+              # Try git apply first (cleaner), then patch command
+              if git apply --check "$patch" 2>/dev/null; then
+                git apply "$patch" && echo "Successfully applied $(basename $patch) with git apply"
+              elif patch -p1 --dry-run -s -f < "$patch" >/dev/null 2>&1; then
+                patch -p1 < "$patch" && echo "Successfully applied $(basename $patch) with patch"
+              else
+                echo "Warning: Skipping $(basename $patch) - patch does not apply to this kernel version"
+              fi
+            fi
           done
           
           echo "添加 Docker/LXC 内核配置..."
@@ -592,8 +601,12 @@ jobs:
           
           # Remove rfkill.ko from modules.bzl for Android 14 and 15 since RFKILL is built-in
           if [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
-            sed -i 's/"net\/rfkill\/rfkill\.ko",//g' "$CONFIG/common/modules.bzl"
-            echo 'Android14/15_Bazel:已修复rfkill'
+            if [ -f "modules.bzl" ]; then
+              sed -i 's/"net\/rfkill\/rfkill\.ko",//g' modules.bzl
+              echo 'Android14/15_Bazel:已修复rfkill'
+            else
+              echo "Warning: modules.bzl not found in current directory"
+            fi
           fi
           
           echo "Docker/LXC 支持配置完成"
