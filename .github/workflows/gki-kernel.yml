@@ -590,6 +590,12 @@ jobs:
           sed -i 's/CONFIG_PID_NS is not set/# CONFIG_PID_NS is not set/' "$CONFIG_FILE" || true
           sed -i 's/CONFIG_VT is not set/# CONFIG_VT is not set/' "$CONFIG_FILE" || true
           
+          # Remove rfkill.ko from modules.bzl for Android 14 and 15 since RFKILL is built-in
+          if [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
+            sed -i 's/"net\/rfkill\/rfkill\.ko",//g' "$CONFIG/common/modules.bzl"
+            echo 'Android14/15_Bazel:已修复rfkill'
+          fi
+          
           echo "Docker/LXC 支持配置完成"
 
       - name: 配置内核名称
