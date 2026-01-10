@@ -592,8 +592,7 @@ jobs:
           
           # Remove rfkill.ko from modules.bzl for Android 14 and 15 since RFKILL is built-in
           if [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
-            cd "$GITHUB_WORKSPACE/$CONFIG/common"
-            sed -i 's/"net\/rfkill\/rfkill\.ko",//g' modules.bzl
+            sed -i 's/"net\/rfkill\/rfkill\.ko",//g' "$CONFIG/common/modules.bzl"
             echo 'Android14/15_Bazel: 已修复rfkill模块编译为内建'
           fi
           
