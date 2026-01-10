@@ -598,24 +598,24 @@ jobs:
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
           
           # Add Docker/LXC required configurations
-          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
-          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_RFKILL=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_RFKILL=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
           
           # Add namespace configurations
-          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
           
           # Disable conflicting configurations
           sed -i 's/CONFIG_PID_NS is not set/# CONFIG_PID_NS is not set/' "$CONFIG_FILE" || true
