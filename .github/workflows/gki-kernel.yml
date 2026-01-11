@@ -45,6 +45,11 @@ on:
         required: true
         type: boolean
         default: true
+      kpm_version:
+        description: '选择 KPM 版本 (仅SukiSU)'
+        required: false
+        type: string
+        default: "0.12.2(稳定)"
       supp_op:
         required: true
         type: boolean
@@ -557,24 +562,55 @@ jobs:
           cd "$CONFIG/common"
           
           echo "应用 Docker/LXC 补丁..."
-          # Apply Docker/LXC patches
+          # Apply Docker/LXC patches with better error handling
           for patch in ../../docker_lxc_patches/patchs/*.patch; do
-            echo "Applying patch: $(basename $patch)"
-            git apply "$patch" || patch -p1 < "$patch" || echo "Warning: Failed to apply $(basename $patch), continuing..."
+            if [ -f "$patch" ]; then
+              echo "Applying patch: $(basename $patch)"
+              
+              # Extract the target file from the patch to check if it exists
+              target_file=$(grep -m1 "^diff --git" "$patch" | awk '{print $3}' | sed 's|^a/||' || echo "")
+              if [ -z "$target_file" ]; then
+                # Fallback: try to get file from +++ line
+                target_file=$(grep -m1 "^+++" "$patch" | awk '{print $2}' | sed 's|^b/||' || echo "")
+              fi
+              
+              # Check if target file exists (skip patches for non-existent files like kernel/module.c on 6.1+)
+              if [ -n "$target_file" ] && [ "$target_file" != "/dev/null" ] && [ ! -f "$target_file" ]; then
+                echo "Skipping $(basename $patch) - target file $target_file does not exist in this kernel version"
+                continue
+              fi
+              
+              # Try git apply first, then patch with different options, handle already applied patches
+              if git apply --check "$patch" 2>/dev/null; then
+                git apply "$patch" && echo "Successfully applied $(basename $patch) with git apply"
+              elif git apply -R --check "$patch" 2>/dev/null; then
+                echo "Patch $(basename $patch) already applied, skipping"
+              elif patch -p1 --dry-run -s -f < "$patch" >/dev/null 2>&1; then
+                patch -p1 < "$patch" && echo "Successfully applied $(basename $patch) with patch"
+              elif patch -p1 -R --dry-run -s -f < "$patch" >/dev/null 2>&1; then
+                echo "Patch $(basename $patch) already applied, skipping"
+              else
+                # Try applying with --fuzz=3 and --forward for more tolerance
+                echo "Attempting to apply $(basename $patch) with relaxed options..."
+                if ! patch -p1 --fuzz=3 --forward < "$patch" 2>/dev/null; then
+                  echo "Warning: Failed to apply $(basename $patch), patch may not be compatible with this kernel version - continuing..."
+                fi
+              fi
+            fi
           done
           
           echo "添加 Docker/LXC 内核配置..."
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
           
           # Add Docker/LXC required configurations
-          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
-          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
           echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
           echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
           echo "CONFIG_RFKILL=y" >> "$CONFIG_FILE"
           echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
@@ -582,9 +618,9 @@ jobs:
           # Add namespace configurations
           echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
           
           # Disable conflicting configurations
           sed -i 's/CONFIG_PID_NS is not set/# CONFIG_PID_NS is not set/' "$CONFIG_FILE" || true
@@ -592,8 +628,12 @@ jobs:
           
           # Remove rfkill.ko from modules.bzl for Android 14 and 15 since RFKILL is built-in
           if [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
-            sed -i 's/"net\/rfkill\/rfkill\.ko",//g' "$CONFIG/common/modules.bzl"
-            echo 'Android14/15_Bazel:已修复rfkill'
+            if [ -f "modules.bzl" ]; then
+              sed -i 's/"net\/rfkill\/rfkill\.ko",//g' modules.bzl
+              echo 'Android14/15_Bazel:已修复rfkill'
+            else
+              echo "Warning: modules.bzl not found in current directory"
+            fi
           fi
           
           echo "Docker/LXC 支持配置完成"
@@ -668,7 +708,23 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            
+            # Determine KPM version to use based on selection
+            KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
+            case "${{ inputs.kpm_version }}" in
+              "main(最新)")
+                KPM_COMMIT="main"
+                ;;
+              "0.12.2(稳定)")
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
+                ;;
+              *)
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
+                ;;
+            esac
+            
+            echo "Using KPM version: ${{ inputs.kpm_version }} (commit: $KPM_COMMIT)"
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/$KPM_COMMIT/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
@@ -682,7 +738,23 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            
+            # Determine KPM version to use based on selection
+            KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
+            case "${{ inputs.kpm_version }}" in
+              "main(最新)")
+                KPM_COMMIT="main"
+                ;;
+              "0.12.2(稳定)")
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
+                ;;
+              *)
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
+                ;;
+            esac
+            
+            echo "Using KPM version: ${{ inputs.kpm_version }} (commit: $KPM_COMMIT)"
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/$KPM_COMMIT/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image

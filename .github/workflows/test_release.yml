@@ -23,7 +23,7 @@ on:
           or "all" to build every kernel.
         required: true
         type: string
-        default: 'all'
+        default: 'a14-6.1'
       kernelsu_variant:
         description: "Select KernelSU"
         required: true
@@ -56,7 +56,7 @@ on:
         description: 'Enable KPM functionality?'
         required: true
         type: boolean
-        default: true
+        default: false
       BBG:
         description: "是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？"
         required: true
@@ -71,7 +71,7 @@ on:
         description: '是否启用 Docker/LXC 支持?'
         required: true
         type: boolean
-        default: false
+        default: true
 
 jobs:
   get_manager:

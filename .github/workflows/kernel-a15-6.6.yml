@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      kpm_version:
+        description: '选择 KPM 版本 (仅SukiSU)'
+        required: false
+        type: string
+        default: "0.12.2(稳定)"
       supp_op:
         description: '是否开启一加8E处理器机型支持?(非该机型无须勾)'
         required: false
@@ -92,6 +97,7 @@ jobs:
       version: ${{ inputs.version || '' }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      kpm_version: ${{ inputs.kpm_version || '0.12.2(稳定)' }}
       supp_op: ${{ inputs.supp_op }}
       BBG: ${{ inputs.BBG || false }}
       enable_docker: ${{ inputs.enable_docker || false }}
