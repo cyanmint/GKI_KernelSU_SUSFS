@@ -171,11 +171,8 @@ jobs:
           # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
           
-          # Clone Docker/LXC support patches if enabled
-          if [ "${{ inputs.enable_docker }}" == "true" ]; then
-            echo "Cloning Docker/LXC support patches..."
-            git clone https://github.com/tomxi1997/enable-lxc-dockers-for-android-gki-kernel.git docker_lxc_patches
-          fi
+          # Docker/LXC patches are now vendored in the repository at docker_lxc_patches/
+          # No need to clone them anymore
           
       - name: 设置 CONFIG 环境变量
         run: |
