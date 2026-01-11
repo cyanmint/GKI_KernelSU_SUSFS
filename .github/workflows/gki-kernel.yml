@@ -45,6 +45,11 @@ on:
         required: true
         type: boolean
         default: true
+      kpm_version:
+        description: '选择 KPM 版本 (仅SukiSU)'
+        required: false
+        type: string
+        default: "Latest(最新)"
       supp_op:
         required: true
         type: boolean
@@ -703,7 +708,23 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            
+            # Determine KPM version to use
+            KPM_BRANCH="main"
+            case "${{ inputs.kpm_version }}" in
+              "v1.0(旧版本)")
+                KPM_BRANCH="v1.0"
+                ;;
+              "v0.9(旧版本)")
+                KPM_BRANCH="v0.9"
+                ;;
+              *)
+                KPM_BRANCH="main"
+                ;;
+            esac
+            
+            echo "Using KPM version from branch: $KPM_BRANCH"
+            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/$KPM_BRANCH/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
@@ -717,7 +738,23 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            
+            # Determine KPM version to use
+            KPM_BRANCH="main"
+            case "${{ inputs.kpm_version }}" in
+              "v1.0(旧版本)")
+                KPM_BRANCH="v1.0"
+                ;;
+              "v0.9(旧版本)")
+                KPM_BRANCH="v0.9"
+                ;;
+              *)
+                KPM_BRANCH="main"
+                ;;
+            esac
+            
+            echo "Using KPM version from branch: $KPM_BRANCH"
+            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/$KPM_BRANCH/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image

@@ -40,6 +40,15 @@ on:
         required: true
         type: boolean
         default: true
+      kpm_version:
+        description: '选择 KPM 版本 (仅SukiSU)'
+        required: true
+        type: choice
+        options:
+          - Latest(最新)
+          - v1.0(旧版本)
+          - v0.9(旧版本)
+        default: Latest(最新)
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
@@ -62,6 +71,7 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      kpm_version: ${{ inputs.kpm_version }}
       enable_docker: ${{ inputs.enable_docker }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}
