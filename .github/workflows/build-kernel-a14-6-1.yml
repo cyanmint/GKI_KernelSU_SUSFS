@@ -45,10 +45,9 @@ on:
         required: true
         type: choice
         options:
-          - Latest(最新)
-          - v1.0(旧版本)
-          - v0.9(旧版本)
-        default: Latest(最新)
+          - 0.12.5(最新)
+          - 0.12.2(稳定)
+        default: 0.12.2(稳定)
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true

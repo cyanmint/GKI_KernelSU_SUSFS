@@ -49,7 +49,7 @@ on:
         description: '选择 KPM 版本 (仅SukiSU)'
         required: false
         type: string
-        default: "Latest(最新)"
+        default: "0.12.2(稳定)"
       supp_op:
         required: true
         type: boolean
@@ -709,22 +709,22 @@ jobs:
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
             
-            # Determine KPM version to use
-            KPM_BRANCH="main"
+            # Determine KPM version to use based on commit hash
+            KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
             case "${{ inputs.kpm_version }}" in
-              "v1.0(旧版本)")
-                KPM_BRANCH="v1.0"
+              "0.12.5(最新)")
+                KPM_COMMIT="4f3e8c2f6c0d290fbe2caa3cb1c65c0d6f4a84fc"
                 ;;
-              "v0.9(旧版本)")
-                KPM_BRANCH="v0.9"
+              "0.12.2(稳定)")
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
                 ;;
               *)
-                KPM_BRANCH="main"
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
                 ;;
             esac
             
-            echo "Using KPM version from branch: $KPM_BRANCH"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/$KPM_BRANCH/kpm/patch_linux" -o patch
+            echo "Using KPM version: ${{ inputs.kpm_version }} (commit: $KPM_COMMIT)"
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/$KPM_COMMIT/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
@@ -739,22 +739,22 @@ jobs:
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
             
-            # Determine KPM version to use
-            KPM_BRANCH="main"
+            # Determine KPM version to use based on commit hash
+            KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
             case "${{ inputs.kpm_version }}" in
-              "v1.0(旧版本)")
-                KPM_BRANCH="v1.0"
+              "0.12.5(最新)")
+                KPM_COMMIT="4f3e8c2f6c0d290fbe2caa3cb1c65c0d6f4a84fc"
                 ;;
-              "v0.9(旧版本)")
-                KPM_BRANCH="v0.9"
+              "0.12.2(稳定)")
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
                 ;;
               *)
-                KPM_BRANCH="main"
+                KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
                 ;;
             esac
             
-            echo "Using KPM version from branch: $KPM_BRANCH"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/$KPM_BRANCH/kpm/patch_linux" -o patch
+            echo "Using KPM version: ${{ inputs.kpm_version }} (commit: $KPM_COMMIT)"
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/$KPM_COMMIT/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
