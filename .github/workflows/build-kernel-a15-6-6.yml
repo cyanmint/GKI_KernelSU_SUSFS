@@ -40,6 +40,14 @@ on:
         required: false
         type: boolean
         default: true
+      kpm_version:
+        description: '选择 KPM 版本 (仅SukiSU)'
+        required: true
+        type: choice
+        options:
+          - 0.12.2(稳定)
+          - main(最新)
+        default: 0.12.2(稳定)
       supp_op:
         description: '是否开启一加8E处理器机型支持?(非该机型无须勾)'
         required: false
@@ -67,6 +75,8 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      kpm_version: ${{ inputs.kpm_version }}
+      BBG: false
       enable_docker: ${{ inputs.enable_docker }}
       supp_op: ${{ inputs.supp_op }}
  get-ksu-manager:

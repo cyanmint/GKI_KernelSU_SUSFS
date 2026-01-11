@@ -45,8 +45,8 @@ on:
         required: true
         type: choice
         options:
-          - 0.12.5(最新)
           - 0.12.2(稳定)
+          - main(最新)
         default: 0.12.2(稳定)
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
@@ -71,6 +71,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       kpm_version: ${{ inputs.kpm_version }}
+      BBG: false
       enable_docker: ${{ inputs.enable_docker }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}

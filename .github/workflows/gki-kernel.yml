@@ -709,11 +709,11 @@ jobs:
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
             
-            # Determine KPM version to use based on commit hash
+            # Determine KPM version to use based on selection
             KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
             case "${{ inputs.kpm_version }}" in
-              "0.12.5(最新)")
-                KPM_COMMIT="4f3e8c2f6c0d290fbe2caa3cb1c65c0d6f4a84fc"
+              "main(最新)")
+                KPM_COMMIT="main"
                 ;;
               "0.12.2(稳定)")
                 KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
@@ -739,11 +739,11 @@ jobs:
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
             
-            # Determine KPM version to use based on commit hash
+            # Determine KPM version to use based on selection
             KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"  # Default: 0.12.2 (stable)
             case "${{ inputs.kpm_version }}" in
-              "0.12.5(最新)")
-                KPM_COMMIT="4f3e8c2f6c0d290fbe2caa3cb1c65c0d6f4a84fc"
+              "main(最新)")
+                KPM_COMMIT="main"
                 ;;
               "0.12.2(稳定)")
                 KPM_COMMIT="83aa64b7548890bb1f2eff6c990c03a1802df27b"
