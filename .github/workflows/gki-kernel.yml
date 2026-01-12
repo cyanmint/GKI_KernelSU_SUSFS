@@ -929,12 +929,19 @@ jobs:
           
           echo "Found VM disk: $VM_DISK"
           
-          # Determine kernel Image path based on Android version
-          if [ "${{ inputs.android_version }}" = "android12" ] || [ "${{ inputs.android_version }}" = "android13" ]; then
-            KERNEL_IMAGE="../bootimgs/Image"
-          else
-            KERNEL_IMAGE="../bootimgs/Image"
+          # Determine the disk format based on file extension
+          VM_FORMAT="raw"
+          if [[ "$VM_DISK" == *.qcow2 ]]; then
+            VM_FORMAT="qcow2"
+          elif [[ "$VM_DISK" == *.vmdk ]]; then
+            VM_FORMAT="vmdk"
+          elif [[ "$VM_DISK" == *.img ]]; then
+            VM_FORMAT="raw"
           fi
+          echo "Detected disk format: $VM_FORMAT"
+          
+          # Kernel image path is the same for all Android versions
+          KERNEL_IMAGE="../bootimgs/Image"
           
           if [ ! -f "$KERNEL_IMAGE" ]; then
             echo "Error: Kernel image not found at $KERNEL_IMAGE"
@@ -957,7 +964,7 @@ jobs:
             -m 2048 \
             -kernel "$KERNEL_IMAGE" \
             -append "console=ttyAMA0 root=/dev/vda2 rootwait rw androidboot.selinux=permissive" \
-            -drive file="$VM_DISK",format=qcow2,if=none,id=drive0 \
+            -drive file="$VM_DISK",format="$VM_FORMAT",if=none,id=drive0 \
             -device virtio-blk-device,drive=drive0 \
             -nographic \
             -serial mon:stdio \
