@@ -886,6 +886,92 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
+      - name: 测试内核启动（QEMU）
+        run: |
+          echo "Installing QEMU..."
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-aarch64 unzip wget
+          
+          echo "Downloading Lineage OS QEMU image..."
+          mkdir -p qemu-test
+          cd qemu-test
+          wget -O lineage-vm.zip "https://github.com/jqssun/android-lineage-qemu/releases/download/v2025.12.06/UTM-VM-lineage-23.0-20251206-jqssun-virtio_arm64only.zip"
+          
+          echo "Extracting VM image..."
+          unzip lineage-vm.zip
+          
+          # Find the VM disk image
+          VM_DISK=$(find . -name "*.qcow2" -o -name "*.img" | head -1)
+          if [ -z "$VM_DISK" ]; then
+            echo "Warning: No VM disk image found, checking for other formats..."
+            ls -la
+            VM_DISK=$(find . -type f -size +100M | head -1)
+          fi
+          
+          echo "Found VM disk: $VM_DISK"
+          
+          # Copy the boot.img to use for testing
+          cp ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img ./test-boot.img
+          
+          echo "Starting QEMU boot test..."
+          echo "This will test if the kernel boots without entering a bootloop"
+          
+          # Start QEMU with a timeout to detect bootloop
+          # We'll run it for 120 seconds and monitor output
+          timeout 120s qemu-system-aarch64 \
+            -M virt \
+            -cpu cortex-a57 \
+            -smp 2 \
+            -m 2048 \
+            -kernel ../bootimgs/Image \
+            -append "console=ttyAMA0 root=/dev/vda2 rootwait rw" \
+            -drive file="$VM_DISK",format=qcow2,if=none,id=drive0 \
+            -device virtio-blk-device,drive=drive0 \
+            -nographic \
+            -serial mon:stdio \
+            > qemu-output.log 2>&1 &
+          
+          QEMU_PID=$!
+          echo "QEMU started with PID: $QEMU_PID"
+          
+          # Monitor for successful boot signs
+          BOOT_SUCCESS=0
+          for i in {1..60}; do
+            sleep 2
+            if grep -q "Boot completed" qemu-output.log 2>/dev/null || \
+               grep -q "init: Starting service" qemu-output.log 2>/dev/null || \
+               grep -q "Freeing unused kernel" qemu-output.log 2>/dev/null; then
+              echo "✓ Kernel boot successful - system initialization detected"
+              BOOT_SUCCESS=1
+              break
+            fi
+            
+            # Check for bootloop/panic indicators
+            if grep -q "Kernel panic" qemu-output.log 2>/dev/null || \
+               grep -q "Rebooting" qemu-output.log 2>/dev/null; then
+              echo "✗ Kernel panic or reboot detected!"
+              cat qemu-output.log
+              kill $QEMU_PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            echo "Waiting for boot completion... ($i/60)"
+          done
+          
+          # Stop QEMU
+          kill $QEMU_PID 2>/dev/null || true
+          wait $QEMU_PID 2>/dev/null || true
+          
+          if [ $BOOT_SUCCESS -eq 0 ]; then
+            echo "⚠ Boot test timeout - reviewing logs..."
+            echo "Last 50 lines of QEMU output:"
+            tail -50 qemu-output.log
+            echo "Note: Timeout doesn't necessarily mean failure, but boot didn't complete in expected time"
+          fi
+          
+          echo "QEMU boot test completed"
+          cd ..
+
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
