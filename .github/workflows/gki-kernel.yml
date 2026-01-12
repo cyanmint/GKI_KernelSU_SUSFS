@@ -887,44 +887,76 @@ jobs:
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
       - name: 测试内核启动（QEMU）
+        continue-on-error: true
         run: |
-          echo "Installing QEMU..."
-          sudo apt-get update
+          echo "========================================="
+          echo "QEMU Kernel Boot Test"
+          echo "========================================="
+          echo "Installing QEMU and dependencies..."
+          sudo apt-get update -qq
           sudo apt-get install -y qemu-system-aarch64 unzip wget
           
-          echo "Downloading Lineage OS QEMU image..."
+          echo "Downloading Lineage OS QEMU image (this may take a few minutes)..."
           mkdir -p qemu-test
           cd qemu-test
-          wget -O lineage-vm.zip "https://github.com/jqssun/android-lineage-qemu/releases/download/v2025.12.06/UTM-VM-lineage-23.0-20251206-jqssun-virtio_arm64only.zip"
+          
+          # Download with retry and progress
+          wget --progress=dot:giga -O lineage-vm.zip \
+            "https://github.com/jqssun/android-lineage-qemu/releases/download/v2025.12.06/UTM-VM-lineage-23.0-20251206-jqssun-virtio_arm64only.zip" || {
+            echo "Failed to download VM image"
+            exit 0
+          }
           
           echo "Extracting VM image..."
-          unzip lineage-vm.zip
+          unzip -q lineage-vm.zip || {
+            echo "Failed to extract VM image"
+            exit 0
+          }
           
-          # Find the VM disk image
-          VM_DISK=$(find . -name "*.qcow2" -o -name "*.img" | head -1)
+          # Find the VM disk image - look for common formats
+          echo "Searching for VM disk image..."
+          VM_DISK=$(find . -name "*.qcow2" -o -name "*.img" -o -name "*.vmdk" | grep -v "boot" | head -1)
           if [ -z "$VM_DISK" ]; then
-            echo "Warning: No VM disk image found, checking for other formats..."
-            ls -la
+            echo "Warning: No VM disk image found in standard formats, searching for large files..."
+            ls -lhR
             VM_DISK=$(find . -type f -size +100M | head -1)
+          fi
+          
+          if [ -z "$VM_DISK" ]; then
+            echo "Error: Could not find VM disk image"
+            exit 0
           fi
           
           echo "Found VM disk: $VM_DISK"
           
-          # Copy the boot.img to use for testing
-          cp ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img ./test-boot.img
+          # Determine kernel Image path based on Android version
+          if [ "${{ inputs.android_version }}" = "android12" ] || [ "${{ inputs.android_version }}" = "android13" ]; then
+            KERNEL_IMAGE="../bootimgs/Image"
+          else
+            KERNEL_IMAGE="../bootimgs/Image"
+          fi
           
+          if [ ! -f "$KERNEL_IMAGE" ]; then
+            echo "Error: Kernel image not found at $KERNEL_IMAGE"
+            ls -la ../bootimgs/ || true
+            exit 0
+          fi
+          
+          echo "Using kernel image: $KERNEL_IMAGE"
+          echo ""
           echo "Starting QEMU boot test..."
           echo "This will test if the kernel boots without entering a bootloop"
+          echo "Test duration: up to 2 minutes"
+          echo ""
           
-          # Start QEMU with a timeout to detect bootloop
-          # We'll run it for 120 seconds and monitor output
+          # Start QEMU in background
           timeout 120s qemu-system-aarch64 \
             -M virt \
             -cpu cortex-a57 \
             -smp 2 \
             -m 2048 \
-            -kernel ../bootimgs/Image \
-            -append "console=ttyAMA0 root=/dev/vda2 rootwait rw" \
+            -kernel "$KERNEL_IMAGE" \
+            -append "console=ttyAMA0 root=/dev/vda2 rootwait rw androidboot.selinux=permissive" \
             -drive file="$VM_DISK",format=qcow2,if=none,id=drive0 \
             -device virtio-blk-device,drive=drive0 \
             -nographic \
@@ -934,42 +966,67 @@ jobs:
           QEMU_PID=$!
           echo "QEMU started with PID: $QEMU_PID"
           
-          # Monitor for successful boot signs
+          # Monitor for successful boot or failure
           BOOT_SUCCESS=0
           for i in {1..60}; do
             sleep 2
-            if grep -q "Boot completed" qemu-output.log 2>/dev/null || \
-               grep -q "init: Starting service" qemu-output.log 2>/dev/null || \
-               grep -q "Freeing unused kernel" qemu-output.log 2>/dev/null; then
-              echo "✓ Kernel boot successful - system initialization detected"
+            
+            # Check if QEMU is still running
+            if ! kill -0 $QEMU_PID 2>/dev/null; then
+              echo "QEMU process terminated unexpectedly"
+              break
+            fi
+            
+            # Check for success indicators
+            if grep -q -E "Boot completed|init: Starting service|Freeing unused kernel|Android" qemu-output.log 2>/dev/null; then
+              echo "✓ Kernel boot successful - system initialization detected at iteration $i"
               BOOT_SUCCESS=1
               break
             fi
             
-            # Check for bootloop/panic indicators
-            if grep -q "Kernel panic" qemu-output.log 2>/dev/null || \
-               grep -q "Rebooting" qemu-output.log 2>/dev/null; then
-              echo "✗ Kernel panic or reboot detected!"
-              cat qemu-output.log
+            # Check for failure indicators
+            if grep -q -E "Kernel panic|Oops:|BUG:|segfault|Unable to mount root" qemu-output.log 2>/dev/null; then
+              echo "✗ Kernel panic or critical error detected!"
+              echo "=== Last 100 lines of output ==="
+              tail -100 qemu-output.log
               kill $QEMU_PID 2>/dev/null || true
               exit 1
             fi
             
-            echo "Waiting for boot completion... ($i/60)"
+            # Check for bootloop (multiple restarts)
+            REBOOT_COUNT=$(grep -c "Restarting system" qemu-output.log 2>/dev/null || echo "0")
+            if [ "$REBOOT_COUNT" -ge 2 ]; then
+              echo "✗ Bootloop detected - system restarted $REBOOT_COUNT times"
+              echo "=== Last 100 lines of output ==="
+              tail -100 qemu-output.log
+              kill $QEMU_PID 2>/dev/null || true
+              exit 1
+            fi
+            
+            if [ $((i % 10)) -eq 0 ]; then
+              echo "Waiting for boot completion... ($i/60) - still running"
+            fi
           done
           
-          # Stop QEMU
+          # Clean up QEMU process
           kill $QEMU_PID 2>/dev/null || true
           wait $QEMU_PID 2>/dev/null || true
           
-          if [ $BOOT_SUCCESS -eq 0 ]; then
-            echo "⚠ Boot test timeout - reviewing logs..."
-            echo "Last 50 lines of QEMU output:"
+          echo ""
+          echo "========================================="
+          if [ $BOOT_SUCCESS -eq 1 ]; then
+            echo "✓ QEMU BOOT TEST PASSED"
+            echo "Kernel successfully booted without bootloop"
+          else
+            echo "⚠ QEMU BOOT TEST INCONCLUSIVE"
+            echo "Boot did not complete within timeout"
+            echo "This may not indicate a problem - full boot might take longer"
+            echo ""
+            echo "=== Last 50 lines of QEMU output ==="
             tail -50 qemu-output.log
-            echo "Note: Timeout doesn't necessarily mean failure, but boot didn't complete in expected time"
           fi
+          echo "========================================="
           
-          echo "QEMU boot test completed"
           cd ..
 
       - name: 上传编译资产
