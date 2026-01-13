@@ -15,7 +15,7 @@ on:
         description: 'Do you want to create a release?'
         required: true
         type: boolean
-        default: true
+        default: false
       kernels_to_build:
         description: |
           Comma-separated list of kernels to build/release, e.g.:
@@ -23,7 +23,7 @@ on:
           or "all" to build every kernel.
         required: true
         type: string
-        default: 'all'
+        default: 'a14-6.1'
       kernelsu_variant:
         description: "Select KernelSU"
         required: true
@@ -42,7 +42,7 @@ on:
         - Stable(标准)
         - Dev(开发)
         - Other(其他/指定)
-        default: Stable(标准)
+        default: Dev(开发)
       version:
         description: 'Custom version name (e.g., characters after 5.10.198 / leave blank to use default version number)'
         required: false
@@ -76,7 +76,7 @@ on:
         description: 'Custom kernel config options (comma-separated, e.g., CONFIG_PID_NS,CONFIG_IPC_NS,CONFIG_USER_NS,CONFIG_SYSVIPC)'
         required: false
         type: string
-        default: ""
+        default: "CONFIG_RFKILL,CONFIG_PID_NS,CONFIG_IPC_NS,CONFIG_USER_NS,CONFIG_SYSVIPC"
       apply_lxc_patches:
         description: 'Apply patches from tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel?'
         required: false
