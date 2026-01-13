@@ -609,6 +609,12 @@ jobs:
               continue
             fi
             
+            # 验证配置选项格式（只允许字母、数字和下划线）
+            if ! [[ "$config_option" =~ ^CONFIG_[A-Z0-9_]+$ ]]; then
+              echo "  警告: 配置选项格式无效，跳过: $config_option"
+              continue
+            fi
+            
             echo "处理配置选项: $config_option"
             
             # 检查配置选项是否已存在
