@@ -612,14 +612,14 @@ jobs:
             echo "处理配置选项: $config_option"
             
             # 检查配置选项是否已存在
-            if grep -q "^${config_option}=" "$CONFIG_FILE"; then
+            if grep -qF "${config_option}=" "$CONFIG_FILE"; then
               # 配置已存在，替换为 =y
               echo "  配置 $config_option 已存在，替换为启用状态"
-              sed -i "s/^${config_option}=.*/${config_option}=y/" "$CONFIG_FILE"
-            elif grep -q "^# ${config_option} is not set" "$CONFIG_FILE"; then
+              sed -i "s|^${config_option}=.*|${config_option}=y|" "$CONFIG_FILE"
+            elif grep -qF "# ${config_option} is not set" "$CONFIG_FILE"; then
               # 配置被显式禁用，替换为启用
               echo "  配置 $config_option 被禁用，替换为启用状态"
-              sed -i "s/^# ${config_option} is not set/${config_option}=y/" "$CONFIG_FILE"
+              sed -i "s|^# ${config_option} is not set|${config_option}=y|" "$CONFIG_FILE"
             else
               # 配置不存在，追加
               echo "  配置 $config_option 不存在，添加到配置文件"
