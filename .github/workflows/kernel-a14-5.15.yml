@@ -34,9 +34,14 @@ on:
         default: true
       BBG:
         description: '是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？'
-        required: true
+        required: false
         type: boolean
         default: false
+      custom_patch_url:
+        description: 'Custom patch_linux URL'
+        required: false
+        type: string
+        default: "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux"
   
 jobs:
   build-kernel-a14-5-15-kernelsu-susfs:
@@ -81,3 +86,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}

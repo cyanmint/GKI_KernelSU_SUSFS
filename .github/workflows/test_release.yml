@@ -59,9 +59,14 @@ on:
         default: true
       BBG:
         description: "是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？"
-        required: true
+        required: false
         type: boolean
         default: false
+      custom_patch_url:
+        description: 'Custom patch_linux URL (default: safe commit version)'
+        required: false
+        type: string
+        default: "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux"
       get_manager:
         description: 'Get the latest KSU Manager at the same time?'
         required: true
@@ -88,6 +93,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   build-kernel-a13-5-10:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a13-5.10')
@@ -101,6 +107,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   build-kernel-a13-5-15:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a13-5.15')
@@ -114,6 +121,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   build-kernel-a14-5-15:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a14-5.15')
@@ -127,6 +135,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   build-kernel-a14-6-1:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a14-6.1')
@@ -140,6 +149,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   build-kernel-a15-6-6:
     if: contains(github.event.inputs.kernels_to_build, 'all') || contains(github.event.inputs.kernels_to_build, 'a15-6.6')
@@ -153,6 +163,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       BBG: ${{ inputs.BBG }}
+      custom_patch_url: ${{ inputs.custom_patch_url }}
 
   check-build-status:
     runs-on: ubuntu-latest
