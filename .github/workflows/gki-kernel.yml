@@ -57,6 +57,16 @@ on:
         required: false
         type: string
         default: "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux"
+      custom_kernel_config:
+        description: 'Custom kernel config options (comma-separated)'
+        required: false
+        type: string
+        default: ""
+      apply_lxc_patches:
+        description: 'Apply LXC patches'
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -164,6 +174,12 @@ jobs:
           git clone https://github.com/Tools-cx-app/kernel_patches.git
           # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
+
+      - name: 克隆 LXC Docker 补丁（如果启用）
+        if: ${{ inputs.apply_lxc_patches }}
+        run: |
+          echo "Cloning LXC Docker patches..."
+          git clone https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel.git lxc_patches
           
       - name: 设置 CONFIG 环境变量
         run: |
@@ -205,6 +221,34 @@ jobs:
             cd ./common
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
             patch -p1 < fix_5.15.legacy.patch
+          fi
+
+      - name: 应用 LXC Docker 补丁（如果启用）
+        if: ${{ inputs.apply_lxc_patches }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG/common"
+          
+          echo "应用 LXC Docker 补丁..."
+          # 根据内核版本选择对应的补丁
+          KERNEL_VERSION="${{ inputs.kernel_version }}"
+          
+          # 查找对应内核版本的补丁文件
+          if [ -d "../../lxc_patches/patchs" ]; then
+            # 尝试查找匹配的补丁文件
+            PATCH_FILE=$(find ../../lxc_patches/patchs -type f -name "*${KERNEL_VERSION}*.patch" | head -n 1)
+            
+            if [ -n "$PATCH_FILE" ] && [ -f "$PATCH_FILE" ]; then
+              echo "找到补丁文件: $PATCH_FILE"
+              echo "应用补丁..."
+              patch -p1 -F 3 < "$PATCH_FILE" || echo "警告: 补丁应用可能不完全成功，但继续构建"
+            else
+              echo "警告: 未找到内核版本 ${KERNEL_VERSION} 对应的补丁文件"
+              echo "列出可用的补丁文件:"
+              ls -la ../../lxc_patches/patchs/ || echo "补丁目录不存在或为空"
+            fi
+          else
+            echo "错误: LXC 补丁目录不存在"
           fi
 
       - name: 使GKI在一加8E平台正常使用
@@ -542,6 +586,54 @@ jobs:
           
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
+
+      - name: 应用自定义内核配置
+        if: ${{ inputs.custom_kernel_config != '' }}
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          
+          CONFIG_FILE="./common/arch/arm64/configs/gki_defconfig"
+          CUSTOM_CONFIGS="${{ inputs.custom_kernel_config }}"
+          
+          echo "应用自定义内核配置..."
+          echo "配置选项: $CUSTOM_CONFIGS"
+          
+          # 将逗号分隔的配置选项拆分并处理
+          IFS=',' read -ra CONFIG_ARRAY <<< "$CUSTOM_CONFIGS"
+          for config_option in "${CONFIG_ARRAY[@]}"; do
+            # 去除空格
+            config_option=$(echo "$config_option" | xargs)
+            
+            if [ -z "$config_option" ]; then
+              continue
+            fi
+            
+            # 验证配置选项格式（只允许字母、数字和下划线）
+            if ! [[ "$config_option" =~ ^CONFIG_[A-Z0-9_]+$ ]]; then
+              echo "  警告: 配置选项格式无效，跳过: $config_option"
+              continue
+            fi
+            
+            echo "处理配置选项: $config_option"
+            
+            # 检查配置选项是否已存在
+            if grep -qF "${config_option}=" "$CONFIG_FILE"; then
+              # 配置已存在，替换为 =y
+              echo "  配置 $config_option 已存在，替换为启用状态"
+              sed -i "s|^${config_option}=.*|${config_option}=y|" "$CONFIG_FILE"
+            elif grep -qF "# ${config_option} is not set" "$CONFIG_FILE"; then
+              # 配置被显式禁用，替换为启用
+              echo "  配置 $config_option 被禁用，替换为启用状态"
+              sed -i "s|^# ${config_option} is not set|${config_option}=y|" "$CONFIG_FILE"
+            else
+              # 配置不存在，追加
+              echo "  配置 $config_option 不存在，添加到配置文件"
+              echo "${config_option}=y" >> "$CONFIG_FILE"
+            fi
+          done
+          
+          echo "自定义内核配置应用完成"
 
       - name: 配置内核名称
         run: |

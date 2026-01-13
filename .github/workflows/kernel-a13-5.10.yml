@@ -42,6 +42,16 @@ on:
         required: false
         type: string
         default: "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux"
+      custom_kernel_config:
+        description: 'Custom kernel config options (comma-separated)'
+        required: false
+        type: string
+        default: ""
+      apply_lxc_patches:
+        description: 'Apply LXC patches'
+        required: false
+        type: boolean
+        default: false
   
 jobs:
   build-kernel-a13-5-10-kernelsu-susfs:
@@ -85,3 +95,5 @@ jobs:
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
       custom_patch_url: ${{ inputs.custom_patch_url }}
+      custom_kernel_config: ${{ inputs.custom_kernel_config }}
+      apply_lxc_patches: ${{ inputs.apply_lxc_patches }}
