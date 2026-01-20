@@ -617,7 +617,7 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
@@ -631,7 +631,7 @@ jobs:
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
+            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/83aa64b7548890bb1f2eff6c990c03a1802df27b/kpm/patch_linux" -o patch
             chmod 777 patch
             ./patch
             rm -rf Image
