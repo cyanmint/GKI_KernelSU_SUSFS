@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      build_bypass:
+        description: '是否构建 Bypass 版本（强制加载内核模块，绕过版本检查）？'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-kernel-a14-6-1-kernelsu-susfs:
@@ -97,3 +102,4 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      build_bypass: ${{ inputs.build_bypass || false }}

@@ -53,9 +53,23 @@ on:
         required: false
         type: boolean
         default: false
+      build_bypass:
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-kernel-kernelsu-susfs:
+    name: "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-${{ matrix.build_type }}-${{ inputs.kernelsu_variant }}"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: >-
+          ${{
+            fromJSON(
+              inputs.build_bypass && '["Normal","Bypass"]' || '["Normal"]'
+            )
+          }}
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -585,6 +599,28 @@ jobs:
             fi
           fi
 
+      - name: Apply Module Check Bypass
+        if: ${{ matrix.build_type == 'Bypass' }}
+        run: |
+          cd "$CONFIG"
+          if [[ "${{ inputs.kernel_version }}" == "6.1" || "${{ inputs.kernel_version }}" == "6.6" ]]; then
+            TARGET_FILE="common/kernel/module/version.c"
+          else
+            TARGET_FILE="common/kernel/module.c"
+          fi
+
+          echo "Applying bypass to $TARGET_FILE"
+          sed -i '/bad_version:/{:a;n;/return 0;/{s/return 0;/return 1;/;b};ba}' "$TARGET_FILE"
+
+          # Verify the bypass
+          if grep -A 5 "bad_version:" "$TARGET_FILE" | grep -q "return 1;"; then
+            echo "SUCCESS: Module check bypass verified in $TARGET_FILE"
+          else
+            echo "FAILED: Module check bypass not found in $TARGET_FILE"
+            grep -A 5 "bad_version:" "$TARGET_FILE" || true
+            exit 1
+          fi
+
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
@@ -769,7 +805,7 @@ jobs:
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
+          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-${{ matrix.build_type }}
           path: |
             *AnyKernel3.zip
             *.img
