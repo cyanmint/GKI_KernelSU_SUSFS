@@ -50,7 +50,7 @@ on:
         type: boolean
         default: false
       BBG:
-        required: true
+        required: false
         type: boolean
         default: false
 jobs:
@@ -479,6 +479,14 @@ jobs:
           CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
           echo "Changing to configuration directory: $CONFIG_FILE..."
           echo "CONFIG_DEFAULT_BBR=y" >> "$CONFIG_FILE"
+
+      - name: 添加namespace支持
+        run: |
+          set -x
+          set -e
+          echo "添加namespace支持"
+          CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
            
       - name: 添加SUSFS配置设置
         run: |
