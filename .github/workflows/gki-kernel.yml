@@ -56,7 +56,7 @@ on:
       build_bypass:
         required: false
         type: boolean
-        default: false
+        default: true
 jobs:
   build-kernel-kernelsu-susfs:
     name: "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-${{ matrix.build_type }}-${{ inputs.kernelsu_variant }}"
@@ -67,7 +67,7 @@ jobs:
         build_type: >-
           ${{
             fromJSON(
-              inputs.build_bypass && '["Normal","Bypass"]' || '["Normal"]'
+              inputs.build_bypass && '["Bypass"]' || '["Normal"]'
             )
           }}
     env:
