@@ -17,9 +17,34 @@
 | --- | --- |
 | [KernelSU](https://kernelsu.org/zh_CN/) | 包括**原版、MKSU、SUKISU、NEXT** |
 | [SUSFS4](https://gitlab.com/simonpunk/susfs4ksu) | 在内核层面辅助KSU隐藏的功能补丁 |
+| **Bypass版本** | **强制加载内核模块，绕过版本检查（解决某些设备启动失败问题）** |
 | [BBR](https://blog.thinkin.top/archives/ke-pu-bbrdao-di-shi-shi-me) | TCP拥塞控制算法，使网络更快？ |
 | [Wireguard](https://zh.wikipedia.org/wiki/WireGuard) | 参考左侧wiki链接 |
 | [LZ4KD](https://github.com/ShirkNeko/SukiSU_patch/tree/main/other) | 听说是来自HUAWEI source的ZRAM算法，补丁由[云彩之枫](http://www.coolapk.com/u/24963680)移植 |
+
+### Bypass版本说明
+
+> [!NOTE]
+> **什么是Bypass版本？**  
+> Bypass版本会强制加载内核模块，即使存在版本不匹配、缺少依赖或签名验证问题。
+
+**何时使用Bypass版本？**
+- 刷入自定义内核后设备无法启动
+- 系统尝试加载内核模块时失败（版本不匹配、签名验证失败等）
+- 普通版本导致启动失败或系统不稳定
+
+**如何启用Bypass版本？**
+在GitHub Actions编译面板中，勾选 **"是否构建 Bypass 版本"** 选项。这将同时构建两个版本：
+- **Normal** - 标准版本（默认行为）
+- **Bypass** - 绕过内核模块检查版本
+
+**技术细节：**
+Bypass版本将内核模块版本检查函数中的 `return 0;`（失败）改为 `return 1;`（成功），允许模块在检查失败时仍然加载。
+
+**⚠️ 警告：**
+- Bypass版本可能导致系统不稳定或安全风险
+- 仅在普通版本无法启动时使用
+- 刷入前请确保有备份和恢复方案
 
 <details>
 
