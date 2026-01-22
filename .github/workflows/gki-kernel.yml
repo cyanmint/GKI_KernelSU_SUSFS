@@ -610,6 +610,8 @@ jobs:
           fi
 
           echo "Applying bypass to $TARGET_FILE"
+          # This sed command finds the 'bad_version:' label and changes the next 'return 0;' to 'return 1;'
+          # The pattern works by: searching for 'bad_version:', then reading next lines until finding 'return 0;', then replacing it
           sed -i '/bad_version:/{:a;n;/return 0;/{s/return 0;/return 1;/;b};ba}' "$TARGET_FILE"
 
           # Verify the bypass
@@ -617,7 +619,8 @@ jobs:
             echo "SUCCESS: Module check bypass verified in $TARGET_FILE"
           else
             echo "FAILED: Module check bypass not found in $TARGET_FILE"
-            grep -A 5 "bad_version:" "$TARGET_FILE" || true
+            echo "Showing context around bad_version:"
+            grep -A 5 "bad_version:" "$TARGET_FILE" || echo "bad_version label not found in file"
             exit 1
           fi
 
