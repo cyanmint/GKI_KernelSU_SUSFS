@@ -23,26 +23,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - android_version: "android12"
-          kernel_version: "5.10"
-          sub_level: "226"
-          os_patch_level: "2024-11"
-          variant: "vTomsonek"
         - android_version: "android14"
           kernel_version: "6.1"
-          sub_level: "145"
-          os_patch_level: "2025-09"
-          variant: "TheWildJames"
+          sub_level: "118"
+          os_patch_level: "2025-01"
         - android_version: "android14"
           kernel_version: "6.1"
-          sub_level: "157"
-          os_patch_level: "2025-12"
-          variant: "MarionKernel"
-        - android_version: "android14"
-          kernel_version: "6.1"
-          sub_level: "128"
-          os_patch_level: "2025-03"
-          variant: "Hakan"
+          sub_level: "124"
+          os_patch_level: "2025-02"
+
 
     uses: ./.github/workflows/build.yml
     secrets: inherit
@@ -51,7 +40,7 @@ jobs:
       kernel_version: ${{ matrix.kernel_version }}
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
-      variant: ${{ matrix.variant }}
+      variant: 'Bypass'
       ksu_variant: ${{ inputs.ksu_variant }}
       ksu_commit: ${{ inputs.ksu_commit }}
       build_bypass: ${{ inputs.build_bypass }}
