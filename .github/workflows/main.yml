@@ -28,7 +28,7 @@ on:
         default: true
       # Build Selection
       custom_build_list:
-        description: "Custom Build List (e.g., 'a14-6.1.124,a15-6.6.102,a13-5.10.X' or leave empty for all)"
+        description: "Custom Build List (e.g., 'a14-6.1.124,a15-6.6.102,a13-5.10.X' - leave empty to skip all builds)"
         type: string
         default: ""
         required: false
