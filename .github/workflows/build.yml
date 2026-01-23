@@ -462,17 +462,51 @@ jobs:
       if: true
       working-directory: ${{ env.KERNEL_ROOT }}
       run: |
-        # Clone the LXC Docker patches repository
-        git clone https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel.git "$GITHUB_WORKSPACE/lxc_docker_patches"
+        echo "========================================"
+        echo "  Applying LXC Docker Patches"
+        echo "========================================"
+        echo "Source: https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel"
+        echo ""
         
-        # Apply all patches from the repository
+        # Apply all vendored patches from the repository
         cd "$KERNEL_ROOT/common"
-        for patch_file in "$GITHUB_WORKSPACE/lxc_docker_patches"/*.patch; do
+        PATCH_DIR="$GITHUB_WORKSPACE/lxc_docker_patches"
+        PATCH_COUNT=0
+        PATCH_SUCCESS=0
+        PATCH_SKIPPED=0
+        PATCH_FAILED=0
+        
+        for patch_file in "$PATCH_DIR"/*.patch; do
           if [ -f "$patch_file" ]; then
-            echo "Applying patch: $(basename $patch_file)"
-            patch -p1 --forward < "$patch_file" || true
+            PATCH_COUNT=$((PATCH_COUNT + 1))
+            PATCH_NAME=$(basename "$patch_file")
+            echo "----------------------------------------"
+            echo "Patch $PATCH_COUNT: $PATCH_NAME"
+            echo "----------------------------------------"
+            
+            # Try to apply patch
+            if patch -p1 --forward --verbose < "$patch_file"; then
+              echo "✓ SUCCESS: Patch applied successfully"
+              PATCH_SUCCESS=$((PATCH_SUCCESS + 1))
+            elif patch -p1 -R --dry-run < "$patch_file" > /dev/null 2>&1; then
+              echo "⊘ SKIPPED: Patch already applied"
+              PATCH_SKIPPED=$((PATCH_SKIPPED + 1))
+            else
+              echo "✗ FAILED: Patch application failed"
+              PATCH_FAILED=$((PATCH_FAILED + 1))
+            fi
+            echo ""
           fi
         done
+        
+        echo "========================================"
+        echo "  LXC Docker Patches Summary"
+        echo "========================================"
+        echo "Total patches: $PATCH_COUNT"
+        echo "Successfully applied: $PATCH_SUCCESS"
+        echo "Already applied (skipped): $PATCH_SKIPPED"
+        echo "Failed: $PATCH_FAILED"
+        echo "========================================"
         
     - name: Apply Module Check Bypass
       if: ${{ matrix.build_type == 'Bypass' || matrix.build_type == 'Hakan' }}
@@ -564,7 +598,30 @@ jobs:
         CONFIG_IP_SET_HASH_NETIFACE=y
         CONFIG_IP_SET_LIST_SET=y
         
+        # LXC Docker Support
+        CONFIG_SYSVIPC=y
+        CONFIG_POSIX_MQUEUE=y
+        CONFIG_CGROUP_DEVICE=y
+        CONFIG_CGROUP_FREEZER=y
+        CONFIG_UTS_NS=y
+        CONFIG_IPC_NS=y
+        CONFIG_NET_NS=y
+        CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
+        CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+        CONFIG_IP6_NF_NAT=y
+        CONFIG_IP6_NF_TARGET_MASQUERADE=y
+        CONFIG_DEVTMPFS=y
+        CONFIG_NULL_TTY=y
+        CONFIG_LTO_CLANG_THIN=y
+        
         EOF
+
+        # Disable/remove conflicting configs for LXC Docker
+        sed -i '/CONFIG_LTO_CLANG_FULL=y/d' "${{ env.DEFCONFIG }}"
+        sed -i '/CONFIG_MODULE_SCMVERSION=y/d' "${{ env.DEFCONFIG }}"
+        sed -i '/CONFIG_VT is not set/d' "${{ env.DEFCONFIG }}"
+        # Also remove any PID_NS is not set line if it exists
+        sed -i '/CONFIG_PID_NS is not set/d' "${{ env.DEFCONFIG }}"
 
         echo "Checking if configs were applied..."
         if grep -q "CONFIG_KSU=y" "${{ env.DEFCONFIG }}" && grep -q "CONFIG_KSU_SUSFS=y" "${{ env.DEFCONFIG }}" && grep -q "CONFIG_KPROBES=y" "${{ env.DEFCONFIG }}"; then
