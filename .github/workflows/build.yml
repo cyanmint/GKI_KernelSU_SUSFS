@@ -47,7 +47,7 @@ jobs:
               inputs.variant == 'TheWildJamesTest' && '["TheWildJamesTest"]' ||
               inputs.variant == 'MarionKernel' && '["MarionKernel"]' ||
               inputs.variant == 'Hakan' && '["Hakan"]' ||
-              (inputs.build_bypass && '["Normal","Bypass"]' || '["Normal"]')
+              (inputs.build_bypass && '["Bypass"]' || '["Normal","Bypass"]')
             )
           }}
 
