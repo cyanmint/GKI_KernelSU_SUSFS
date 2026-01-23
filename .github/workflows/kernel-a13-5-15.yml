@@ -100,14 +100,6 @@ jobs:
           os_patch_level: "2025-12"
         - sub_level: "X"
           os_patch_level: "lts"
-    if: |
-      contains(inputs.build_list, 'all') ||
-      contains(inputs.build_list, 'a13-5.15') ||
-      contains(inputs.build_list, 'a13-5-15') ||
-      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
-      contains(inputs.build_list, format('a13-5.15-{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a13-5.15.{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a13-5-15-{0}', matrix.sub_level))
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
@@ -118,3 +110,4 @@ jobs:
       ksu_variant: ${{ inputs.ksu_variant }}
       ksu_commit: ${{ inputs.ksu_commit }}
       build_bypass: ${{ inputs.build_bypass }}
+      build_list: ${{ inputs.build_list }}

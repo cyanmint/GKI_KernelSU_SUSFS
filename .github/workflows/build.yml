@@ -30,12 +30,30 @@ on:
       build_bypass:
         required: true
         type: boolean
+      build_list:
+        required: false
+        type: string
+        default: "all"
 
 jobs:
   build-gki:
     name: "${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.android_version }}-${{ inputs.os_patch_level }}-${{ matrix.build_type }}-${{ inputs.ksu_variant }}"
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    if: |
+      contains(inputs.build_list, 'all') ||
+      contains(inputs.build_list, format('a{0}-{1}', 
+        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
+        inputs.kernel_version)) ||
+      (contains(inputs.build_list, 'lts') && inputs.sub_level == 'X') ||
+      contains(inputs.build_list, format('a{0}-{1}-{2}',
+        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
+        inputs.kernel_version,
+        inputs.sub_level)) ||
+      contains(inputs.build_list, format('a{0}-{1}.{2}',
+        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
+        inputs.kernel_version,
+        inputs.sub_level))
     strategy:
       fail-fast: false
       matrix:
