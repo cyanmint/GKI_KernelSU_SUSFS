@@ -209,10 +209,11 @@ jobs:
         failed=0
 
         check_selected() {
-          local pattern="$1"
-          local job_name="$2"
-          local result="$3"
-          if [[ "${{ inputs.custom_build_list }}" == *"$pattern"* ]]; then
+          local pattern1="$1"
+          local pattern2="$2"
+          local job_name="$3"
+          local result="$4"
+          if [[ "${{ inputs.custom_build_list }}" == *"$pattern1"* ]] || [[ "${{ inputs.custom_build_list }}" == *"$pattern2"* ]]; then
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "Selected job $job_name did not succeed (result: $result)"
               failed=1
@@ -222,22 +223,15 @@ jobs:
 
         # Check if custom_build_list is not empty
         if [[ -n "${{ inputs.custom_build_list }}" ]]; then
-          check_selected "a12-5.10" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
-          check_selected "a12-5-10" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
-          check_selected "a13-5.10" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
-          check_selected "a13-5-10" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
-          check_selected "a13-5.15" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
-          check_selected "a13-5-15" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
-          check_selected "a14-5.15" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
-          check_selected "a14-5-15" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
-          check_selected "a14-6.1" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
-          check_selected "a14-6-1" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
-          check_selected "a15-6.6" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
-          check_selected "a15-6-6" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
-          check_selected "a16-6.12" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
-          check_selected "a16-6-12" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
-          check_selected "custom" "build-custom" "${{ needs.build-custom.result }}"
-          check_selected "lts" "build-lts" "${{ needs.build-lts.result }}"
+          check_selected "a12-5.10" "a12-5-10" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
+          check_selected "a13-5.10" "a13-5-10" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
+          check_selected "a13-5.15" "a13-5-15" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
+          check_selected "a14-5.15" "a14-5-15" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
+          check_selected "a14-6.1" "a14-6-1" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
+          check_selected "a15-6.6" "a15-6-6" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
+          check_selected "a16-6.12" "a16-6-12" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
+          check_selected "custom" "custom" "build-custom" "${{ needs.build-custom.result }}"
+          check_selected "lts" "lts" "build-lts" "${{ needs.build-lts.result }}"
         fi
 
         if [[ "$failed" -ne 0 ]]; then
