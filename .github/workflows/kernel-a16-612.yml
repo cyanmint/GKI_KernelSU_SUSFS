@@ -27,15 +27,21 @@ jobs:
     if: |
       contains(inputs.build_list, 'all') ||
       (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
-      contains(inputs.build_list, format('a16-6.12.{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a16-6-12-{0}', matrix.sub_level)) ||
+      inputs.build_list == format('a16-6.12.{0}', matrix.sub_level) ||
+      startsWith(inputs.build_list, format('a16-6.12.{0},', matrix.sub_level)) ||
+      contains(inputs.build_list, format(',a16-6.12.{0},', matrix.sub_level)) ||
+      endsWith(inputs.build_list, format(',a16-6.12.{0}', matrix.sub_level)) ||
+      inputs.build_list == format('a16-6-12-{0}', matrix.sub_level) ||
+      startsWith(inputs.build_list, format('a16-6-12-{0},', matrix.sub_level)) ||
+      contains(inputs.build_list, format(',a16-6-12-{0},', matrix.sub_level)) ||
+      endsWith(inputs.build_list, format(',a16-6-12-{0}', matrix.sub_level)) ||
       inputs.build_list == 'a16-6.12' ||
-      inputs.build_list == 'a16-6-12' ||
       startsWith(inputs.build_list, 'a16-6.12,') ||
-      startsWith(inputs.build_list, 'a16-6-12,') ||
       contains(inputs.build_list, ',a16-6.12,') ||
-      contains(inputs.build_list, ',a16-6-12,') ||
       endsWith(inputs.build_list, ',a16-6.12') ||
+      inputs.build_list == 'a16-6-12' ||
+      startsWith(inputs.build_list, 'a16-6-12,') ||
+      contains(inputs.build_list, ',a16-6-12,') ||
       endsWith(inputs.build_list, ',a16-6-12')
     strategy:
       fail-fast: false
