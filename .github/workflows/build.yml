@@ -47,7 +47,7 @@ jobs:
               inputs.variant == 'TheWildJamesTest' && '["TheWildJamesTest"]' ||
               inputs.variant == 'MarionKernel' && '["MarionKernel"]' ||
               inputs.variant == 'Hakan' && '["Hakan"]' ||
-              (inputs.build_bypass && '["Normal","Bypass"]' || '["Normal"]')
+              (inputs.build_bypass && '["Bypass"]' || '["Normal"]')
             )
           }}
 
@@ -458,6 +458,22 @@ jobs:
         echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
         sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' common/security/Kconfig
         
+    - name: Apply LXC Docker Patches
+      if: true
+      working-directory: ${{ env.KERNEL_ROOT }}
+      run: |
+        # Clone the LXC Docker patches repository
+        git clone https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel.git "$GITHUB_WORKSPACE/lxc_docker_patches"
+        
+        # Apply all patches from the repository
+        cd "$KERNEL_ROOT/common"
+        for patch_file in "$GITHUB_WORKSPACE/lxc_docker_patches"/*.patch; do
+          if [ -f "$patch_file" ]; then
+            echo "Applying patch: $(basename $patch_file)"
+            patch -p1 --forward < "$patch_file" || true
+          fi
+        done
+        
     - name: Apply Module Check Bypass
       if: ${{ matrix.build_type == 'Bypass' || matrix.build_type == 'Hakan' }}
       run: |
@@ -720,11 +736,11 @@ jobs:
               perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-Wild-Hakan"/s' ./common/scripts/setlocalversion
               ;;
             *)
-              perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-Wild"/s' ./common/scripts/setlocalversion
+              perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-114514a1919810"/s' ./common/scripts/setlocalversion
               ;;
           esac
         else
-          perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\${KERNELVERSION}\${file_localversion}\${config_localversion}\${LOCALVERSION}-Wild\${scm_version}"/s' ./common/scripts/setlocalversion
+          perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\${KERNELVERSION}\${file_localversion}\${config_localversion}\${LOCALVERSION}-114514a1919810\${scm_version}"/s' ./common/scripts/setlocalversion
         fi
         if [ -f "build/build.sh" ]; then
           #Remove Dirty Flag
