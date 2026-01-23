@@ -16,10 +16,27 @@ on:
       build_bypass:
         required: true
         type: boolean
+      build_list:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-kernels-a15:
     name: "6.6.${{ matrix.sub_level }}-${{ matrix.os_patch_level }}"
+    if: |
+      contains(inputs.build_list, 'all') ||
+      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
+      contains(inputs.build_list, format('a15-6.6.{0}', matrix.sub_level)) ||
+      contains(inputs.build_list, format('a15-6-6-{0}', matrix.sub_level)) ||
+      inputs.build_list == 'a15-6.6' ||
+      inputs.build_list == 'a15-6-6' ||
+      startsWith(inputs.build_list, 'a15-6.6,') ||
+      startsWith(inputs.build_list, 'a15-6-6,') ||
+      contains(inputs.build_list, ',a15-6.6,') ||
+      contains(inputs.build_list, ',a15-6-6,') ||
+      endsWith(inputs.build_list, ',a15-6.6') ||
+      endsWith(inputs.build_list, ',a15-6-6')
     strategy:
       fail-fast: false
       matrix:

@@ -16,10 +16,15 @@ on:
       build_bypass:
         required: true
         type: boolean
+      build_list:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-kernels-lts:
     name: "LTS-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+    if: contains(inputs.build_list, 'all') || contains(inputs.build_list, 'lts')
     strategy:
       fail-fast: false
       matrix:

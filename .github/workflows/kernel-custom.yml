@@ -16,9 +16,14 @@ on:
       build_bypass:
         required: true
         type: boolean
+      build_list:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-kernel-custom:
+    if: contains(inputs.build_list, 'all') || contains(inputs.build_list, 'custom')
     strategy:
       fail-fast: false
       matrix:
