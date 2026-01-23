@@ -23,50 +23,19 @@ on:
         default: ""
         required: false
       build_bypass:
-        description: "Build Bypass"
-        type: boolean
-        default: false
-      # Build Selection
-      build_a12_5_10:
-        description: "Android 12 - 5.10"
-        type: boolean
-        default: false
-      build_a13_5_10:
-        description: "Android 13 - 5.10"
-        type: boolean
-        default: false
-      build_a13_5_15:
-        description: "Android 13 - 5.15"
-        type: boolean
-        default: false
-      build_a14_5_15:
-        description: "Android 14 - 5.15"
-        type: boolean
-        default: false
-      build_a14_6_1:
-        description: "Android 14 - 6.1"
-        type: boolean
-        default: false
-      build_a15_6_6:
-        description: "Android 15 - 6.6"
-        type: boolean
-        default: false
-      build_a16_6_12:
-        description: "Android 16 - 6.12"
-        type: boolean
-        default: false
-      build_custom:
-        description: "Custom Builds"
+        description: "Build Bypass (only build bypass variant)"
         type: boolean
         default: true
-      build_lts:
-        description: "Build All LTS Kernels"
-        type: boolean
-        default: false
+      # Build Selection
+      custom_build_list:
+        description: "Custom Build List (e.g., 'a14-6.1.124,a15-6.6.102,a13-5.10.X' or leave empty for all)"
+        type: string
+        default: ""
+        required: false
 
 jobs:
   build-a12-5-10:
-    if: inputs.build_a12_5_10
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a12-5.10') || contains(inputs.custom_build_list, 'a12-5-10'))
     uses: ./.github/workflows/kernel-a12-5-10.yml
     secrets: inherit
     with:
@@ -75,7 +44,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a13-5-10:
-    if: inputs.build_a13_5_10
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a13-5.10') || contains(inputs.custom_build_list, 'a13-5-10'))
     uses: ./.github/workflows/kernel-a13-5-10.yml
     secrets: inherit
     with:
@@ -84,7 +53,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a13-5-15:
-    if: inputs.build_a13_5_15
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a13-5.15') || contains(inputs.custom_build_list, 'a13-5-15'))
     uses: ./.github/workflows/kernel-a13-5-15.yml
     secrets: inherit
     with:
@@ -93,7 +62,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a14-5-15:
-    if: inputs.build_a14_5_15
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a14-5.15') || contains(inputs.custom_build_list, 'a14-5-15'))
     uses: ./.github/workflows/kernel-a14-5-15.yml
     secrets: inherit
     with:
@@ -102,7 +71,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a14-6-1:
-    if: inputs.build_a14_6_1
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a14-6.1') || contains(inputs.custom_build_list, 'a14-6-1'))
     uses: ./.github/workflows/kernel-a14-6-1.yml
     secrets: inherit
     with:
@@ -111,7 +80,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a15-6-6:
-    if: inputs.build_a15_6_6
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a15-6.6') || contains(inputs.custom_build_list, 'a15-6-6'))
     uses: ./.github/workflows/kernel-a15-6-6.yml
     secrets: inherit
     with:
@@ -120,7 +89,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-a16-6-12:
-    if: inputs.build_a16_6_12
+    if: inputs.custom_build_list != '' && (contains(inputs.custom_build_list, 'a16-6.12') || contains(inputs.custom_build_list, 'a16-6-12'))
     uses: ./.github/workflows/kernel-a16-612.yml
     secrets: inherit
     with:
@@ -129,7 +98,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-custom:
-    if: inputs.build_custom
+    if: inputs.custom_build_list != '' && contains(inputs.custom_build_list, 'custom')
     uses: ./.github/workflows/kernel-custom.yml
     secrets: inherit
     with:
@@ -138,7 +107,7 @@ jobs:
       build_bypass: ${{ inputs.build_bypass }}
 
   build-lts:
-    if: inputs.build_lts
+    if: inputs.custom_build_list != '' && contains(inputs.custom_build_list, 'lts')
     uses: ./.github/workflows/kernel-lts.yml
     secrets: inherit
     with:
@@ -240,26 +209,36 @@ jobs:
         failed=0
 
         check_selected() {
-          local selected="$1"
+          local pattern="$1"
           local job_name="$2"
           local result="$3"
-          if [[ "$selected" == "true" ]]; then
-            if [[ "$result" != "success" ]]; then
+          if [[ "${{ inputs.custom_build_list }}" == *"$pattern"* ]]; then
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "Selected job $job_name did not succeed (result: $result)"
               failed=1
             fi
           fi
         }
 
-        check_selected "${{ inputs.build_a12_5_10 }}" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
-        check_selected "${{ inputs.build_a13_5_10 }}" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
-        check_selected "${{ inputs.build_a13_5_15 }}" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
-        check_selected "${{ inputs.build_a14_5_15 }}" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
-        check_selected "${{ inputs.build_a14_6_1 }}" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
-        check_selected "${{ inputs.build_a15_6_6 }}" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
-        check_selected "${{ inputs.build_a16_6_12 }}" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
-        check_selected "${{ inputs.build_custom }}" "build-custom" "${{ needs.build-custom.result }}"
-        check_selected "${{ inputs.build_lts }}" "build-lts" "${{ needs.build-lts.result }}"
+        # Check if custom_build_list is not empty
+        if [[ -n "${{ inputs.custom_build_list }}" ]]; then
+          check_selected "a12-5.10" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
+          check_selected "a12-5-10" "build-a12-5-10" "${{ needs.build-a12-5-10.result }}"
+          check_selected "a13-5.10" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
+          check_selected "a13-5-10" "build-a13-5-10" "${{ needs.build-a13-5-10.result }}"
+          check_selected "a13-5.15" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
+          check_selected "a13-5-15" "build-a13-5-15" "${{ needs.build-a13-5-15.result }}"
+          check_selected "a14-5.15" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
+          check_selected "a14-5-15" "build-a14-5-15" "${{ needs.build-a14-5-15.result }}"
+          check_selected "a14-6.1" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
+          check_selected "a14-6-1" "build-a14-6-1" "${{ needs.build-a14-6-1.result }}"
+          check_selected "a15-6.6" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
+          check_selected "a15-6-6" "build-a15-6-6" "${{ needs.build-a15-6-6.result }}"
+          check_selected "a16-6.12" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
+          check_selected "a16-6-12" "build-a16-6-12" "${{ needs.build-a16-6-12.result }}"
+          check_selected "custom" "build-custom" "${{ needs.build-custom.result }}"
+          check_selected "lts" "build-lts" "${{ needs.build-lts.result }}"
+        fi
 
         if [[ "$failed" -ne 0 ]]; then
           exit 1
