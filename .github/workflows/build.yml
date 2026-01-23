@@ -42,18 +42,21 @@ jobs:
     timeout-minutes: 60
     if: |
       contains(inputs.build_list, 'all') ||
-      contains(inputs.build_list, format('a{0}-{1}', 
-        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
-        inputs.kernel_version)) ||
+      (inputs.android_version == 'android12' && (contains(inputs.build_list, 'a12-5.10') || contains(inputs.build_list, 'a12-5-10'))) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.10' && (contains(inputs.build_list, 'a13-5.10') || contains(inputs.build_list, 'a13-5-10'))) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.15' && (contains(inputs.build_list, 'a13-5.15') || contains(inputs.build_list, 'a13-5-15'))) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '5.15' && (contains(inputs.build_list, 'a14-5.15') || contains(inputs.build_list, 'a14-5-15'))) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '6.1' && (contains(inputs.build_list, 'a14-6.1') || contains(inputs.build_list, 'a14-6-1'))) ||
+      (inputs.android_version == 'android15' && (contains(inputs.build_list, 'a15-6.6') || contains(inputs.build_list, 'a15-6-6'))) ||
+      (inputs.android_version == 'android16' && (contains(inputs.build_list, 'a16-6.12') || contains(inputs.build_list, 'a16-6-12'))) ||
       (contains(inputs.build_list, 'lts') && inputs.sub_level == 'X') ||
-      contains(inputs.build_list, format('a{0}-{1}-{2}',
-        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
-        inputs.kernel_version,
-        inputs.sub_level)) ||
-      contains(inputs.build_list, format('a{0}-{1}.{2}',
-        replace(replace(inputs.android_version, 'android', ''), 'android', ''),
-        inputs.kernel_version,
-        inputs.sub_level))
+      (inputs.android_version == 'android12' && (contains(inputs.build_list, format('a12-5.10-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a12-5.10.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a12-5-10-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.10' && (contains(inputs.build_list, format('a13-5.10-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a13-5.10.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a13-5-10-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.15' && (contains(inputs.build_list, format('a13-5.15-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a13-5.15.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a13-5-15-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '5.15' && (contains(inputs.build_list, format('a14-5.15-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a14-5.15.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a14-5-15-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '6.1' && (contains(inputs.build_list, format('a14-6.1-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a14-6.1.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a14-6-1-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android15' && (contains(inputs.build_list, format('a15-6.6-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a15-6.6.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a15-6-6-{0}', inputs.sub_level)))) ||
+      (inputs.android_version == 'android16' && (contains(inputs.build_list, format('a16-6.12-{0}', inputs.sub_level)) || contains(inputs.build_list, format('a16-6.12.{0}', inputs.sub_level)) || contains(inputs.build_list, format('a16-6-12-{0}', inputs.sub_level))))
     strategy:
       fail-fast: false
       matrix:
