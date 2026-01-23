@@ -24,14 +24,6 @@ on:
 jobs:
   build-kernels-a12:
     name: "5.10.${{ matrix.sub_level }}-${{ matrix.os_patch_level }}"
-    if: |
-      contains(inputs.build_list, 'all') ||
-      contains(inputs.build_list, 'a12-5.10') ||
-      contains(inputs.build_list, 'a12-5-10') ||
-      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
-      contains(inputs.build_list, format('a12-5.10-{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a12-5.10.{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a12-5-10-{0}', matrix.sub_level))
     strategy:
       fail-fast: false
       matrix:
@@ -113,6 +105,14 @@ jobs:
         # LTS meta
         - sub_level: "X"
           os_patch_level: "lts"
+    if: |
+      contains(inputs.build_list, 'all') ||
+      contains(inputs.build_list, 'a12-5.10') ||
+      contains(inputs.build_list, 'a12-5-10') ||
+      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
+      contains(inputs.build_list, format('a12-5.10-{0}', matrix.sub_level)) ||
+      contains(inputs.build_list, format('a12-5.10.{0}', matrix.sub_level)) ||
+      contains(inputs.build_list, format('a12-5-10-{0}', matrix.sub_level))
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:

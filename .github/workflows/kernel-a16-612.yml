@@ -24,14 +24,6 @@ on:
 jobs:
   build-kernels-a16-612:
     name: "6.12.${{ matrix.sub_level }}-${{ matrix.os_patch_level }}"
-    if: |
-      contains(inputs.build_list, 'all') ||
-      contains(inputs.build_list, 'a16-6.12') ||
-      contains(inputs.build_list, 'a16-6-12') ||
-      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
-      contains(inputs.build_list, format('a16-6.12-{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a16-6.12.{0}', matrix.sub_level)) ||
-      contains(inputs.build_list, format('a16-6-12-{0}', matrix.sub_level))
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +41,14 @@ jobs:
         - sub_level: "X"
           os_patch_level: "lts"
         # Add more sublevels/patch levels as needed
+    if: |
+      contains(inputs.build_list, 'all') ||
+      contains(inputs.build_list, 'a16-6.12') ||
+      contains(inputs.build_list, 'a16-6-12') ||
+      (contains(inputs.build_list, 'lts') && matrix.sub_level == 'X') ||
+      contains(inputs.build_list, format('a16-6.12-{0}', matrix.sub_level)) ||
+      contains(inputs.build_list, format('a16-6.12.{0}', matrix.sub_level)) ||
+      contains(inputs.build_list, format('a16-6-12-{0}', matrix.sub_level))
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
