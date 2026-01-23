@@ -30,12 +30,91 @@ on:
       build_bypass:
         required: true
         type: boolean
+      build_list:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-gki:
     name: "${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.android_version }}-${{ inputs.os_patch_level }}-${{ matrix.build_type }}-${{ inputs.ksu_variant }}"
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    if: |
+      inputs.build_list == '' ||
+      inputs.build_list == 'all' ||
+      contains(inputs.build_list, 'all') ||
+      (inputs.sub_level == 'X' && contains(inputs.build_list, 'lts')) ||
+      (inputs.android_version == 'android12' && inputs.kernel_version == '5.10' && (
+        inputs.build_list == 'a12-5.10' || startsWith(inputs.build_list, 'a12-5.10,') || 
+        contains(inputs.build_list, ',a12-5.10,') || endsWith(inputs.build_list, ',a12-5.10') ||
+        inputs.build_list == 'a12-5-10' || startsWith(inputs.build_list, 'a12-5-10,') || 
+        contains(inputs.build_list, ',a12-5-10,') || endsWith(inputs.build_list, ',a12-5-10') ||
+        contains(inputs.build_list, format('a12-5.10.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a12-5.10-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a12-5-10.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a12-5-10-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.10' && (
+        inputs.build_list == 'a13-5.10' || startsWith(inputs.build_list, 'a13-5.10,') || 
+        contains(inputs.build_list, ',a13-5.10,') || endsWith(inputs.build_list, ',a13-5.10') ||
+        inputs.build_list == 'a13-5-10' || startsWith(inputs.build_list, 'a13-5-10,') || 
+        contains(inputs.build_list, ',a13-5-10,') || endsWith(inputs.build_list, ',a13-5-10') ||
+        contains(inputs.build_list, format('a13-5.10.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5.10-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5-10.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5-10-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android13' && inputs.kernel_version == '5.15' && (
+        inputs.build_list == 'a13-5.15' || startsWith(inputs.build_list, 'a13-5.15,') || 
+        contains(inputs.build_list, ',a13-5.15,') || endsWith(inputs.build_list, ',a13-5.15') ||
+        inputs.build_list == 'a13-5-15' || startsWith(inputs.build_list, 'a13-5-15,') || 
+        contains(inputs.build_list, ',a13-5-15,') || endsWith(inputs.build_list, ',a13-5-15') ||
+        contains(inputs.build_list, format('a13-5.15.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5.15-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5-15.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a13-5-15-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '5.15' && (
+        inputs.build_list == 'a14-5.15' || startsWith(inputs.build_list, 'a14-5.15,') || 
+        contains(inputs.build_list, ',a14-5.15,') || endsWith(inputs.build_list, ',a14-5.15') ||
+        inputs.build_list == 'a14-5-15' || startsWith(inputs.build_list, 'a14-5-15,') || 
+        contains(inputs.build_list, ',a14-5-15,') || endsWith(inputs.build_list, ',a14-5-15') ||
+        contains(inputs.build_list, format('a14-5.15.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-5.15-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-5-15.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-5-15-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android14' && inputs.kernel_version == '6.1' && (
+        inputs.build_list == 'a14-6.1' || startsWith(inputs.build_list, 'a14-6.1,') || 
+        contains(inputs.build_list, ',a14-6.1,') || endsWith(inputs.build_list, ',a14-6.1') ||
+        inputs.build_list == 'a14-6-1' || startsWith(inputs.build_list, 'a14-6-1,') || 
+        contains(inputs.build_list, ',a14-6-1,') || endsWith(inputs.build_list, ',a14-6-1') ||
+        contains(inputs.build_list, format('a14-6.1.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-6.1-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-6-1.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a14-6-1-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android15' && inputs.kernel_version == '6.6' && (
+        inputs.build_list == 'a15-6.6' || startsWith(inputs.build_list, 'a15-6.6,') || 
+        contains(inputs.build_list, ',a15-6.6,') || endsWith(inputs.build_list, ',a15-6.6') ||
+        inputs.build_list == 'a15-6-6' || startsWith(inputs.build_list, 'a15-6-6,') || 
+        contains(inputs.build_list, ',a15-6-6,') || endsWith(inputs.build_list, ',a15-6-6') ||
+        contains(inputs.build_list, format('a15-6.6.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a15-6.6-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a15-6-6.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a15-6-6-{0}', inputs.sub_level))
+      )) ||
+      (inputs.android_version == 'android16' && inputs.kernel_version == '6.12' && (
+        inputs.build_list == 'a16-6.12' || startsWith(inputs.build_list, 'a16-6.12,') || 
+        contains(inputs.build_list, ',a16-6.12,') || endsWith(inputs.build_list, ',a16-6.12') ||
+        inputs.build_list == 'a16-6-12' || startsWith(inputs.build_list, 'a16-6-12,') || 
+        contains(inputs.build_list, ',a16-6-12,') || endsWith(inputs.build_list, ',a16-6-12') ||
+        contains(inputs.build_list, format('a16-6.12.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a16-6.12-{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a16-6-12.{0}', inputs.sub_level)) ||
+        contains(inputs.build_list, format('a16-6-12-{0}', inputs.sub_level))
+      ))
     strategy:
       fail-fast: false
       matrix:
