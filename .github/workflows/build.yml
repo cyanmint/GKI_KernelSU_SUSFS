@@ -68,6 +68,11 @@ jobs:
         echo "Variant         : ${{ inputs.variant || 'Standard' }}"
         echo "========================================"
 
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        path: repo-checkout
+
     - name: Free Disk Space
       if: true
       uses: endersonmenezes/free-disk-space@v3  # Use @main for latest, @v3 for stable
@@ -470,11 +475,22 @@ jobs:
         
         # Apply all vendored patches from the repository
         cd "$KERNEL_ROOT/common"
-        PATCH_DIR="$GITHUB_WORKSPACE/lxc_docker_patches"
+        PATCH_DIR="$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches"
         PATCH_COUNT=0
         PATCH_SUCCESS=0
         PATCH_SKIPPED=0
         PATCH_FAILED=0
+        
+        # Check if patch directory exists
+        if [ ! -d "$PATCH_DIR" ]; then
+          echo "ERROR: Patch directory not found at $PATCH_DIR"
+          ls -la "$GITHUB_WORKSPACE/repo-checkout/" || echo "repo-checkout directory not found"
+          exit 1
+        fi
+        
+        echo "Looking for patches in: $PATCH_DIR"
+        ls -la "$PATCH_DIR"
+        echo ""
         
         for patch_file in "$PATCH_DIR"/*.patch; do
           if [ -f "$patch_file" ]; then
