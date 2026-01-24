@@ -628,8 +628,8 @@ jobs:
         CONFIG_IP_SET_LIST_SET=y
         
         # LXC Docker Support
-        #CONFIG_SYSVIPC=y
-        #CONFIG_CGROUP_DEVICE=y
+        CONFIG_SYSVIPC=y
+        CONFIG_CGROUP_DEVICE=y
         CONFIG_CGROUP_FREEZER=y
         CONFIG_POSIX_MQUEUE=y
         CONFIG_UTS_NS=y
