@@ -25,7 +25,7 @@ on:
       build_bypass:
         description: "Build Bypass"
         type: boolean
-        default: false
+        default: true
       # Build Selection
       build_a12_5_10:
         description: "Android 12 - 5.10"

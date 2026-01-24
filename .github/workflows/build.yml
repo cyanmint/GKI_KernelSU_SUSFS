@@ -47,7 +47,7 @@ jobs:
               inputs.variant == 'TheWildJamesTest' && '["TheWildJamesTest"]' ||
               inputs.variant == 'MarionKernel' && '["MarionKernel"]' ||
               inputs.variant == 'Hakan' && '["Hakan"]' ||
-              (inputs.build_bypass && '["Normal","Bypass"]' || '["Normal"]')
+              (inputs.build_bypass && '["Bypass"]' || '["Normal"]')
             )
           }}
 
@@ -67,6 +67,11 @@ jobs:
         echo "SUSFS Enabled   : ${{ inputs.susfs_enabled }}"
         echo "Variant         : ${{ inputs.variant || 'Standard' }}"
         echo "========================================"
+
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        path: repo-checkout
 
     - name: Free Disk Space
       if: true
@@ -458,6 +463,80 @@ jobs:
         echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
         sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' common/security/Kconfig
         
+    - name: Apply LXC Docker Patches
+      if: true
+      working-directory: ${{ env.KERNEL_ROOT }}
+      run: |
+        echo "========================================"
+        echo "  Applying LXC Docker Patches"
+        echo "========================================"
+        echo "Source: https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel"
+        echo ""
+        
+        # Determine patch directory based on Android version and kernel version
+        ANDROID_VER=$(echo "${{ inputs.android_version }}" | sed 's/android/a/')
+        KERNEL_VER="${{ inputs.kernel_version }}"
+        VERSION_DIR="${ANDROID_VER}-${KERNEL_VER}"
+        
+        echo "Android Version: ${{ inputs.android_version }}"
+        echo "Kernel Version: ${{ inputs.kernel_version }}"
+        echo "Patch Version Directory: ${VERSION_DIR}"
+        echo ""
+        
+        # Apply all vendored patches from the version-specific repository
+        cd "$KERNEL_ROOT/common"
+        PATCH_DIR="$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches/${VERSION_DIR}"
+        PATCH_COUNT=0
+        PATCH_SUCCESS=0
+        PATCH_SKIPPED=0
+        PATCH_FAILED=0
+        
+        # Check if patch directory exists
+        if [ ! -d "$PATCH_DIR" ]; then
+          echo "WARNING: Version-specific patch directory not found: $PATCH_DIR"
+          echo "Available patch directories:"
+          ls -la "$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches/" || echo "lxc_docker_patches directory not found"
+          echo ""
+          echo "Skipping LXC Docker patches for this version"
+          exit 0
+        fi
+        
+        echo "Looking for patches in: $PATCH_DIR"
+        ls -la "$PATCH_DIR"
+        echo ""
+        
+        for patch_file in "$PATCH_DIR"/*.patch; do
+          if [ -f "$patch_file" ]; then
+            PATCH_COUNT=$((PATCH_COUNT + 1))
+            PATCH_NAME=$(basename "$patch_file")
+            echo "----------------------------------------"
+            echo "Patch $PATCH_COUNT: $PATCH_NAME"
+            echo "----------------------------------------"
+            
+            # Try to apply patch
+            if patch -p1 --forward --verbose < "$patch_file"; then
+              echo "✓ SUCCESS: Patch applied successfully"
+              PATCH_SUCCESS=$((PATCH_SUCCESS + 1))
+            elif patch -p1 -R --dry-run < "$patch_file" > /dev/null 2>&1; then
+              echo "⊘ SKIPPED: Patch already applied"
+              PATCH_SKIPPED=$((PATCH_SKIPPED + 1))
+            else
+              echo "✗ FAILED: Patch application failed"
+              PATCH_FAILED=$((PATCH_FAILED + 1))
+            fi
+            echo ""
+          fi
+        done
+        
+        echo "========================================"
+        echo "  LXC Docker Patches Summary"
+        echo "========================================"
+        echo "Total patches: $PATCH_COUNT"
+        echo "Successfully applied: $PATCH_SUCCESS"
+        echo "Already applied (skipped): $PATCH_SKIPPED"
+        echo "Failed: $PATCH_FAILED"
+        echo "========================================"
+        
     - name: Apply Module Check Bypass
       if: ${{ matrix.build_type == 'Bypass' || matrix.build_type == 'Hakan' }}
       run: |
@@ -548,7 +627,31 @@ jobs:
         CONFIG_IP_SET_HASH_NETIFACE=y
         CONFIG_IP_SET_LIST_SET=y
         
+        # LXC Docker Support
+        #CONFIG_SYSVIPC=y
+        #CONFIG_POSIX_MQUEUE=y
+        CONFIG_CGROUP_DEVICE=y
+        #CONFIG_CGROUP_FREEZER=y
+        CONFIG_UTS_NS=y
+        #CONFIG_IPC_NS=y
+        CONFIG_PID_NS=y
+        CONFIG_NET_NS=y
+        #CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
+        #CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+        #CONFIG_IP6_NF_NAT=y
+        #CONFIG_IP6_NF_TARGET_MASQUERADE=y
+        #CONFIG_DEVTMPFS=y
+        #CONFIG_NULL_TTY=y
+        #CONFIG_LTO_CLANG_THIN=y
+        
         EOF
+
+        # Disable/remove conflicting configs for LXC Docker
+        sed -i '/CONFIG_LTO_CLANG_FULL=y/d' "${{ env.DEFCONFIG }}"
+        sed -i '/CONFIG_MODULE_SCMVERSION=y/d' "${{ env.DEFCONFIG }}"
+        sed -i '/CONFIG_VT is not set/d' "${{ env.DEFCONFIG }}"
+        # Also remove any PID_NS is not set line if it exists
+        sed -i '/CONFIG_PID_NS is not set/d' "${{ env.DEFCONFIG }}"
 
         echo "Checking if configs were applied..."
         if grep -q "CONFIG_KSU=y" "${{ env.DEFCONFIG }}" && grep -q "CONFIG_KSU_SUSFS=y" "${{ env.DEFCONFIG }}" && grep -q "CONFIG_KPROBES=y" "${{ env.DEFCONFIG }}"; then
@@ -720,11 +823,11 @@ jobs:
               perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-Wild-Hakan"/s' ./common/scripts/setlocalversion
               ;;
             *)
-              perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-Wild"/s' ./common/scripts/setlocalversion
+              perl -i -0777 -pe 's/(.*)echo "\$res"/$1echo "\$res-114514a1919810"/s' ./common/scripts/setlocalversion
               ;;
           esac
         else
-          perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\${KERNELVERSION}\${file_localversion}\${config_localversion}\${LOCALVERSION}-Wild\${scm_version}"/s' ./common/scripts/setlocalversion
+          perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\${KERNELVERSION}\${file_localversion}\${config_localversion}\${LOCALVERSION}-114514a1919810\${scm_version}"/s' ./common/scripts/setlocalversion
         fi
         if [ -f "build/build.sh" ]; then
           #Remove Dirty Flag
@@ -768,6 +871,25 @@ jobs:
         else
           echo "Error: Image file not found in any expected location"
           exit 1
+        fi
+    
+    - name: Copy Kernel Config for Debugging
+      run: |
+        # Copy .config file to AnyKernel3 for debugging purposes
+        if [ -f "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/.config" ]; then
+          cp "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/.config" "$ANYKERNEL3/config"
+          echo "Copied config from out/common/.config"
+        elif [ -f "$KERNEL_ROOT/common/.config" ]; then
+          cp "$KERNEL_ROOT/common/.config" "$ANYKERNEL3/config"
+          echo "Copied config from common/.config"
+        elif [ -f "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/.config" ]; then
+          cp "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/.config" "$ANYKERNEL3/config"
+          echo "Copied config from bazel-bin/.config"
+        else
+          echo "Warning: .config file not found in any expected location"
+          ls -la "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/" 2>/dev/null || true
+          ls -la "$KERNEL_ROOT/common/" 2>/dev/null || true
+          ls -la "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/" 2>/dev/null || true
         fi
     
     - name: Copy snd-aloop module
