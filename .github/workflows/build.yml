@@ -473,9 +473,19 @@ jobs:
         echo "Source: https://github.com/tomxi1997/Enable-LXC-Dockers-for-Android-GKI-kernel"
         echo ""
         
-        # Apply all vendored patches from the repository
+        # Determine patch directory based on Android version and kernel version
+        ANDROID_VER=$(echo "${{ inputs.android_version }}" | sed 's/android/a/')
+        KERNEL_VER="${{ inputs.kernel_version }}"
+        VERSION_DIR="${ANDROID_VER}-${KERNEL_VER}"
+        
+        echo "Android Version: ${{ inputs.android_version }}"
+        echo "Kernel Version: ${{ inputs.kernel_version }}"
+        echo "Patch Version Directory: ${VERSION_DIR}"
+        echo ""
+        
+        # Apply all vendored patches from the version-specific repository
         cd "$KERNEL_ROOT/common"
-        PATCH_DIR="$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches"
+        PATCH_DIR="$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches/${VERSION_DIR}"
         PATCH_COUNT=0
         PATCH_SUCCESS=0
         PATCH_SKIPPED=0
@@ -483,9 +493,12 @@ jobs:
         
         # Check if patch directory exists
         if [ ! -d "$PATCH_DIR" ]; then
-          echo "ERROR: Patch directory not found at $PATCH_DIR"
-          ls -la "$GITHUB_WORKSPACE/repo-checkout/" || echo "repo-checkout directory not found"
-          exit 1
+          echo "WARNING: Version-specific patch directory not found: $PATCH_DIR"
+          echo "Available patch directories:"
+          ls -la "$GITHUB_WORKSPACE/repo-checkout/lxc_docker_patches/" || echo "lxc_docker_patches directory not found"
+          echo ""
+          echo "Skipping LXC Docker patches for this version"
+          exit 0
         fi
         
         echo "Looking for patches in: $PATCH_DIR"
