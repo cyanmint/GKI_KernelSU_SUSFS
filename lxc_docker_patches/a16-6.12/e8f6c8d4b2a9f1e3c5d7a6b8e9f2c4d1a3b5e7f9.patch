@@ -40,7 +40,7 @@ index 089c3ecd9e1e..d4b6c8e3f2a1 100644
  	struct list_head exceptions;
 -	enum devcg_behavior behavior;
 +	// enum devcg_behavior behavior;
-+	/* behavior is in the ANDROID_KABI_RESERVE field below */
++	/* behavior is in the ANDROID_KABI_USE(1) field below */
 +
 +#if defined(CONFIG_CGROUP_DEVICE)
 +	ANDROID_KABI_USE(1, enum devcg_behavior behavior);
