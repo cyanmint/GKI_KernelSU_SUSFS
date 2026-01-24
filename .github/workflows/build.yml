@@ -873,6 +873,25 @@ jobs:
           exit 1
         fi
     
+    - name: Copy Kernel Config for Debugging
+      run: |
+        # Copy .config file to AnyKernel3 for debugging purposes
+        if [ -f "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/.config" ]; then
+          cp "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/.config" "$ANYKERNEL3/config"
+          echo "Copied config from out/common/.config"
+        elif [ -f "$KERNEL_ROOT/common/.config" ]; then
+          cp "$KERNEL_ROOT/common/.config" "$ANYKERNEL3/config"
+          echo "Copied config from common/.config"
+        elif [ -f "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/.config" ]; then
+          cp "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/.config" "$ANYKERNEL3/config"
+          echo "Copied config from bazel-bin/.config"
+        else
+          echo "Warning: .config file not found in any expected location"
+          ls -la "$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/common/" 2>/dev/null || true
+          ls -la "$KERNEL_ROOT/common/" 2>/dev/null || true
+          ls -la "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/" 2>/dev/null || true
+        fi
+    
     - name: Copy snd-aloop module
       if: ${{ inputs.variant == 'vTomsonek' }}
       run: |
