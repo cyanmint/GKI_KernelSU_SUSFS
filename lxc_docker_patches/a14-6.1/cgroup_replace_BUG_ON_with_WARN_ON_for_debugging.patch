@@ -35,7 +35,7 @@ index abc123def456..def456abc789 100644
  	css = ss->css_alloc(NULL);
  	/* We don't handle early failures gracefully */
 -	BUG_ON(IS_ERR(css));
-+	WARN_ON(IS_ERR(css));
++	BUG_ON(IS_ERR(css));
  	init_and_link_css(css, ss, &cgrp_dfl_root.cgrp);
  
  	/*
@@ -44,7 +44,7 @@ index abc123def456..def456abc789 100644
  	} else {
  		css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2, GFP_KERNEL);
 -		BUG_ON(css->id < 0);
-+		WARN_ON(css->id < 0);
++		BUG_ON(css->id < 0);
  	}
  
  	/* Update the init_css_set to contain a subsys
@@ -53,10 +53,10 @@ index abc123def456..def456abc789 100644
  	 * registered, no tasks have been forked, so we don't
  	 * need to invoke fork callbacks here. */
 -	BUG_ON(!list_empty(&init_task.tasks));
-+	WARN_ON(!list_empty(&init_task.tasks));
++	BUG_ON(!list_empty(&init_task.tasks));
  
 -	BUG_ON(online_css(css));
-+	WARN_ON(online_css(css));
++	BUG_ON(online_css(css));
  
  	cgroup_unlock();
  }
