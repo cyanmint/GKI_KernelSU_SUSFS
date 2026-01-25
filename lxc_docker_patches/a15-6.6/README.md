@@ -30,6 +30,11 @@ These patches enable LXC and Docker container support on Android 15 GKI kernels 
    - **CRITICAL FIX**: Prevents kernel panic when CONFIG_CGROUP_DEVICE is enabled
    - Ensures cgroup subsystem array stability across config changes
 
+7. **gki_use_Android_ABI_padding_for_ipc_namespace_struct.patch** - Use Android ABI padding for ipc_namespace struct
+   - Adds ABI padding to the ipc_namespace structure
+   - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
+   - Complements task_struct padding for complete SYSVIPC ABI stability
+
 ## Credits
 - [lateautumn233](https://github.com/lateautumn233) - Original patch development
 - [tomxi1997](https://github.com/tomxi1997) - LXC/Docker patches repository
