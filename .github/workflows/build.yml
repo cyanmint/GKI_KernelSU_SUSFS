@@ -514,7 +514,7 @@ jobs:
             echo "----------------------------------------"
             
             # Try to apply patch
-            if patch -p1 --forward --verbose < "$patch_file"; then
+            if patch -p1 --forward --verbose -F 3 < "$patch_file"; then
               echo "✓ SUCCESS: Patch applied successfully"
               PATCH_SUCCESS=$((PATCH_SUCCESS + 1))
             elif patch -p1 -R --dry-run < "$patch_file" > /dev/null 2>&1; then

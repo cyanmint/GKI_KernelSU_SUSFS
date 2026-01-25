@@ -45,4 +45,4 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
 ## Credits
 - [lateautumn233](https://github.com/lateautumn233) - Original patch development
 - [tomxi1997](https://github.com/tomxi1997) - LXC/Docker patches repository
-- [WildKernels](https://github.com/WildKernels) - css_set ABI fix investigation and patch
+- GitHub Copilot - css_set/cgroup ABI fix investigation and patches

@@ -1,5 +1,5 @@
 From f2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6 Mon Sep 17 00:00:00 2001
-From: WildKernels <bauhd@outlook.com>
+From: GitHub Copilot <noreply@github.com>
 Date: Sat, 25 Jan 2026 04:00:00 +0000
 Subject: [PATCH] ANDROID: GKI: use fixed-size arrays for css_set and cgroup
  structs to prevent ABI breakage
@@ -36,19 +36,19 @@ Without this patch, enabling CONFIG_CGROUP_DEVICE causes:
 - Vendor module crashes due to ABI mismatch
 
 Change-Id: If2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6
-Signed-off-by: WildKernels <bauhd@outlook.com>
+Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
  include/linux/cgroup-defs.h | 13 +++++++++++--
  1 file changed, 11 insertions(+), 4 deletions(-)
 
 diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
-index 1702ecbf7765..5e3f8c2a9b1d 100644
+index 8e9e6e9c2a3f..c2e9b4a5f8d1 100644
 --- a/include/linux/cgroup-defs.h
 +++ b/include/linux/cgroup-defs.h
-@@ -20,6 +20,15 @@
- #include <linux/u64_stats_sync.h>
+@@ -21,6 +21,15 @@
  #include <linux/workqueue.h>
  #include <linux/bpf-cgroup-defs.h>
+ #include <linux/android_kabi.h>
 +
 +/*
 + * CGROUP_SUBSYS_COUNT_MAX: Maximum number of cgroup subsystems.
