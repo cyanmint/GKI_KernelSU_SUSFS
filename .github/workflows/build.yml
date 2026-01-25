@@ -629,8 +629,9 @@ jobs:
         
         # LXC Docker Support
         CONFIG_SYSVIPC=y
-        #CONFIG_CGROUP_DEVICE=y
+        CONFIG_CGROUP_DEVICE=y
         CONFIG_CGROUP_FREEZER=y
+        CONFIG_CGROUP_DEBUG=y
         CONFIG_POSIX_MQUEUE=y
         CONFIG_UTS_NS=y
         CONFIG_IPC_NS=y
@@ -638,6 +639,23 @@ jobs:
         CONFIG_NET_NS=y
         
         CONFIG_USER_NS=y
+        
+        # Debugging Configuration
+        CONFIG_PRINTK=y
+        CONFIG_PRINTK_TIME=y
+        CONFIG_LOG_BUF_SHIFT=21
+        CONFIG_PANIC_ON_OOPS=n
+        CONFIG_PANIC_TIMEOUT=0
+        
+        # Pstore for persistent logging
+        CONFIG_PSTORE=y
+        CONFIG_PSTORE_CONSOLE=y
+        CONFIG_PSTORE_PMSG=y
+        CONFIG_PSTORE_RAM=y
+        
+        # Kernel debugging
+        CONFIG_DEBUG_KERNEL=y
+        CONFIG_FRAME_WARN=2048
         CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
         CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
         CONFIG_NETFILTER_XT_MATCH_IPVS=y
