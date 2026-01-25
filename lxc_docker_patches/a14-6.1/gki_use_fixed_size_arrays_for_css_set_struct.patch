@@ -1,0 +1,101 @@
+From f2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6 Mon Sep 17 00:00:00 2001
+From: WildKernels <bauhd@outlook.com>
+Date: Sat, 25 Jan 2026 04:00:00 +0000
+Subject: [PATCH] ANDROID: GKI: use fixed-size arrays for css_set and cgroup
+ structs to prevent ABI breakage
+
+This fixes CONFIG_CGROUP_DEVICE bootloop issues by preventing ABI
+breakage in struct css_set and struct cgroup when cgroup subsystems are
+enabled/disabled.
+
+The struct css_set contains two variable-size arrays that depend on
+CGROUP_SUBSYS_COUNT:
+- subsys[CGROUP_SUBSYS_COUNT]
+- e_cset_node[CGROUP_SUBSYS_COUNT]
+
+The struct cgroup also contains two variable-size arrays:
+- subsys[CGROUP_SUBSYS_COUNT]
+- e_csets[CGROUP_SUBSYS_COUNT]
+
+When CONFIG_CGROUP_DEVICE or other cgroup subsystems change state,
+CGROUP_SUBSYS_COUNT changes, causing the sizes of struct css_set and
+struct cgroup to change. This breaks ABI compatibility with vendor
+modules that access these structures.
+
+The kernel has a BUILD_BUG_ON check ensuring CGROUP_SUBSYS_COUNT <= 16,
+so we can safely fix the array sizes to 16 (the maximum) to maintain
+ABI stability regardless of which subsystems are enabled.
+
+This patch complements existing patches:
+- gki_use_Android_ABI_padding_for_CGROUP_DEVICE_dev_cgroup_fields.patch
+- gki_use_Android_ABI_padding_for_cgroup_subsys_struct.patch
+
+Without this patch, enabling CONFIG_CGROUP_DEVICE causes:
+- Kernel panic during early boot (cgroup initialization)
+- Bootloop on Android 14 GKI kernels with 6.1
+- Vendor module crashes due to ABI mismatch
+
+Change-Id: If2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6
+Signed-off-by: WildKernels <bauhd@outlook.com>
+---
+ include/linux/cgroup-defs.h | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
+index 1702ecbf7765..5e3f8c2a9b1d 100644
+--- a/include/linux/cgroup-defs.h
++++ b/include/linux/cgroup-defs.h
+@@ -20,6 +20,15 @@
+ #include <linux/u64_stats_sync.h>
+ #include <linux/workqueue.h>
+ #include <linux/bpf-cgroup-defs.h>
++
++/*
++ * CGROUP_SUBSYS_COUNT_MAX: Maximum number of cgroup subsystems.
++ * This is enforced by BUILD_BUG_ON in kernel/cgroup/cgroup.c.
++ * Used to fix array sizes in ABI-sensitive structures to prevent
++ * size changes when subsystems are enabled/disabled.
++ */
++#define CGROUP_SUBSYS_COUNT_MAX 16
++
+ #include <linux/psi_types.h>
+ 
+ #ifdef CONFIG_CGROUPS
+@@ -236,7 +245,7 @@ struct css_set {
+ 	 * immutable after creation apart from the init_css_set during
+ 	 * subsystem registration (at boot time).
+ 	 */
+-	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
++	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT_MAX];
+ 
+ 	/* reference count */
+ 	refcount_t refcount;
+@@ -274,7 +283,7 @@ struct css_set {
+ 	 * ->subsys[ssid]->cgroup->e_csets[ssid] and provides a way to
+ 	 * iterate through all css's attached to a given cgroup.
+ 	 */
+-	struct list_head e_cset_node[CGROUP_SUBSYS_COUNT];
++	struct list_head e_cset_node[CGROUP_SUBSYS_COUNT_MAX];
+ 
+ 	/* all threaded csets whose ->dom_cset points to this cset */
+ 	struct list_head threaded_csets;
+@@ -444,7 +453,7 @@ struct cgroup {
+ 	u16 old_subtree_ss_mask;
+ 
+ 	/* Private pointers for each registered subsystem */
+-	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
++	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT_MAX];
+ 
+ 	struct cgroup_root *root;
+ 
+@@ -461,7 +470,7 @@ struct cgroup {
+ 	 * following lists all css_sets which point to this cgroup's css
+ 	 * for the given subsystem.
+ 	 */
+-	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
++	struct list_head e_csets[CGROUP_SUBSYS_COUNT_MAX];
+ 
+ 	/*
+ 	 * If !threaded, self.  If threaded, it points to the nearest
+-- 
+2.34.1
