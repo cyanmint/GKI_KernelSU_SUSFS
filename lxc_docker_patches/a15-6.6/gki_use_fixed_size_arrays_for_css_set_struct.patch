@@ -42,13 +42,13 @@ Signed-off-by: GitHub Copilot <noreply@github.com>
  1 file changed, 11 insertions(+), 4 deletions(-)
 
 diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
-index 1702ecbf7765..5e3f8c2a9b1d 100644
+index 8e9e6e9c2a3f..c2e9b4a5f8d1 100644
 --- a/include/linux/cgroup-defs.h
 +++ b/include/linux/cgroup-defs.h
-@@ -20,6 +20,15 @@
- #include <linux/u64_stats_sync.h>
+@@ -21,6 +21,15 @@
  #include <linux/workqueue.h>
  #include <linux/bpf-cgroup-defs.h>
+ #include <linux/android_kabi.h>
 +
 +/*
 + * CGROUP_SUBSYS_COUNT_MAX: Maximum number of cgroup subsystems.
