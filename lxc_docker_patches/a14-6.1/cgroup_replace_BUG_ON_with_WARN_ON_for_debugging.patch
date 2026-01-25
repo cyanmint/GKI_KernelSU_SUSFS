@@ -23,56 +23,13 @@ is not available.
 Change-Id: Ia1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
- kernel/cgroup/cgroup.c | 16 ++++++++--------
- 1 file changed, 8 insertions(+), 8 deletions(-)
+ kernel/cgroup/cgroup.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/kernel/cgroup/cgroup.c b/kernel/cgroup/cgroup.c
 index abc123def456..def456abc789 100644
 --- a/kernel/cgroup/cgroup.c
-+++ b/kernel/cgroup/cgroup.c
-@@ -6012,7 +6012,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
- 	ss->root = &cgrp_dfl_root;
- 	css = ss->css_alloc(NULL);
- 	/* We don't handle early failures gracefully */
--	BUG_ON(IS_ERR(css));
-+	BUG_ON(IS_ERR(css));
- 	init_and_link_css(css, ss, &cgrp_dfl_root.cgrp);
- 
- 	/*
-@@ -6026,7 +6026,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
- 		css->id = 1;
- 	} else {
- 		css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2, GFP_KERNEL);
--		BUG_ON(css->id < 0);
-+		BUG_ON(css->id < 0);
- 	}
- 
- 	/* Update the init_css_set to contain a subsys
-@@ -6043,9 +6043,9 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
- 	/* At system boot, before all subsystems have been
- 	 * registered, no tasks have been forked, so we don't
- 	 * need to invoke fork callbacks here. */
--	BUG_ON(!list_empty(&init_task.tasks));
-+	BUG_ON(!list_empty(&init_task.tasks));
- 
--	BUG_ON(online_css(css));
-+	BUG_ON(online_css(css));
- 
- 	cgroup_unlock();
- }
-@@ -6099,9 +6099,9 @@ int __init cgroup_init(void)
- 	int ssid;
- 
- 	BUILD_BUG_ON(CGROUP_SUBSYS_COUNT > 16);
--	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
--	BUG_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
--	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
-+	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
-+	BUG_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
-+	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
- 
- 	cgroup_rstat_boot();
- 
++++ b/kernel/cgroup/cgroup.c 
 @@ -6116,7 +6116,7 @@ int __init cgroup_init(void)
  	hash_add(css_set_table, &init_css_set.hlist,
  		 css_set_hash(init_css_set.subsys));
