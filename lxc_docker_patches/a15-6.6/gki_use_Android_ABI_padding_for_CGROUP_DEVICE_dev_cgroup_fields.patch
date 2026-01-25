@@ -1,0 +1,61 @@
+From e8f6c8d4b2a9f1e3c5d7a6b8e9f2c4d1a3b5e7f9 Mon Sep 17 00:00:00 2001
+From: WildKernels <bauhd@outlook.com>
+Date: Fri, 24 Jan 2026 13:00:00 +0000
+Subject: [PATCH] ANDROID: GKI: use Android ABI padding for CGROUP_DEVICE
+ dev_cgroup fields
+
+This allows to enable CONFIG_CGROUP_DEVICE=y without breaking module ABI.
+
+The dev_cgroup structure is part of the kernel ABI and needs padding
+to prevent kernel panics when CONFIG_CGROUP_DEVICE is enabled.
+
+Without this patch, enabling CONFIG_CGROUP_DEVICE causes bootloops
+and kernel panics on Android 14 GKI kernels with 6.1.
+
+This patch follows the same pattern as:
+- 0ac686b9e81ba331c2ad9b420fd21262a80daaa4 (SYSVIPC ABI padding)
+- a0aa446ca326b5d26ac1dec057efd8c07d2bcbff (POSIX_MQUEUE ABI padding)
+
+Change-Id: Ie8f6c8d4b2a9f1e3c5d7a6b8e9f2c4d1a3b5e7f9
+Signed-off-by: WildKernels <bauhd@outlook.com>
+---
+ security/device_cgroup.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/security/device_cgroup.c b/security/device_cgroup.c
+index 089c3ecd9e1e..d4b6c8e3f2a1 100644
+--- a/security/device_cgroup.c
++++ b/security/device_cgroup.c
+@@ -16,6 +16,7 @@
+ #include <linux/slab.h>
+ #include <linux/rcupdate.h>
+ #include <linux/mutex.h>
++#include <linux/android_kabi.h>
+ 
+ #ifdef CONFIG_CGROUP_DEVICE
+ 
+@@ -43,8 +44,21 @@ struct dev_exception_item {
+ struct dev_cgroup {
+ 	struct cgroup_subsys_state css;
+ 	struct list_head exceptions;
+-	enum devcg_behavior behavior;
++	// enum devcg_behavior behavior;
++	/* behavior is in the ANDROID_KABI_USE(1) field below */
++
++#if defined(CONFIG_CGROUP_DEVICE)
++	ANDROID_KABI_USE(1, enum devcg_behavior behavior);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#else
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#endif
+ };
+ 
+ static inline struct dev_cgroup *css_to_devcgroup(struct cgroup_subsys_state *s)
+ {
+-- 
+2.34.1
