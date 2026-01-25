@@ -1,0 +1,51 @@
+From c8a7e9f2d1b4a3e6f5c8d9a7b2e4f1c3d5a6b8e9 Mon Sep 17 00:00:00 2001
+From: WildKernels <bauhd@outlook.com>
+Date: Sat, 25 Jan 2026 00:25:00 +0000
+Subject: [PATCH] ANDROID: GKI: use Android ABI padding for cgroup_subsys
+ struct
+
+This allows enabling CONFIG_CGROUP_DEVICE=y and other cgroup subsystems
+without breaking module ABI.
+
+The cgroup_subsys struct is part of the kernel ABI. When new cgroup
+subsystems are enabled (like CONFIG_CGROUP_DEVICE), they get registered
+in the cgroup_subsys array, which can cause ABI breakage for vendor
+modules that reference cgroup subsystem structures.
+
+Without this patch, enabling CONFIG_CGROUP_DEVICE causes kernel panics
+on Android 14 GKI kernels with 6.1 due to ABI incompatibility.
+
+Change-Id: Ic8a7e9f2d1b4a3e6f5c8d9a7b2e4f1c3d5a6b8e9
+Signed-off-by: WildKernels <bauhd@outlook.com>
+---
+ include/linux/cgroup-defs.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
+index 1702ecbf7765..8e9e6e9c2a3f 100644
+--- a/include/linux/cgroup-defs.h
++++ b/include/linux/cgroup-defs.h
+@@ -21,6 +21,7 @@
+ #include <linux/u64_stats_sync.h>
+ #include <linux/workqueue.h>
+ #include <linux/bpf-cgroup-defs.h>
++#include <linux/android_kabi.h>
+ #include <linux/psi_types.h>
+ 
+ #ifdef CONFIG_CGROUPS
+@@ -731,6 +732,13 @@ struct cgroup_subsys {
+ 	 * specifies the mask of subsystems that this one depends on.
+ 	 */
+ 	unsigned int depends_on;
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++	ANDROID_KABI_RESERVE(5);
++	ANDROID_KABI_RESERVE(6);
+ };
+ 
+ extern struct percpu_rw_semaphore cgroup_threadgroup_rwsem;
+-- 
+2.34.1
