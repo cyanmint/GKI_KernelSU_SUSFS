@@ -629,7 +629,7 @@ jobs:
         
         # LXC Docker Support
         CONFIG_SYSVIPC=y
-        CONFIG_CGROUP_DEVICE=y
+        #CONFIG_CGROUP_DEVICE=y
         CONFIG_CGROUP_FREEZER=y
         CONFIG_POSIX_MQUEUE=y
         CONFIG_UTS_NS=y
