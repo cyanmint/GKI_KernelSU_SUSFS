@@ -1,5 +1,5 @@
 From f2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6 Mon Sep 17 00:00:00 2001
-From: WildKernels <bauhd@outlook.com>
+From: GitHub Copilot <noreply@github.com>
 Date: Sat, 25 Jan 2026 04:00:00 +0000
 Subject: [PATCH] ANDROID: GKI: use fixed-size arrays for css_set and cgroup
  structs to prevent ABI breakage
@@ -36,7 +36,7 @@ Without this patch, enabling CONFIG_CGROUP_DEVICE causes:
 - Vendor module crashes due to ABI mismatch
 
 Change-Id: If2a9c1d3e4b7a8f5c6d9e2b1a3c5f7d8e9a2b4c6
-Signed-off-by: WildKernels <bauhd@outlook.com>
+Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
  include/linux/cgroup-defs.h | 13 +++++++++++--
  1 file changed, 11 insertions(+), 4 deletions(-)
