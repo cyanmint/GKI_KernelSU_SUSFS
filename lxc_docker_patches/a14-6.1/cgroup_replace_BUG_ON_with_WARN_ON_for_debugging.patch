@@ -23,8 +23,8 @@ is not available.
 Change-Id: Ia1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
- kernel/cgroup/cgroup.c | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ kernel/cgroup/cgroup.c | 2 +-
+ 1 file changed, 1 insertions(+), 1 deletions(-)
 
 diff --git a/kernel/cgroup/cgroup.c b/kernel/cgroup/cgroup.c
 index abc123def456..def456abc789 100644
@@ -38,15 +38,3 @@ index abc123def456..def456abc789 100644
 +	WARN_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
  
  	cgroup_unlock();
- 
-@@ -6127,7 +6127,7 @@ int __init cgroup_init(void)
- 
- 			css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2,
- 						   GFP_KERNEL);
--			BUG_ON(css->id < 0);
-+			BUG_ON(css->id < 0);
- 		} else {
- 			cgroup_init_subsys(ss, false);
- 		}
--- 
-2.34.1
