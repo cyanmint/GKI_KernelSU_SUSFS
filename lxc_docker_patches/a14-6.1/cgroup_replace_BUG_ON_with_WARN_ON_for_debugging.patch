@@ -35,6 +35,6 @@ index abc123def456..def456abc789 100644
  		 css_set_hash(init_css_set.subsys));
  
 -	BUG_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
-+	WARN_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
++	BUG_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
  
  	cgroup_unlock();
