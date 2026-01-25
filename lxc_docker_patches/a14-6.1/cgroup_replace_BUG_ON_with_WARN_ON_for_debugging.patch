@@ -44,7 +44,7 @@ index abc123def456..def456abc789 100644
  			css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2,
  						   GFP_KERNEL);
 -			BUG_ON(css->id < 0);
-+			WARN_ON(css->id < 0);
++			BUG_ON(css->id < 0);
  		} else {
  			cgroup_init_subsys(ss, false);
  		}
