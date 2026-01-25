@@ -67,9 +67,9 @@ index abc123def456..def456abc789 100644
 -	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
 -	BUG_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
 -	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
-+	WARN_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
-+	WARN_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
-+	WARN_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
++	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
++	BUG_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
++	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
  
  	cgroup_rstat_boot();
  
