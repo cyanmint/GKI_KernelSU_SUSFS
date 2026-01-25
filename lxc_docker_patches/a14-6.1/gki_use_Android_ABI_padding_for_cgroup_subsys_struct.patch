@@ -1,5 +1,5 @@
 From c8a7e9f2d1b4a3e6f5c8d9a7b2e4f1c3d5a6b8e9 Mon Sep 17 00:00:00 2001
-From: WildKernels <bauhd@outlook.com>
+From: GitHub Copilot <noreply@github.com>
 Date: Sat, 25 Jan 2026 00:25:00 +0000
 Subject: [PATCH] ANDROID: GKI: use Android ABI padding for cgroup_subsys
  struct
@@ -16,7 +16,7 @@ Without this patch, enabling CONFIG_CGROUP_DEVICE causes kernel panics
 on Android 14 GKI kernels with 6.1 due to ABI incompatibility.
 
 Change-Id: Ic8a7e9f2d1b4a3e6f5c8d9a7b2e4f1c3d5a6b8e9
-Signed-off-by: WildKernels <bauhd@outlook.com>
+Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
  include/linux/cgroup-defs.h | 8 ++++++++
  1 file changed, 8 insertions(+)

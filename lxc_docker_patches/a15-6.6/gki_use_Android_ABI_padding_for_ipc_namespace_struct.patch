@@ -1,5 +1,5 @@
 From d9e2a3b1f5c7e8f4a6d2b9c8e7f3a5d1b4c6e8a2 Mon Sep 17 00:00:00 2001
-From: WildKernels <bauhd@outlook.com>
+From: GitHub Copilot <noreply@github.com>
 Date: Sat, 25 Jan 2026 00:30:00 +0000
 Subject: [PATCH] ANDROID: GKI: use Android ABI padding for ipc_namespace
  struct
@@ -18,7 +18,7 @@ This patch complements the existing task_struct padding patch to provide
 complete ABI stability for SYSVIPC.
 
 Change-Id: Id9e2a3b1f5c7e8f4a6d2b9c8e7f3a5d1b4c6e8a2
-Signed-off-by: WildKernels <bauhd@outlook.com>
+Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
  include/linux/ipc_namespace.h | 8 ++++++++
  1 file changed, 8 insertions(+)
