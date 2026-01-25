@@ -35,14 +35,6 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
    - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
    - Complements task_struct padding for complete SYSVIPC ABI stability
 
-8. **gki_use_fixed_size_arrays_for_css_set_struct.patch** - Use fixed-size arrays for css_set struct
-   - Fixes variable-size arrays in struct css_set to prevent ABI breakage
-   - **CRITICAL FIX**: Prevents bootloop when CONFIG_CGROUP_DEVICE is enabled
-   - Uses maximum size (16) for subsys[] and e_cset_node[] arrays
-   - Ensures struct css_set size remains constant regardless of enabled subsystems
-   - **This patch is essential for CONFIG_CGROUP_DEVICE stability**
-
 ## Credits
 - [lateautumn233](https://github.com/lateautumn233) - Original patch development
 - [tomxi1997](https://github.com/tomxi1997) - LXC/Docker patches repository
-- GitHub Copilot - css_set/cgroup ABI fix investigation and patches
