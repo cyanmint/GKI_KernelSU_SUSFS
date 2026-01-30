@@ -4,21 +4,18 @@
 
 This document explains how to enable kernel debugging features to diagnose cgroup initialization failures and other boot issues.
 
-## Debugging Patches
+**Note**: The `cgroup_replace_BUG_ON_with_WARN_ON_for_debugging.patch` has been removed from the patch set as it caused boot hangs by allowing execution to continue with invalid state after critical errors. For production use, the kernel should fail fast with BUG_ON when encountering critical cgroup initialization errors.
 
-### 1. cgroup_replace_BUG_ON_with_WARN_ON_for_debugging.patch
+## Debugging Approaches
 
-**Purpose**: Prevents kernel panic on cgroup errors, allowing the system to continue and capture error logs.
+### Alternative Debugging Methods
 
-**Changes**:
-- Replaces `BUG_ON()` calls with `WARN_ON()` in cgroup initialization
-- Adds error logging before returning from failed operations
-- Allows system to attempt continuing boot even with cgroup errors
+If you need to debug cgroup initialization issues:
 
-**Benefits**:
-- System doesn't immediately reboot on cgroup errors
-- Error messages are logged and can be captured
-- Debugging information remains available for analysis
+1. **Use pstore/ramoops** (recommended): Captures kernel logs across reboots
+2. **Enable early console**: Get logs during early boot
+3. **Use KGDB/KGDB over serial**: Interactive kernel debugging
+4. **Check vendor logs**: Some devices have persistent kernel log buffers
 
 ## Recommended Kernel Config Options for Debugging
 
@@ -152,25 +149,28 @@ Connect a UART/serial console to your device to see kernel messages in real-time
 ### Issue: System still panics
 
 **Solution**:
-- Ensure cgroup_replace_BUG_ON_with_WARN_ON patch is applied
-- Check if panic is from different subsystem
 - Review panic backtrace to identify source
+- Use pstore/ramoops to capture panic logs
+- Check if panic is from different subsystem
 
 ## Testing the Patches
 
 1. Apply patches to kernel source:
 ```bash
 cd kernel_source
-patch -p1 < lxc_docker_patches/a14-6.1/cgroup_replace_BUG_ON_with_WARN_ON_for_debugging.patch
+# Apply all patches from lxc_docker_patches/a14-6.1/ except debugging patches
+for patch in lxc_docker_patches/a14-6.1/*.patch; do
+  patch -p1 < "$patch"
+done
 ```
 
 2. Enable debugging configs in defconfig
 
 3. Build and flash kernel
 
-4. Monitor boot process via UART or capture logs
+4. Monitor boot process via UART or capture logs with pstore
 
-5. Analyze any WARN_ON messages to identify root cause
+5. Analyze kernel logs to identify root cause
 
 ## References
 
