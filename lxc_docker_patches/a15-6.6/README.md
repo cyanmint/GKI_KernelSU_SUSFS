@@ -35,12 +35,16 @@ These patches enable LXC and Docker container support on Android 15 GKI kernels 
    - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
    - Complements task_struct padding for complete SYSVIPC ABI stability
 
-8. **cgroup_add_proper_error_handling.patch** - Add proper error handling in cgroup init
-   - **BOOT FIX**: Prevents both kernel panics and boot hangs
-   - Replaces fatal BUG_ON() calls with WARN_ON_ONCE() plus error returns
-   - Adds descriptive error messages for debugging
-   - Allows system to fail gracefully when cgroup errors occur
-   - Prevents execution with invalid state that causes boot hangs
+## How It Works
+
+These patches work together to enable CONFIG_CGROUP_DEVICE without breaking the kernel:
+
+1. **ABI Padding Patches (1-7)** ensure that enabling CONFIG_CGROUP_DEVICE doesn't break binary compatibility with vendor modules
+2. The kernel uses standard BUG_ON() for critical errors - if something goes wrong, it will fail fast with a panic
+3. With proper ABI padding, errors shouldn't occur in the first place
+4. If you see boot issues, check kernel logs via pstore/ramoops to diagnose the actual problem
+
+**Important**: Do not add patches that replace BUG_ON with WARN_ON in cgroup initialization. Such patches cause boot hangs by leaving subsystems in partially initialized states.
 
 ## Debugging Support
 
