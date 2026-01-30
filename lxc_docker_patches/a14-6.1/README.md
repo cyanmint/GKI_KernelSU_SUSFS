@@ -35,13 +35,6 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
    - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
    - Complements task_struct padding for complete SYSVIPC ABI stability
 
-8. **cgroup_replace_BUG_ON_with_WARN_ON_for_debugging.patch** - Replace BUG_ON with WARN_ON in cgroup init
-   - **DEBUGGING PATCH**: Prevents kernel panic on cgroup errors
-   - Replaces fatal BUG_ON() calls with WARN_ON() to allow boot to continue
-   - Adds error logging for failed cgroup initialization
-   - Enables error analysis without immediate system reboot
-   - **Use this patch when debugging cgroup issues to capture error logs**
-
 ## Debugging Support
 
 See **DEBUGGING_GUIDE.md** for comprehensive information on:
