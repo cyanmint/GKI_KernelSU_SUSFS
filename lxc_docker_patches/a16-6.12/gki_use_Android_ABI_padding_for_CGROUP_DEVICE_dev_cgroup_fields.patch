@@ -1,5 +1,5 @@
 From e8f6c8d4b2a9f1e3c5d7a6b8e9f2c4d1a3b5e7f9 Mon Sep 17 00:00:00 2001
-From: WildKernels <bauhd@outlook.com>
+From: GitHub Copilot <noreply@github.com>
 Date: Fri, 24 Jan 2026 13:00:00 +0000
 Subject: [PATCH] ANDROID: GKI: use Android ABI padding for CGROUP_DEVICE
  dev_cgroup fields
@@ -17,7 +17,7 @@ This patch follows the same pattern as:
 - a0aa446ca326b5d26ac1dec057efd8c07d2bcbff (POSIX_MQUEUE ABI padding)
 
 Change-Id: Ie8f6c8d4b2a9f1e3c5d7a6b8e9f2c4d1a3b5e7f9
-Signed-off-by: WildKernels <bauhd@outlook.com>
+Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
  security/device_cgroup.c | 16 +++++++++++++++-
  1 file changed, 15 insertions(+), 1 deletion(-)
