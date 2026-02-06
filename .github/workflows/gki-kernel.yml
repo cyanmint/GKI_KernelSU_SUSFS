@@ -53,6 +53,10 @@ on:
         required: true
         type: boolean
         default: false
+      enable_lxc_docker:
+        required: true
+        type: boolean
+        default: false
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -479,6 +483,76 @@ jobs:
           CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
           echo "Changing to configuration directory: $CONFIG_FILE..."
           echo "CONFIG_DEFAULT_BBR=y" >> "$CONFIG_FILE"
+           
+      - name: 应用LXC/Docker补丁和配置
+        if: ${{ inputs.enable_lxc_docker }}
+        run: |
+          echo "应用LXC/Docker补丁..."
+          cd "$CONFIG/common"
+          
+          # 确定补丁目录
+          ANDROID_VER="${{ inputs.android_version }}"
+          ANDROID_NUM="${ANDROID_VER#android}"  # Remove 'android' prefix
+          PATCH_DIR="a${ANDROID_NUM}-${{ inputs.kernel_version }}"
+          echo "使用补丁目录: lxc_docker_patches/$PATCH_DIR"
+          
+          # 从wildocker分支获取补丁
+          git remote add wildocker https://github.com/cyanmint/GKI_KernelSU_SUSFS || true
+          git fetch wildocker wildocker --depth 1
+          
+          # 导出补丁文件
+          mkdir -p /tmp/lxc_docker_patches
+          git archive --remote=https://github.com/cyanmint/GKI_KernelSU_SUSFS wildocker lxc_docker_patches/$PATCH_DIR | tar -x -C /tmp/lxc_docker_patches || {
+            echo "警告: 未找到 $PATCH_DIR 的补丁，跳过..."
+            exit 0
+          }
+          
+          # 应用所有补丁
+          if [ -d "/tmp/lxc_docker_patches/lxc_docker_patches/$PATCH_DIR" ]; then
+            for patch in /tmp/lxc_docker_patches/lxc_docker_patches/$PATCH_DIR/*.patch; do
+              if [ -f "$patch" ]; then
+                echo "应用补丁: $(basename $patch)"
+                patch -p1 -F 3 < "$patch" || echo "警告: 补丁 $(basename $patch) 应用失败，继续..."
+              fi
+            done
+          fi
+          
+          # 添加LXC/Docker所需的内核配置
+          CONFIG_FILE="arch/arm64/configs/gki_defconfig"
+          echo "添加LXC/Docker配置到 $CONFIG_FILE..."
+          
+          # Namespaces & IPC
+          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+          
+          # Cgroups
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          
+          # Networking
+          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+          
+          # Device Support
+          echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
+          
+          # Build Configuration
+          echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
+          
+          # 禁用某些配置
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
+          sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
+          sed -i 's/# CONFIG_PID_NS is not set/CONFIG_PID_NS=y/g' "$CONFIG_FILE"
+          
+          echo "LXC/Docker补丁和配置应用完成"
            
       - name: 添加SUSFS配置设置
         run: |

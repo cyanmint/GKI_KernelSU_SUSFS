@@ -41,6 +41,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_lxc_docker:
+        description: '是否启用LXC/Docker支持(容器命名空间)?'
+        required: true
+        type: boolean
+        default: false
   
 jobs:
   build-kernel-a12-5-10-kernelsu-susfs:
@@ -107,4 +112,5 @@ jobs:
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op || false }}
       BBG: ${{ inputs.BBG || false }}
+      enable_lxc_docker: ${{ inputs.enable_lxc_docker || false }}
 
