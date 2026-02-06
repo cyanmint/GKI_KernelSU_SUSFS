@@ -490,8 +490,12 @@ jobs:
           echo "应用LXC/Docker补丁..."
           cd "$CONFIG/common"
 
-          # 确定补丁目录
+          # 确定补丁目录并验证格式
           ANDROID_VER="${{ inputs.android_version }}"
+          if [[ ! "$ANDROID_VER" =~ ^android[0-9]+$ ]]; then
+            echo "错误: android_version 格式无效: $ANDROID_VER"
+            exit 1
+          fi
           ANDROID_NUM="${ANDROID_VER#android}"  # Remove 'android' prefix
           PATCH_DIR="a${ANDROID_NUM}-${{ inputs.kernel_version }}"
           echo "使用补丁目录: lxc_docker_patches/$PATCH_DIR"
@@ -516,19 +520,30 @@ jobs:
             "596330385b5f8545be462be7889b640647b31610.patch"
           )
 
+          PATCHES_APPLIED=0
+          PATCHES_FAILED=0
+
           for patch_name in "${COMMON_PATCHES[@]}"; do
             PATCH_URL="$PATCHES_URL/$patch_name"
             echo "尝试下载: $patch_name"
-            if curl -LSs -f "$PATCH_URL" -o "/tmp/lxc_docker_patches/$patch_name" 2>/dev/null; then
+            if curl -LSs -f "$PATCH_URL" -o "/tmp/lxc_docker_patches/$patch_name"; then
               echo "成功下载: $patch_name"
               if [ -f "/tmp/lxc_docker_patches/$patch_name" ]; then
                 echo "应用补丁: $patch_name"
-                patch -p1 -F 3 < "/tmp/lxc_docker_patches/$patch_name" || echo "警告: 补丁 $patch_name 应用失败，继续..."
+                if patch -p1 -F 3 < "/tmp/lxc_docker_patches/$patch_name"; then
+                  echo "✓ 成功应用补丁: $patch_name"
+                  ((PATCHES_APPLIED++))
+                else
+                  echo "✗ 补丁 $patch_name 应用失败"
+                  ((PATCHES_FAILED++))
+                fi
               fi
             else
-              echo "跳过不存在的补丁: $patch_name"
+              echo "跳过不存在的补丁: $patch_name (HTTP错误或文件不存在)"
             fi
           done
+
+          echo "补丁应用摘要: 成功 $PATCHES_APPLIED 个, 失败 $PATCHES_FAILED 个"
 
           # 添加LXC/Docker所需的内核配置
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
@@ -563,7 +578,6 @@ jobs:
           # 禁用某些配置
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
           sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
-          sed -i 's/# CONFIG_PID_NS is not set/CONFIG_PID_NS=y/g' "$CONFIG_FILE"
 
           echo "LXC/Docker补丁和配置应用完成"
 
