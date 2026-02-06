@@ -42,7 +42,7 @@ on:
         required: true
         type: boolean
         default: false
-  
+
 jobs:
   build-kernel-a14-5-15-kernelsu-susfs:
     strategy:
