@@ -50,6 +50,10 @@ on:
         type: boolean
         default: false
       BBG:
+        required: false
+        type: boolean
+        default: false
+      enable_lxc_docker:
         required: true
         type: boolean
         default: false
@@ -74,7 +78,10 @@ jobs:
           remove-swapfile: 'true'        # Frees ~4 GB
           remove-cached-tools: 'false'   # Avoid unless confirmed safe
           verbose: 'true'                # Enable detailed logging
-          
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: 设定 CONFIG 环境变量
         run: |
           # Set CONFIG dynamically based on inputs values
@@ -160,7 +167,7 @@ jobs:
           git clone https://github.com/Tools-cx-app/kernel_patches.git
           # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-          
+
       - name: 设置 CONFIG 环境变量
         run: |
           # Set CONFIG dynamically based on inputs values
@@ -216,12 +223,12 @@ jobs:
           echo '补丁加入构建'
           echo "obj-y += hmbird_patch.o" >> Makefile
           tail -n 3 Makefile
-      
+
       - name: 确定 KernelSU 的分支
         run: |
           branch_input="${{ inputs.kernelsu_branch }}"
           variant_input="${{ inputs.kernelsu_variant }}"
-          
+
           case "$branch_input" in
             "Stable(标准)")
               echo "BRANCH=-s builtin" >> $GITHUB_ENV
@@ -231,7 +238,7 @@ jobs:
                 "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
                 "Next")              echo "BRANCH=-s next-susfs-dev" >> $GITHUB_ENV ;;
                 "SukiSU")           echo "BRANCH=-s builtin" >> $GITHUB_ENV ;;
-                *) 
+                *)
                   echo "错误：未定义开发分支的变体 '$variant_input'" >&2
                   exit 1
                   ;;
@@ -267,20 +274,20 @@ jobs:
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
-          
+
           echo "下载并运行 Baseband-guard setup 脚本..."
           wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
-          
+
           echo "启用 Baseband-guard 内核配置..."
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
-          
+
           # 对于 GitHub Actions 云编译，修改 LSM Kconfig
           echo "修改 security/Kconfig 以包含 baseband_guard..."
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./security/Kconfig
-          
+
           echo "Baseband-guard 配置完成"
-          
+
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         run: |
           echo "更改为配置目录: $CONFIG..."
@@ -301,7 +308,7 @@ jobs:
           elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
           #   echo "Applying SUSFS patches for KernelSU-Next..."
              cd ./KernelSU-Next
-          #   curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/dev/0001-kernel-patch-susfs-v1.5.7-to-KernelSU-Next-v1.0.7.patch -o susfs.patch 
+          #   curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/dev/0001-kernel-patch-susfs-v1.5.7-to-KernelSU-Next-v1.0.7.patch -o susfs.patch
           #   patch -p1 --forward < susfs.patch
 
           # #   cp ../../kernel_patches/next/kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch ./
@@ -356,7 +363,7 @@ jobs:
               fake_patched=1
             fi
           fi
-          
+
           if [ "$FORMATTED_BRANCH" = "android12-5.10" ] || [ "$FORMATTED_BRANCH" = "android13-5.10" ] || [ "$FORMATTED_BRANCH" = "android13-5.15" ]; then
             if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
               echo "未找到 vma_pages,正在进行补丁修复"
@@ -370,14 +377,14 @@ jobs:
                 sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
               fi
             fi
-            
+
             if [ "$FORMATTED_BRANCH" = "android12-5.10" ] || [ "$FORMATTED_BRANCH" = "android13-5.10" ] || [ "$FORMATTED_BRANCH" = "android13-5.15" ]; then
               if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
                 sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
               fi
             fi
           fi
-  
+
       - name: 应用新的HOOKS补丁
         run: |
           echo "更改为配置目录: $CONFIG..."
@@ -479,7 +486,91 @@ jobs:
           CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
           echo "Changing to configuration directory: $CONFIG_FILE..."
           echo "CONFIG_DEFAULT_BBR=y" >> "$CONFIG_FILE"
-           
+
+      - name: 应用LXC/Docker补丁和配置
+        if: ${{ inputs.enable_lxc_docker }}
+        run: |
+          echo "应用LXC/Docker补丁..."
+          cd "$CONFIG/common"
+
+          # 确定补丁目录并验证格式
+          ANDROID_VER="${{ inputs.android_version }}"
+          if [[ ! "$ANDROID_VER" =~ ^android[0-9]+$ ]]; then
+            echo "错误: android_version 格式无效: $ANDROID_VER"
+            exit 1
+          fi
+          ANDROID_NUM="${ANDROID_VER#android}"  # Removes 'android' prefix
+          PATCH_DIR="a${ANDROID_NUM}-${{ inputs.kernel_version }}"
+          echo "使用补丁目录: lxc_docker_patches/$PATCH_DIR"
+
+          # 使用仓库中的补丁文件
+          PATCHES_SOURCE="$GITHUB_WORKSPACE/lxc_docker_patches/$PATCH_DIR"
+
+          if [ ! -d "$PATCHES_SOURCE" ]; then
+            echo "错误: 补丁目录不存在: $PATCHES_SOURCE"
+            exit 1
+          fi
+
+          # 应用所有补丁
+          PATCHES_APPLIED=0
+          PATCHES_FAILED=0
+
+          echo "从 $PATCHES_SOURCE 应用补丁..."
+          for patch_file in "$PATCHES_SOURCE"/*.patch; do
+            if [ -f "$patch_file" ]; then
+              patch_name=$(basename "$patch_file")
+              echo "应用补丁: $patch_name"
+              # -F 3: 允许最多3行的模糊匹配，适应上下文的小变化
+              if patch -p1 -F 3 < "$patch_file"; then
+                echo "✓ 成功应用补丁: $patch_name"
+                ((PATCHES_APPLIED++))
+              else
+                echo "✗ 补丁 $patch_name 应用失败"
+                ((PATCHES_FAILED++))
+              fi
+            fi
+          done
+
+          echo "补丁应用摘要: 成功 $PATCHES_APPLIED 个, 失败 $PATCHES_FAILED 个"
+
+          # 添加LXC/Docker所需的内核配置
+          CONFIG_FILE="arch/arm64/configs/gki_defconfig"
+          echo "添加LXC/Docker配置到 $CONFIG_FILE..."
+
+          # Namespaces & IPC
+          echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
+          echo "CONFIG_POSIX_MQUEUE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+
+          # Cgroups
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+
+          # Networking
+          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+
+          # Device Support
+          echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
+
+          # Build Configuration
+          echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
+
+          # 禁用某些配置以确保LXC/Docker兼容性
+          # CLANG_FULL: 使用thin LTO而非full LTO以加快编译并减少潜在问题
+          # MODULE_SCMVERSION: 禁用SCM版本以避免模块加载问题
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
+          sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
+
+          echo "LXC/Docker补丁和配置应用完成"
+
       - name: 添加SUSFS配置设置
         run: |
           echo "更改为配置目录: $CONFIG..."
@@ -498,7 +589,7 @@ jobs:
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -535,7 +626,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
@@ -543,13 +634,13 @@ jobs:
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG"
-          
+
           if [ ! -z ${{ inputs.version }} ]; then
             echo "版本号不为空"
             sed -i '$s|echo "\$res"|echo "${{ inputs.version }}"|' ./common/scripts/setlocalversion
           else
             echo "版本号为空，使用默认值"
-            sed -i '$s|echo "\$res"|echo "\$res-zakozakoooooo-1145141919"|' ./common/scripts/setlocalversion
+            sed -i '$s|echo "\$res"|echo "\$res-114514a1919810"|' ./common/scripts/setlocalversion
           fi
 
           # 如果你需要改构建时间,请把以下变量 CURRENT_TIME 修改为如下例子字符串,如:CURRENT_TIME="Sat Jun 07 06:29:29 UTC 2025"
@@ -564,7 +655,7 @@ jobs:
           if [ "${{ inputs.kernel_version }}" = "6.1" ] || [ "${{ inputs.kernel_version }}" = "6.6" ]; then
             sed -i -e "s|\$(preempt-flag-y) \"\$(build-timestamp)\"|\$(preempt-flag-y) \"$CURRENT_TIME\"|" ./common/init/Makefile
           fi
-          
+
           if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
           else
@@ -602,7 +693,7 @@ jobs:
               tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
-            
+
       - name: 修补 Image 文件 安卓12和安卓13(仅限sukisu)
         if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
         run: |
