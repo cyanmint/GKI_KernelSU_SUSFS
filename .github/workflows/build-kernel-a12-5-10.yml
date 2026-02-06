@@ -3,7 +3,7 @@ name: 编译内核a12-5-10
 permissions:
   contents: write  # Allow writing to repository contents (for pushing tags)
   actions: write   # Allows triggering actions
-  
+
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +45,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_lxc_docker:
+        description: '是否启用LXC/Docker支持(容器命名空间)?'
+        required: true
+        type: boolean
+        default: false
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
@@ -62,6 +67,7 @@ jobs:
       version: ${{ inputs.version }}
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
+      enable_lxc_docker: ${{ inputs.enable_lxc_docker }}
   get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml
@@ -136,10 +142,10 @@ jobs:
   #     RELEASE_NAME: "*TEST BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.5 *TEST BUILD*"
   #     RELEASE_NOTES: |
   #       This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.5
-        
+
   #       Features:
   #       -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}
-  #       -> SUSFS ඞ v1.5.5 
+  #       -> SUSFS ඞ v1.5.5
   #       -> Manual Syscall Hooks for Better Hiding
   #       -> Magic Mount Support
   #       -> Simple Maphide for LineageOS Detections
@@ -151,9 +157,9 @@ jobs:
   #       -> SUS SU Mode 2 will show as disabled or not compatble due to non-kprobe hooks and is not needed anymore!
   #       -> Kernel Flasher is broken with latest susfs, try https://github.com/libxzr/HorizonKernelFlasher!
 
-  #       Module: 
+  #       Module:
   #       -> https://github.com/sidex15/ksu_module_susfs
-        
+
   #   steps:
   #     # Checkout the code
   #     - name: Checkout code
@@ -194,7 +200,7 @@ jobs:
   #         else
   #           echo "Unknown variant"
   #         fi
-          
+
   #         if [[ "${{ inputs.kernelsu_branch }}" == "Stable(标准)" && "${{ inputs.kernelsu_variant }}" != "MKSU" ]]; then
   #           # Fetch the latest tag
   #           TAG=$(git ls-remote --tags --sort=-v:refname $REPO_URL | grep -o 'refs/tags/.*' | cut -d'/' -f3 | head -n1)
@@ -287,7 +293,7 @@ jobs:
   #         else
   #           echo "Unknown variant"
   #         fi
-          
+
   #     - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
   #       run: |
   #         echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
@@ -306,7 +312,7 @@ jobs:
   #         echo "gki-android14-6.1: [$COMMIT_HASH_gki_android14_6_1]($COMMIT_URL_gki_android14_6_1)" >> $GITHUB_ENV
   #         echo "" >> $GITHUB_ENV
   #         echo "EOF" >> $GITHUB_ENV
-          
+
   #     # Get the Latest Tag from GitHub
   #     - name: Generate and Create New Tag
   #       env:
@@ -317,15 +323,15 @@ jobs:
   #           if [ -z "$LATEST_TAG" ]; then
   #             LATEST_TAG="v1.5.5-r0"
   #           fi
-            
+
   #           NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-            
+
   #           # Output the new tag to be used
   #           echo "New tag: $NEW_TAG"
-            
+
   #           # Set the new tag as an environment variable to be used in later steps
   #           echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-            
+
   #           # Create the tag in the repository
   #           git tag $NEW_TAG
   #           git push --tags
@@ -335,7 +341,7 @@ jobs:
   #       uses: actions/download-artifact@v4
   #       with:
   #         path: ./downloaded-artifacts
-          
+
   #     # Create GitHub Release and upload files if make_release is true
   #     - name: Create GitHub Release
   #       uses: actions/create-release@v1
@@ -374,7 +380,7 @@ jobs:
   #         curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
   #           -d "chat_id=$TELEGRAM_CHAT_ID" \
   #           -d "message_thread_id=$TELEGRAM_MESSAGE_THREAD_ID" \
-  #           -d "text=Latest release: 
+  #           -d "text=Latest release:
   #           https://github.com/WildPlusKernel/GKI_KernelSU_SUSFS/releases/tag/${{ env.NEW_TAG }}
-            
+
   #           ${{ env.RELEASE_NOTES }}"
