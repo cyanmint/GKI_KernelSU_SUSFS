@@ -523,10 +523,10 @@ jobs:
               # -F 3: 允许最多3行的模糊匹配，适应上下文的小变化
               if patch -p1 -F 3 < "$patch_file"; then
                 echo "✓ 成功应用补丁: $patch_name"
-                ((PATCHES_APPLIED++))
+                PATCHES_APPLIED=$((PATCHES_APPLIED + 1))
               else
                 echo "✗ 补丁 $patch_name 应用失败"
-                ((PATCHES_FAILED++))
+                PATCHES_FAILED=$((PATCHES_FAILED + 1))
               fi
             fi
           done
