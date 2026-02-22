@@ -533,6 +533,11 @@ jobs:
 
           echo "补丁应用摘要: 成功 $PATCHES_APPLIED 个, 失败 $PATCHES_FAILED 个"
 
+          if [ "$PATCHES_FAILED" -gt 0 ]; then
+            echo "错误: 有 $PATCHES_FAILED 个补丁应用失败，无法继续启用配置！"
+            exit 1
+          fi
+
           # 添加LXC/Docker所需的内核配置
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
           echo "添加LXC/Docker配置到 $CONFIG_FILE..."
