@@ -552,27 +552,27 @@ jobs:
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
 
           # Cgroups
-          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
 
           # Networking
-          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
 
           # Device Support
-          echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
 
           # Build Configuration
-          echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
+          #echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
 
           # 禁用某些配置以确保LXC/Docker兼容性
           # CLANG_FULL: 使用thin LTO而非full LTO以加快编译并减少潜在问题
           # MODULE_SCMVERSION: 禁用SCM版本以避免模块加载问题
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
-          sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
+          #sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
+          #sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
 
           echo "LXC/Docker补丁和配置应用完成"
 
