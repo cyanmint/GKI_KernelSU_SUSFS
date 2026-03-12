@@ -570,14 +570,14 @@ jobs:
           #echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
 
           # Networking
-          #echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
-          #echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
-          #echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
-          #echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_NAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> "$CONFIG_FILE"
 
           # Device Support
-          #echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
-          #echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
+          echo "CONFIG_DEVTMPFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NULL_TTY=y" >> "$CONFIG_FILE"
 
           # Build Configuration
           #echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
