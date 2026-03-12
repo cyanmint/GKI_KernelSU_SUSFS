@@ -56,7 +56,7 @@ on:
       enable_lxc_docker:
         required: true
         type: boolean
-        default: false
+        default: true
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -566,8 +566,8 @@ jobs:
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
 
           # Cgroups
-          #echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
-          #echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_DEVICE=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CGROUP_FREEZER=y" >> "$CONFIG_FILE"
 
           # Networking
           echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> "$CONFIG_FILE"
