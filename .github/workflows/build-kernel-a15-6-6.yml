@@ -3,7 +3,7 @@ name: 编译内核a15-6-6
 permissions:
   contents: write  # Allow writing to repository contents (for pushing tags)
   actions: write   # Allows triggering actions
-  
+
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +45,11 @@ on:
         required: false
         type: boolean
         default: false
+      enable_lxc_docker:
+        description: '是否启用LXC/Docker支持(容器命名空间)?'
+        required: true
+        type: boolean
+        default: false
       get_manager:
         description: '是否同时获取最新KSU管理器?（实验性功能，报错请关闭）'
         required: true
@@ -63,6 +68,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op }}
+      enable_lxc_docker: ${{ inputs.enable_lxc_docker }}
  get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml

@@ -20,6 +20,7 @@
 | [BBR](https://blog.thinkin.top/archives/ke-pu-bbrdao-di-shi-shi-me) | TCP拥塞控制算法，使网络更快？ |
 | [Wireguard](https://zh.wikipedia.org/wiki/WireGuard) | 参考左侧wiki链接 |
 | [LZ4KD](https://github.com/ShirkNeko/SukiSU_patch/tree/main/other) | 听说是来自HUAWEI source的ZRAM算法，补丁由[云彩之枫](http://www.coolapk.com/u/24963680)移植 |
+| [LXC/Docker](https://github.com/cyanmint/GKI_KernelSU_SUSFS/tree/wildocker/lxc_docker_patches) | 容器支持补丁，启用后可运行LXC和Docker容器 |
 
 <details>
 
