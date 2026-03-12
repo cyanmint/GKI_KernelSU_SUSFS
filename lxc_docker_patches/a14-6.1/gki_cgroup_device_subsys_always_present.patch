@@ -66,7 +66,7 @@ index 089c3ecd9e1e..b3f5a7c8d2e1 100644
  	if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
  		/* Can't match any of the exceptions, even partially */
  		rc = !match_exception_partial(&dev_cgroup->exceptions,
-@@ -432,6 +436,28 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+@@ -432,6 +436,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
  
  #endif /* CONFIG_CGROUP_DEVICE */
  
