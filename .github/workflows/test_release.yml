@@ -246,7 +246,6 @@ jobs:
       - get_manager
     if: always()
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASE_NAME: "GKI Kernel: ${{ inputs.kernelsu_variant == 'Next' && 'KernelSU-' || '' }} ${{ inputs.kernelsu_variant }}"
       INITIAL_RELEASE_NOTES: |
         This release includes **${{ inputs.kernelsu_variant == 'Next' && 'KernelSU' || '' }}${{ inputs.kernelsu_variant }}**
@@ -269,12 +268,12 @@ jobs:
         <summary>Notes:</summary>
         
         - -> In SUS SU Mode 2, it will show as disabled or incompatible, the reason is that non-kprobe hooks were used (when compiling the kernel), and non-kprobe hooks are no longer needed!
-        - -> In the latest version of susfs, flashing AK3 compressed package with Kernel Flasher will brick your device, try [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)!
+        - -> In the latest version of susfs, flashing AK3 compressed package with Kernel Flasher will brick your device, try [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher )!
         
         </details>
         
         Modules:
-        -> https://github.com/sidex15/ksu_module_susfs
+        -> https://github.com/sidex15/ksu_module_susfs 
     steps:
       - name: Conditional Release Check
         id: release_check
@@ -551,38 +550,20 @@ jobs:
           echo "Artifacts prepared for upload:"
           ls -lh ./release-assets
           
-      - name: Create GitHub Release
+      - name: Create GitHub Release and Upload Assets
         if: ${{ steps.release_check.outcome == 'success' }}
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.NEW_TAG }}
           prerelease: true
-          release_name: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
           body: ${{ env.FULL_RELEASE_NOTES }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Upload Release Assets
-        if: ${{ steps.release_check.outcome == 'success' }}
+          files: ./release-assets/*
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Uploading release assets..."
-          
-          # Upload all files in the release-assets directory
-          for file in ./release-assets/*; do
-            echo "Uploading $file"
-            gh release upload "${{ env.NEW_TAG }}" "$file" || echo "Failed to upload $file"
-          done
-          
-          echo "Upload completed!"
-          
-      - name: Verify Uploaded Assets
-        if: ${{ steps.release_check.outcome == 'success' }}
-        run: |
-          echo "Uploaded assets:"
-          gh release view "${{ env.NEW_TAG }}" --json assets -q '.assets[].name'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: send telegram message on push
+      - name: Send Telegram Message
+        if: ${{ steps.release_check.outcome == 'success' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -593,4 +574,4 @@ jobs:
             -d "message_thread_id=$TELEGRAM_MESSAGE_THREAD_ID" \
             -d "text=Latest release: 
             https://github.com/ShirkNeko/GKI_KernelSU_SUSFS/releases/tag/${{ env.NEW_TAG }}
-            ${{ env.RELEASE_NOTES }}"    
+            ${{ env.FULL_RELEASE_NOTES }}" 
