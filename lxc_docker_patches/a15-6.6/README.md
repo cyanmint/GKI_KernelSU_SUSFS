@@ -35,14 +35,21 @@ These patches enable LXC and Docker container support on Android 15 GKI kernels 
    - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
    - Complements task_struct padding for complete SYSVIPC ABI stability
 
+8. **gki_cgroup_device_subsys_always_present.patch** - Always include devices cgroup subsystem for ABI stability
+   - **ROOT CAUSE FIX**: Prevents boot failure caused by `CGROUP_SUBSYS_COUNT` change
+   - Makes `SUBSYS(devices)` unconditional in `cgroup_subsys.h` so that `devices_cgrp_id` and all subsequent subsystem IDs stay stable regardless of `CONFIG_CGROUP_DEVICE`
+   - Provides a stub `devices_cgrp_subsys` when `CONFIG_CGROUP_DEVICE` is disabled
+   - Adds NULL safety check in `devcgroup_legacy_check_permission()` for early-boot safety
+
 ## How It Works
 
 These patches work together to enable CONFIG_CGROUP_DEVICE without breaking the kernel:
 
 1. **ABI Padding Patches (1-7)** ensure that enabling CONFIG_CGROUP_DEVICE doesn't break binary compatibility with vendor modules
-2. The kernel uses standard BUG_ON() for critical errors - if something goes wrong, it will fail fast with a panic
-3. With proper ABI padding, errors shouldn't occur in the first place
-4. If you see boot issues, check kernel logs via pstore/ramoops to diagnose the actual problem
+2. **CGROUP_SUBSYS_COUNT Stability (8)** keeps the cgroup subsystem ID enum stable, preventing struct size changes that would break vendor module field offsets
+3. The kernel uses standard BUG_ON() for critical errors - if something goes wrong, it will fail fast with a panic
+4. With proper ABI padding and subsystem count stability, errors shouldn't occur in the first place
+5. If you see boot issues, check kernel logs via pstore/ramoops to diagnose the actual problem
 
 **Important**: Do not add patches that replace BUG_ON with WARN_ON in cgroup initialization. Such patches cause boot hangs by leaving subsystems in partially initialized states.
 
