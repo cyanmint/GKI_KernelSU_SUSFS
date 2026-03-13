@@ -882,74 +882,73 @@ jobs:
           # Create directory structure
           mkdir -p "$INITRAMFS_DIR"/{bin,sbin,etc,proc,sys,dev,tmp,mnt}
 
-          # Try to get aarch64 busybox from multiple sources
-          BUSYBOX_OK=0
-          for BUSYBOX_URL in \
-            "https://busybox.net/downloads/binaries/1.35.0-aarch64-linux-musl/busybox" \
-            "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/busybox-static-1.37.0-r9.apk" \
-            ; do
-            echo "Trying busybox from: $BUSYBOX_URL"
-            if echo "$BUSYBOX_URL" | grep -q '\.apk$'; then
-              # Alpine APK format: extract busybox binary from the package
-              if curl -fsSL --connect-timeout 15 -o /tmp/busybox.apk "$BUSYBOX_URL" 2>/dev/null; then
-                (cd /tmp && tar xf busybox.apk bin/busybox.static 2>/dev/null && mv bin/busybox.static "$INITRAMFS_DIR/bin/busybox" 2>/dev/null) && BUSYBOX_OK=1
-              fi
-            else
-              if curl -fsSL --connect-timeout 15 -o "$INITRAMFS_DIR/bin/busybox" "$BUSYBOX_URL" 2>/dev/null && [ -s "$INITRAMFS_DIR/bin/busybox" ]; then
-                BUSYBOX_OK=1
-              fi
-            fi
-            [ "$BUSYBOX_OK" = 1 ] && break
-          done
-
-          if [ "$BUSYBOX_OK" = 1 ]; then
-            echo "✓ Got aarch64 busybox"
-            chmod 755 "$INITRAMFS_DIR/bin/busybox"
-            # Create symlinks for common commands
-            for cmd in sh ash ls cat mount umount dmesg echo mkdir mknod sleep reboot poweroff; do
-              ln -s busybox "$INITRAMFS_DIR/bin/$cmd"
-            done
-            ln -s ../bin/busybox "$INITRAMFS_DIR/sbin/init"
-
-            # Create init script with diagnostics
-            cat > "$INITRAMFS_DIR/init" << 'INIT_EOF'
-          #!/bin/sh
-          mount -t proc proc /proc
-          mount -t sysfs sysfs /sys
-          mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
-          echo "=========================================="
-          echo "  QEMU Boot Test - Kernel Info"
-          echo "=========================================="
-          cat /proc/version
-          echo ""
-          echo "=== Kernel Command Line ==="
-          cat /proc/cmdline
-          echo ""
-          echo "=== Cgroup Subsystems ==="
-          cat /proc/cgroups 2>/dev/null || echo "(cgroups not available)"
-          echo ""
-          echo "=== Cgroup Filesystem ==="
-          ls -la /sys/fs/cgroup/ 2>/dev/null || echo "(cgroup fs not available)"
-          echo ""
-          echo "=== Full dmesg ==="
-          dmesg
-          echo ""
-          echo "=========================================="
-          echo "  Boot test complete. Dropping to shell."
-          echo "  Type 'dmesg' to see kernel messages."
-          echo "  Type 'poweroff -f' to exit QEMU."
-          echo "=========================================="
-          exec /bin/sh
-          INIT_EOF
-          else
-            echo "⚠ Could not download aarch64 busybox (package still works - kernel log is visible without initramfs)"
-            # Create a minimal init that just loops so boot log is still captured
-            cat > "$INITRAMFS_DIR/init" << 'INIT_EOF'
-          #!/bin/sh
-          INIT_EOF
+          # Compile a minimal static aarch64 init using the cross-compiler.
+          # This is more reliable than downloading a busybox binary from the
+          # internet, which frequently fails in CI environments.
+          INIT_OK=0
+          if ! command -v aarch64-linux-gnu-gcc > /dev/null 2>&1; then
+            sudo apt-get install -y -q gcc-aarch64-linux-gnu 2>/dev/null || true
           fi
 
-          chmod 755 "$INITRAMFS_DIR/init"
+          if command -v aarch64-linux-gnu-gcc > /dev/null 2>&1; then
+            cat > /tmp/qemu_init.c << 'QEMU_INIT_C'
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/klog.h>
+#include <sys/mount.h>
+#include <unistd.h>
+static void cat_path(const char *p)
+{
+    char buf[512];
+    FILE *f = fopen(p, "r");
+    if (!f) { puts("(unavailable)"); return; }
+    while (fgets(buf, sizeof(buf), f))
+        fputs(buf, stdout);
+    fclose(f);
+}
+int main(void)
+{
+    mount("proc",     "/proc", "proc",     0, "");
+    mount("sysfs",    "/sys",  "sysfs",    0, "");
+    mount("devtmpfs", "/dev",  "devtmpfs", 0, "");
+    puts("\n==========================================");
+    puts("  QEMU Boot Test - Kernel Diagnostics");
+    puts("==========================================");
+    puts("\n=== /proc/version ===");   cat_path("/proc/version");
+    puts("\n=== /proc/cmdline ===");   cat_path("/proc/cmdline");
+    puts("\n=== /proc/cgroups ===");   cat_path("/proc/cgroups");
+    puts("\n=== dmesg ===");
+    int n = klogctl(10, NULL, 0);
+    if (n > 0) {
+        char *b = malloc(n + 1);
+        int r = klogctl(3, b, n);
+        if (r > 0) { ssize_t _w = write(1, b, r); (void)_w; }
+        free(b);
+    }
+    puts("\n==========================================");
+    puts("  Boot test complete. Ctrl-A X to exit QEMU.");
+    puts("==========================================");
+    fflush(stdout);
+    for (;;) sleep(3600);
+}
+QEMU_INIT_C
+            if aarch64-linux-gnu-gcc -static -Os -o "$INITRAMFS_DIR/init" /tmp/qemu_init.c 2>/dev/null; then
+              chmod 755 "$INITRAMFS_DIR/init"
+              INIT_OK=1
+              echo "✓ Compiled static aarch64 init"
+            else
+              echo "⚠ Compilation failed"
+            fi
+          fi
+
+          if [ "$INIT_OK" = 0 ]; then
+            echo "⚠ Could not build aarch64 init; kernel log is still visible without initramfs"
+            # Provide a stub that at minimum won't cause 'No working init found'.
+            # The kernel log up to the VFS panic is still fully captured.
+            printf '#!/bin/sh\nwhile true; do sleep 60; done\n' > "$INITRAMFS_DIR/init"
+            chmod 755 "$INITRAMFS_DIR/init"
+          fi
 
           # Create initramfs cpio archive
           echo "Creating initramfs.cpio.gz..."
