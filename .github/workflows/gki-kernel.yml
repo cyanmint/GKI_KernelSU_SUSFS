@@ -868,6 +868,154 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
+      - name: 创建QEMU启动测试包
+        run: |
+          echo "Creating QEMU boot test package..."
+          mkdir -p qemu_boot_test
+
+          # Copy the raw kernel Image for QEMU
+          cp ./bootimgs/Image ./qemu_boot_test/Image
+
+          # Create a minimal initramfs with a static init script
+          INITRAMFS_DIR=$(mktemp -d)
+
+          # Create directory structure
+          mkdir -p "$INITRAMFS_DIR"/{bin,sbin,etc,proc,sys,dev,tmp,mnt}
+
+          # Try to get aarch64 busybox from multiple sources
+          BUSYBOX_OK=0
+          for BUSYBOX_URL in \
+            "https://busybox.net/downloads/binaries/1.35.0-aarch64-linux-musl/busybox" \
+            "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/busybox-static-1.37.0-r9.apk" \
+            ; do
+            echo "Trying busybox from: $BUSYBOX_URL"
+            if echo "$BUSYBOX_URL" | grep -q '\.apk$'; then
+              # Alpine APK format: extract busybox binary from the package
+              if curl -fsSL --connect-timeout 15 -o /tmp/busybox.apk "$BUSYBOX_URL" 2>/dev/null; then
+                (cd /tmp && tar xf busybox.apk bin/busybox.static 2>/dev/null && mv bin/busybox.static "$INITRAMFS_DIR/bin/busybox" 2>/dev/null) && BUSYBOX_OK=1
+              fi
+            else
+              if curl -fsSL --connect-timeout 15 -o "$INITRAMFS_DIR/bin/busybox" "$BUSYBOX_URL" 2>/dev/null && [ -s "$INITRAMFS_DIR/bin/busybox" ]; then
+                BUSYBOX_OK=1
+              fi
+            fi
+            [ "$BUSYBOX_OK" = 1 ] && break
+          done
+
+          if [ "$BUSYBOX_OK" = 1 ]; then
+            echo "✓ Got aarch64 busybox"
+            chmod 755 "$INITRAMFS_DIR/bin/busybox"
+            # Create symlinks for common commands
+            for cmd in sh ash ls cat mount umount dmesg echo mkdir mknod sleep reboot poweroff; do
+              ln -s busybox "$INITRAMFS_DIR/bin/$cmd"
+            done
+            ln -s ../bin/busybox "$INITRAMFS_DIR/sbin/init"
+
+            # Create init script with diagnostics
+            cat > "$INITRAMFS_DIR/init" << 'INIT_EOF'
+          #!/bin/sh
+          mount -t proc proc /proc
+          mount -t sysfs sysfs /sys
+          mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+          echo "=========================================="
+          echo "  QEMU Boot Test - Kernel Info"
+          echo "=========================================="
+          cat /proc/version
+          echo ""
+          echo "=== Kernel Command Line ==="
+          cat /proc/cmdline
+          echo ""
+          echo "=== Cgroup Subsystems ==="
+          cat /proc/cgroups 2>/dev/null || echo "(cgroups not available)"
+          echo ""
+          echo "=== Cgroup Filesystem ==="
+          ls -la /sys/fs/cgroup/ 2>/dev/null || echo "(cgroup fs not available)"
+          echo ""
+          echo "=== Full dmesg ==="
+          dmesg
+          echo ""
+          echo "=========================================="
+          echo "  Boot test complete. Dropping to shell."
+          echo "  Type 'dmesg' to see kernel messages."
+          echo "  Type 'poweroff -f' to exit QEMU."
+          echo "=========================================="
+          exec /bin/sh
+          INIT_EOF
+          else
+            echo "⚠ Could not download aarch64 busybox (package still works - kernel log is visible without initramfs)"
+            # Create a minimal init that just loops so boot log is still captured
+            cat > "$INITRAMFS_DIR/init" << 'INIT_EOF'
+          #!/bin/sh
+          INIT_EOF
+          fi
+
+          chmod 755 "$INITRAMFS_DIR/init"
+
+          # Create initramfs cpio archive
+          echo "Creating initramfs.cpio.gz..."
+          (cd "$INITRAMFS_DIR" && find . | cpio -o -H newc 2>/dev/null | gzip -9 > "$GITHUB_WORKSPACE/qemu_boot_test/initramfs.cpio.gz")
+
+          # Create QEMU launch script
+          cat > ./qemu_boot_test/run_qemu.sh << 'QEMU_SCRIPT'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          TIMEOUT="${1:-60}"
+          if ! command -v qemu-system-aarch64 &>/dev/null; then
+            echo "ERROR: qemu-system-aarch64 not found."
+            echo "  Ubuntu/Debian: sudo apt install qemu-system-arm"
+            echo "  macOS: brew install qemu"
+            exit 1
+          fi
+          [ ! -f "$SCRIPT_DIR/Image" ] && echo "ERROR: Image not found" && exit 1
+          echo "=== QEMU ARM64 boot test ==="
+          echo "Kernel: $SCRIPT_DIR/Image | Timeout: ${TIMEOUT}s"
+          INITRD_ARGS=""
+          [ -f "$SCRIPT_DIR/initramfs.cpio.gz" ] && INITRD_ARGS="-initrd $SCRIPT_DIR/initramfs.cpio.gz"
+          echo "--- Kernel boot log follows ---"
+          timeout "$TIMEOUT" qemu-system-aarch64 \
+            -machine virt -cpu cortex-a57 -nographic -no-reboot -smp 2 -m 2048 \
+            -kernel "$SCRIPT_DIR/Image" $INITRD_ARGS \
+            -append "console=ttyAMA0 earlycon=pl011,0x09000000 loglevel=8 panic=10 printk.devkmsg=on"
+          EC=$?
+          [ $EC -eq 124 ] && echo "=== Timed out after ${TIMEOUT}s ==="
+          [ $EC -eq 0 ] && echo "=== QEMU exited normally ==="
+          [ $EC -ne 0 ] && [ $EC -ne 124 ] && echo "=== QEMU exited with code $EC ==="
+          QEMU_SCRIPT
+          chmod +x ./qemu_boot_test/run_qemu.sh
+
+          # Create convenience script that saves output to a log file
+          cat > ./qemu_boot_test/run_qemu_log.sh << 'LOG_SCRIPT'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          echo "Running QEMU boot test, output saved to boot_log.txt..."
+          "$SCRIPT_DIR/run_qemu.sh" "${1:-60}" 2>&1 | tee "$SCRIPT_DIR/boot_log.txt"
+          echo "Boot log saved to: $SCRIPT_DIR/boot_log.txt"
+          LOG_SCRIPT
+          chmod +x ./qemu_boot_test/run_qemu_log.sh
+
+          # Create README
+          cat > ./qemu_boot_test/README.md << 'README_EOF'
+          # QEMU Boot Test Package
+          Boot the GKI kernel in QEMU to capture early boot log for debugging.
+          ## Quick Start
+          sudo apt install qemu-system-arm
+          ./run_qemu.sh              # Interactive (60s timeout)
+          ./run_qemu_log.sh 120      # Save to boot_log.txt (120s timeout)
+          ## What to look for
+          - Kernel panic: search for "panic", "BUG", "Oops"
+          - Cgroup errors: search for "cgroup", "device"
+          - Init failures: search for "init", "run_init_process"
+          README_EOF
+
+          # Package everything as a zip
+          QEMU_ZIP="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-qemu-boot-test.zip"
+          cd qemu_boot_test
+          zip -r "../$QEMU_ZIP" ./*
+          cd ..
+
+          echo "QEMU boot test package created: $QEMU_ZIP"
+          ls -la "$QEMU_ZIP"
+
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
@@ -875,3 +1023,4 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+            *qemu-boot-test.zip
