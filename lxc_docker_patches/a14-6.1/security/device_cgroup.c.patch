@@ -1,8 +1,8 @@
 From a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 Mon Sep 17 00:00:00 2001
 From: GitHub Copilot <noreply@github.com>
 Date: Thu, 12 Mar 2026 22:00:00 +0000
-Subject: [PATCH] ANDROID: GKI: always include devices cgroup subsystem for ABI
- stability
+Subject: [PATCH] ANDROID: GKI: always include devices cgroup subsystem for ABI stability
+ [PATCH] ANDROID: GKI: use Android ABI padding for CGROUP_DEVICE dev_cgroup fields
 
 When CONFIG_CGROUP_DEVICE is enabled, SUBSYS(devices) is added to the
 cgroup_subsys_id enum, increasing CGROUP_SUBSYS_COUNT. This changes
@@ -31,14 +31,42 @@ between css_alloc and css_online during cgroup initialization.
 Change-Id: Ia1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
- include/linux/cgroup_subsys.h |  7 +++++--
- security/device_cgroup.c      | 32 ++++++++++++++++++++++++++++++++
- 2 files changed, 37 insertions(+), 2 deletions(-)
 diff --git a/security/device_cgroup.c b/security/device_cgroup.c
 index 089c3ecd9e1e..b3f5a7c8d2e1 100644
 --- a/security/device_cgroup.c
 +++ b/security/device_cgroup.c
-@@ -416,6 +416,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+@@ -16,6 +16,7 @@
+ #include <linux/slab.h>
+ #include <linux/rcupdate.h>
+ #include <linux/mutex.h>
++#include <linux/android_kabi.h>
+ 
+ #ifdef CONFIG_CGROUP_DEVICE
+ 
+@@ -43,8 +44,21 @@ struct dev_exception_item {
+ struct dev_cgroup {
+ 	struct cgroup_subsys_state css;
+ 	struct list_head exceptions;
+-	enum devcg_behavior behavior;
++	// enum devcg_behavior behavior;
++	/* behavior is in the ANDROID_KABI_USE(1) field below */
++
++#if defined(CONFIG_CGROUP_DEVICE)
++	ANDROID_KABI_USE(1, enum devcg_behavior behavior);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#else
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#endif
+ };
+ 
+ static inline struct dev_cgroup *css_to_devcgroup(struct cgroup_subsys_state *s)
+ {
+@@ -416,6 +430,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
  
  	rcu_read_lock();
  	dev_cgroup = task_devcgroup(current);
@@ -49,7 +77,7 @@ index 089c3ecd9e1e..b3f5a7c8d2e1 100644
  	if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
  		/* Can't match any of the exceptions, even partially */
  		rc = !match_exception_partial(&dev_cgroup->exceptions,
-@@ -432,6 +436,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+@@ -432,6 +450,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
  
  #endif /* CONFIG_CGROUP_DEVICE */
  
