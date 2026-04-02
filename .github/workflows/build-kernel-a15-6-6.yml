@@ -45,8 +45,8 @@ on:
         required: false
         type: boolean
         default: false
-      enable_lxc_docker:
-        description: '是否启用LXC/Docker支持(容器命名空间)?'
+      enable_ctr:
+        description: '是否启用containerd支持(容器命名空间)?'
         required: true
         type: boolean
         default: false
@@ -68,7 +68,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_kpm: ${{ inputs.use_kpm }}
       supp_op: ${{ inputs.supp_op }}
-      enable_lxc_docker: ${{ inputs.enable_lxc_docker }}
+      enable_ctr: ${{ inputs.enable_ctr }}
  get-ksu-manager:
     if: ${{ inputs.get_manager }}
     uses: ./.github/workflows/get-manager.yml

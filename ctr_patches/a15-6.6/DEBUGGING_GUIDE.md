@@ -1,4 +1,4 @@
-# Kernel Debugging Configuration for Android 14-6.1
+# Kernel Debugging Configuration for Android 15-6.6
 
 ## Overview
 
@@ -158,8 +158,8 @@ Connect a UART/serial console to your device to see kernel messages in real-time
 1. Apply patches to kernel source:
 ```bash
 cd kernel_source
-# Apply all patches from lxc_docker_patches/a14-6.1/ except debugging patches
-for patch in lxc_docker_patches/a14-6.1/*.patch; do
+# Apply all patches from ctr_patches/a15-6.6/ except debugging patches
+for patch in ctr_patches/a15-6.6/*.patch; do
   patch -p1 < "$patch"
 done
 ```

@@ -53,7 +53,7 @@ on:
         required: false
         type: boolean
         default: false
-      enable_lxc_docker:
+      enable_ctr:
         required: true
         type: boolean
         default: true
@@ -501,10 +501,10 @@ jobs:
           echo "Changing to configuration directory: $CONFIG_FILE..."
           echo "CONFIG_DEFAULT_BBR=y" >> "$CONFIG_FILE"
 
-      - name: 应用LXC/Docker补丁和配置
-        if: ${{ inputs.enable_lxc_docker }}
+      - name: 应用containerd补丁和配置
+        if: ${{ inputs.enable_ctr }}
         run: |
-          echo "应用LXC/Docker补丁..."
+          echo "应用containerd补丁..."
           cd "$CONFIG/common"
 
           # 确定补丁目录并验证格式
@@ -515,10 +515,10 @@ jobs:
           fi
           ANDROID_NUM="${ANDROID_VER#android}"  # Removes 'android' prefix
           PATCH_DIR="a${ANDROID_NUM}-${{ inputs.kernel_version }}"
-          echo "使用补丁目录: lxc_docker_patches/$PATCH_DIR"
+          echo "使用补丁目录: ctr_patches/$PATCH_DIR"
 
           # 使用仓库中的补丁文件
-          PATCHES_SOURCE="$GITHUB_WORKSPACE/lxc_docker_patches/$PATCH_DIR"
+          PATCHES_SOURCE="$GITHUB_WORKSPACE/ctr_patches/$PATCH_DIR"
 
           if [ ! -d "$PATCHES_SOURCE" ]; then
             echo "错误: 补丁目录不存在: $PATCHES_SOURCE"
@@ -550,9 +550,9 @@ jobs:
             exit 1
           fi
 
-          # 添加LXC/Docker所需的内核配置
+          # 添加containerd所需的内核配置
           CONFIG_FILE="arch/arm64/configs/gki_defconfig"
-          echo "添加LXC/Docker配置到 $CONFIG_FILE..."
+          echo "添加containerd配置到 $CONFIG_FILE..."
 
           # Namespaces & IPC
           echo "CONFIG_SYSVIPC=y" >> "$CONFIG_FILE"
@@ -580,13 +580,13 @@ jobs:
           # Build Configuration
           #echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
 
-          # 禁用某些配置以确保LXC/Docker兼容性
+          # 禁用某些配置以确保containerd兼容性
           # CLANG_FULL: 使用thin LTO而非full LTO以加快编译并减少潜在问题
           # MODULE_SCMVERSION: 禁用SCM版本以避免模块加载问题
           #sed -i 's/CONFIG_LTO_CLANG_FULL=y/# CONFIG_LTO_CLANG_FULL is not set/g' "$CONFIG_FILE"
           #sed -i 's/CONFIG_MODULE_SCMVERSION=y/# CONFIG_MODULE_SCMVERSION is not set/g' "$CONFIG_FILE"
 
-          echo "LXC/Docker补丁和配置应用完成"
+          echo "containerd补丁和配置应用完成"
 
       - name: 添加SUSFS配置设置
         run: |

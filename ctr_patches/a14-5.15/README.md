@@ -1,4 +1,4 @@
-# Android 14 (5.15) LXC/Docker Patches
+# Android 14 (5.15) containerd Patches
 
 ## Kernel Source
 Branch: `android14-5.15-2025-01` from https://android.googlesource.com/kernel/common
@@ -28,4 +28,4 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
 
 ## Credits
 - [lateautumn233](https://github.com/lateautumn233) - Original patch development
-- [tomxi1997](https://github.com/tomxi1997) - LXC/Docker patches repository
+- [tomxi1997](https://github.com/tomxi1997) - containerd patches repository

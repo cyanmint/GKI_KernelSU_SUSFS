@@ -1,10 +1,10 @@
-# Android 15 (6.6) LXC/Docker Patches
+# Android 16 (6.12) containerd Patches
 
 ## Kernel Source
-Branch: `android15-6.6-2025-01` from https://android.googlesource.com/kernel/common
+Branch: `android-mainline` from https://android.googlesource.com/kernel/common
 
 ## Description
-These patches enable LXC and Docker container support on Android 15 GKI kernels (6.6). They modify the kernel to support container namespaces, overlayfs, and other necessary features while maintaining ABI compatibility.
+These patches enable LXC and Docker container support on Android 16 GKI kernels (6.12). They modify the kernel to support container namespaces, overlayfs, and other necessary features while maintaining ABI compatibility.
 
 ## What These Patches Do
 
@@ -64,4 +64,4 @@ See **DEBUGGING_GUIDE.md** for comprehensive information on:
 
 ## Credits
 - [lateautumn233](https://github.com/lateautumn233) - Original patch development
-- [tomxi1997](https://github.com/tomxi1997) - LXC/Docker patches repository
+- [tomxi1997](https://github.com/tomxi1997) - containerd patches repository

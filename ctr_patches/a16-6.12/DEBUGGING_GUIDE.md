@@ -158,8 +158,8 @@ Connect a UART/serial console to your device to see kernel messages in real-time
 1. Apply patches to kernel source:
 ```bash
 cd kernel_source
-# Apply all patches from lxc_docker_patches/a16-6.12/ except debugging patches
-for patch in lxc_docker_patches/a16-6.12/*.patch; do
+# Apply all patches from ctr_patches/a16-6.12/ except debugging patches
+for patch in ctr_patches/a16-6.12/*.patch; do
   patch -p1 < "$patch"
 done
 ```

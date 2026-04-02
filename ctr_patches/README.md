@@ -1,11 +1,11 @@
-# LXC Docker Patches for Android GKI Kernels
+# Containerd Patches for Android GKI Kernels
 
-This directory contains LXC and Docker support patches organized by Android version and kernel version.
+This directory contains Containerd support patches organized by Android version and kernel version.
 
 ## Directory Structure
 
 ```
-lxc_docker_patches/
+ctr_patches/
 ├── a12-5.10/  # Android 12 - Kernel 5.10
 ├── a13-5.10/  # Android 13 - Kernel 5.10
 ├── a13-5.15/  # Android 13 - Kernel 5.15
@@ -34,7 +34,7 @@ These patches are tested against the following kernel branches from https://andr
 
 ## Required Kernel Configurations
 
-All LXC/Docker patches require these kernel configurations (automatically applied during build):
+All containerd patches require these kernel configurations (automatically applied during build):
 
 ### Namespaces & IPC
 - `CONFIG_SYSVIPC=y`
@@ -78,7 +78,7 @@ Patches are applied automatically during the kernel build process. The build sys
 
 ## Credits
 
-- [lateautumn233](https://github.com/lateautumn233) - Original LXC/Docker patches
+- [lateautumn233](https://github.com/lateautumn233) - Original containerd patches
 - [tomxi1997](https://github.com/tomxi1997) - Patch repository maintenance
 - [TheKit](https://github.com/TheKit) - GKI ABI padding patches
 - Community contributors
