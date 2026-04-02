@@ -34,26 +34,6 @@ Signed-off-by: GitHub Copilot <noreply@github.com>
  include/linux/cgroup_subsys.h |  7 +++++--
  security/device_cgroup.c      | 32 ++++++++++++++++++++++++++++++++
  2 files changed, 37 insertions(+), 2 deletions(-)
-
-diff --git a/include/linux/cgroup_subsys.h b/include/linux/cgroup_subsys.h
-index 445235487230..e1a0657b4ea3 100644
---- a/include/linux/cgroup_subsys.h
-+++ b/include/linux/cgroup_subsys.h
-@@ -32,9 +32,12 @@
- SUBSYS(memory)
- #endif
- 
--#if IS_ENABLED(CONFIG_CGROUP_DEVICE)
-+/*
-+ * Always include devices subsystem to keep CGROUP_SUBSYS_COUNT stable
-+ * for GKI ABI compatibility. A stub is provided when
-+ * CONFIG_CGROUP_DEVICE is disabled.
-+ */
- SUBSYS(devices)
--#endif
- 
- #if IS_ENABLED(CONFIG_CGROUP_FREEZER)
- SUBSYS(freezer)
 diff --git a/security/device_cgroup.c b/security/device_cgroup.c
 index 089c3ecd9e1e..b3f5a7c8d2e1 100644
 --- a/security/device_cgroup.c

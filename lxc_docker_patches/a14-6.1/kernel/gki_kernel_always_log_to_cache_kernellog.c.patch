@@ -24,20 +24,6 @@ Signed-off-by: GitHub Copilot <noreply@github.com>
  kernel/kernellog.c | 98 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  2 files changed, 99 insertions(+)
  create mode 100644 kernel/kernellog.c
-
-diff --git a/kernel/Makefile b/kernel/Makefile
-index abcdef123456..abcdef123457 100644
---- a/kernel/Makefile
-+++ b/kernel/Makefile
-@@ -11,6 +11,7 @@
- 	    kthread.o sys_ni.o nsproxy.o \
- 	    notifier.o ksysfs.o cred.o reboot.o \
- 	    async.o range.o smpboot.o ucount.o rcu/
- 
-+obj-y += kernellog.o
- obj-$(CONFIG_MULTIUSER) += groups.o
- obj-$(CONFIG_AUDITSYSCALL) += audit.o auditsc.o
- obj-$(CONFIG_AUDIT_WATCH) += audit_watch.o audit_tree.o
 diff --git a/kernel/kernellog.c b/kernel/kernellog.c
 new file mode 100644
 index 000000000000..b0c1d2e3f4a5
@@ -142,3 +128,6 @@ index 000000000000..b0c1d2e3f4a5
 +	return 0;
 +}
 +late_initcall(kernellog_init);
+
+-- 
+2.34.1

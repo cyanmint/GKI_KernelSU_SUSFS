@@ -1,0 +1,41 @@
+From b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9 Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <noreply@github.com>
+Date: Fri, 13 Mar 2026 09:28:00 +0000
+Subject: [PATCH] ANDROID: GKI: always write kernel log to /cache/kernelog
+
+Add a late_initcall kthread (kernelog_thread) that polls for the
+/cache partition to become available, then continuously flushes the
+printk ring buffer to /cache/kernelog using a persistent
+kmsg_dump_iter.
+
+The iterator remembers the last-read sequence number, so each wakeup
+only appends messages that arrived since the previous flush.  The file
+is sync'd after every non-empty drain cycle to survive sudden power
+loss.
+
+This enables retrieval of kernel boot and runtime log on devices where
+the bootloader serial console (ABL/XBL) is locked or inaccessible, and
+is complementary to pstore/ramoops for post-panic inspection.
+
+Change-Id: Ib0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9
+Signed-off-by: GitHub Copilot <noreply@github.com>
+---
+ kernel/Makefile    |  1 +
+ kernel/kernellog.c | 98 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 99 insertions(+)
+ create mode 100644 kernel/kernellog.c
+diff --git a/kernel/Makefile b/kernel/Makefile
+index abcdef123456..abcdef123457 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -11,6 +11,7 @@
+ 	    kthread.o sys_ni.o nsproxy.o \
+ 	    notifier.o ksysfs.o cred.o reboot.o \
+ 	    async.o range.o smpboot.o ucount.o rcu/
+ 
++obj-y += kernellog.o
+ obj-$(CONFIG_MULTIUSER) += groups.o
+ obj-$(CONFIG_AUDITSYSCALL) += audit.o auditsc.o
+ obj-$(CONFIG_AUDIT_WATCH) += audit_watch.o audit_tree.o
+-- 
+2.34.1

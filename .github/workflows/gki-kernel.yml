@@ -530,20 +530,18 @@ jobs:
           PATCHES_FAILED=0
 
           echo "从 $PATCHES_SOURCE 应用补丁..."
-          for patch_file in "$PATCHES_SOURCE"/*.patch; do
-            if [ -f "$patch_file" ]; then
-              patch_name=$(basename "$patch_file")
-              echo "应用补丁: $patch_name"
-              # -F 3: 允许最多3行的模糊匹配，适应上下文的小变化
-              if patch -p1 -F 3 < "$patch_file"; then
-                echo "✓ 成功应用补丁: $patch_name"
-                PATCHES_APPLIED=$((PATCHES_APPLIED + 1))
-              else
-                echo "✗ 补丁 $patch_name 应用失败"
-                PATCHES_FAILED=$((PATCHES_FAILED + 1))
-              fi
+          while IFS= read -r patch_file; do
+            patch_name="${patch_file#$PATCHES_SOURCE/}"
+            echo "应用补丁: $patch_name"
+            # -F 3: 允许最多3行的模糊匹配，适应上下文的小变化
+            if patch -p1 -F 3 < "$patch_file"; then
+              echo "✓ 成功应用补丁: $patch_name"
+              PATCHES_APPLIED=$((PATCHES_APPLIED + 1))
+            else
+              echo "✗ 补丁 $patch_name 应用失败"
+              PATCHES_FAILED=$((PATCHES_FAILED + 1))
             fi
-          done
+          done < <(find "$PATCHES_SOURCE" -name "*.patch" | sort)
 
           echo "补丁应用摘要: 成功 $PATCHES_APPLIED 个, 失败 $PATCHES_FAILED 个"
 
