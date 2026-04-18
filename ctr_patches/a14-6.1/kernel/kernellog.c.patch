@@ -1,0 +1,133 @@
+From b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9 Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <noreply@github.com>
+Date: Fri, 13 Mar 2026 09:28:00 +0000
+Subject: [PATCH] ANDROID: GKI: always write kernel log to /cache/kernelog
+
+Add a late_initcall kthread (kernelog_thread) that polls for the
+/cache partition to become available, then continuously flushes the
+printk ring buffer to /cache/kernelog using a persistent
+kmsg_dump_iter.
+
+The iterator remembers the last-read sequence number, so each wakeup
+only appends messages that arrived since the previous flush.  The file
+is sync'd after every non-empty drain cycle to survive sudden power
+loss.
+
+This enables retrieval of kernel boot and runtime log on devices where
+the bootloader serial console (ABL/XBL) is locked or inaccessible, and
+is complementary to pstore/ramoops for post-panic inspection.
+
+Change-Id: Ib0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9
+Signed-off-by: GitHub Copilot <noreply@github.com>
+---
+ kernel/Makefile    |  1 +
+ kernel/kernellog.c | 98 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 99 insertions(+)
+ create mode 100644 kernel/kernellog.c
+diff --git a/kernel/kernellog.c b/kernel/kernellog.c
+new file mode 100644
+index 000000000000..b0c1d2e3f4a5
+--- /dev/null
++++ b/kernel/kernellog.c
+@@ -0,0 +1,98 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * kernellog.c - Always-on kernel log writer to /cache/kernelog
++ *
++ * Starts a kernel thread (kthread) after late init that polls for
++ * /cache/kernelog to become writable (i.e. the /cache partition is
++ * mounted), then continuously flushes the printk ring buffer to that
++ * file.  Useful for retrieving kernel boot and runtime logs on devices
++ * where the bootloader console is not accessible.
++ */
++
++#include <linux/delay.h>
++#include <linux/fs.h>
++#include <linux/init.h>
++#include <linux/kmsg_dump.h>
++#include <linux/kthread.h>
++#include <linux/printk.h>
++#include <linux/slab.h>
++
++#define KERNELOG_PATH      "/cache/kernelog"
++#define KERNELOG_BUFSIZE   4096
++/* Retry interval (ms) while /cache is not yet mounted */
++#define KERNELOG_POLL_MS   5000
++/* How often to flush new messages to disk (ms) */
++#define KERNELOG_SYNC_MS   10000
++
++static struct task_struct *kernelog_task;
++
++static int kernelog_thread(void *unused)
++{
++	struct file *f = NULL;
++	struct kmsg_dump_iter iter;
++	char *buf;
++	size_t len;
++	loff_t pos = 0;
++
++	buf = kmalloc(KERNELOG_BUFSIZE, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
++	/*
++	 * Poll until /cache/kernelog can be created.  The /cache partition
++	 * is typically mounted during Android init, well after late_initcall.
++	 */
++	while (!kthread_should_stop()) {
++		f = filp_open(KERNELOG_PATH,
++			      O_WRONLY | O_CREAT | O_TRUNC, 0644);
++		if (!IS_ERR(f))
++			break;
++		msleep_interruptible(KERNELOG_POLL_MS);
++	}
++
++	if (kthread_should_stop() || IS_ERR_OR_NULL(f)) {
++		kfree(buf);
++		return 0;
++	}
++
++	pr_info("kernellog: writing kernel log to " KERNELOG_PATH "\n");
++
++	/* Start from the oldest record in the printk ring buffer */
++	kmsg_dump_rewind(&iter);
++
++	/*
++	 * Drain the ring buffer then sleep; the iterator remembers the
++	 * sequence number so subsequent iterations only pick up new messages.
++	 */
++	while (!kthread_should_stop()) {
++		bool wrote = false;
++
++		while (kmsg_dump_get_buffer(&iter, true, buf,
++					    KERNELOG_BUFSIZE - 1, &len)) {
++			kernel_write(f, buf, len, &pos);
++			wrote = true;
++		}
++
++		if (wrote)
++			vfs_fsync(f, 0);
++
++		msleep_interruptible(KERNELOG_SYNC_MS);
++	}
++
++	vfs_fsync(f, 0);
++	filp_close(f, NULL);
++	kfree(buf);
++	return 0;
++}
++
++static int __init kernellog_init(void)
++{
++	kernelog_task = kthread_run(kernelog_thread, NULL, "kernelog");
++	if (IS_ERR(kernelog_task)) {
++		pr_warn("kernellog: failed to start kthread: %ld\n",
++			PTR_ERR(kernelog_task));
++		kernelog_task = NULL;
++	}
++	return 0;
++}
++late_initcall(kernellog_init);
+
+-- 
+2.34.1
