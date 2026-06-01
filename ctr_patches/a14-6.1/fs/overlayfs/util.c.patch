@@ -33,8 +33,7 @@ diff --git a/fs/overlayfs/util.c b/fs/overlayfs/util.c
 index 7eba49db7dd6..d3bb09b272cc 100644
 --- a/fs/overlayfs/util.c
 +++ b/fs/overlayfs/util.c
-@@ -140,9 +140,7 @@ void ovl_dentry_init_flags(struct dentry *dentry, struct dentry *upperdentry,
- bool ovl_dentry_weird(struct dentry *dentry)
+@@ -150,8 +150,6 @@
  {
  	return dentry->d_flags & (DCACHE_NEED_AUTOMOUNT |
 -				  DCACHE_MANAGE_TRANSIT |

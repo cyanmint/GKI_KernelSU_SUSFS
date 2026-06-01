@@ -409,7 +409,7 @@ CONFIG_NULL_TTY=y
 
         self._chdir(common_dir)
         for patch_file in patch_files:
-            self._run_cmd(f"patch -p1 --fuzz=3 < {shlex.quote(str(patch_file))}")
+            self._run_cmd(f"patch -p1 --fuzz=0 --forward < {shlex.quote(str(patch_file))}")
 
         config_file = common_dir / "arch/arm64/configs/gki_defconfig"
         if not config_file.exists():

@@ -1,7 +1,7 @@
 # Android 14 (6.1) containerd Patches
 
 ## Kernel Source
-Branch: `android14-6.1-2025-01` from https://android.googlesource.com/kernel/common
+Branch: `deprecated/android14-6.1-2025-02` from https://android.googlesource.com/kernel/common
 
 ## Description
 These patches enable LXC and Docker container support on Android 14 GKI kernels (6.1). They modify the kernel to support container namespaces, overlayfs, and other necessary features while maintaining ABI compatibility.
