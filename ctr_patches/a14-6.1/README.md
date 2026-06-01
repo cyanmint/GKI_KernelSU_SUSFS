@@ -20,10 +20,9 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
 4. **cgroup_fix_cgroup_prefix.patch** - Fix cgroup prefix
    - Fixes cgroup naming to ensure proper container operation
 
-5. **gki_use_Android_ABI_padding_for_CGROUP_DEVICE_dev_cgroup_fields.patch** - Use Android ABI padding for CGROUP_DEVICE dev_cgroup fields
-   - Enables `CONFIG_CGROUP_DEVICE=y` without breaking module ABI compatibility
-   - **CRITICAL FIX**: Prevents kernel panic and bootloop on android14-6.1.118
-   - Ensures proper cgroup device controller initialization
+5. **device_cgroup_safety_fix.patch** - Add NULL safety check in device cgroup legacy permission path
+   - Avoids potential early-path NULL dereference in legacy permission checks
+   - Keeps upstream cgroup subsystem behavior unchanged
 
 6. **gki_use_Android_ABI_padding_for_cgroup_subsys_struct.patch** - Use Android ABI padding for cgroup_subsys struct
    - Adds ABI padding to the cgroup_subsys structure
@@ -35,19 +34,16 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
    - **CRITICAL FIX**: Prevents ABI breakage when CONFIG_SYSVIPC is enabled
    - Complements task_struct padding for complete SYSVIPC ABI stability
 
-8. **gki_cgroup_device_subsys_always_present.patch** - Always include devices cgroup subsystem for ABI stability
-   - **ROOT CAUSE FIX**: Prevents boot failure caused by `CGROUP_SUBSYS_COUNT` change
-   - Makes `SUBSYS(devices)` unconditional in `cgroup_subsys.h` so that `devices_cgrp_id` and all subsequent subsystem IDs stay stable regardless of `CONFIG_CGROUP_DEVICE`
-   - Provides a stub `devices_cgrp_subsys` when `CONFIG_CGROUP_DEVICE` is disabled
-   - Adds NULL safety check in `devcgroup_legacy_check_permission()` for early-boot safety
-   - Without this patch, enabling `CONFIG_CGROUP_DEVICE` increases `CGROUP_SUBSYS_COUNT`, changing the size of embedded arrays (`subsys[]`, `e_cset_node[]`, `e_csets[]`) in `struct css_set` and `struct cgroup`, breaking the GKI ABI
+8. **cgroup_subsys_guarded_devices.patch** - Keep devices cgroup subsystem guarded by `CONFIG_CGROUP_DEVICE`
+   - Preserves upstream subsystem registration behavior
+   - Adds clarifying comment only; does not force subsystem ID changes
 
 ## How It Works
 
 These patches work together to enable CONFIG_CGROUP_DEVICE without breaking the kernel:
 
-1. **ABI Padding Patches (1-7)** ensure that enabling CONFIG_CGROUP_DEVICE doesn't break binary compatibility with vendor modules
-2. **CGROUP_SUBSYS_COUNT Stability (8)** keeps the cgroup subsystem ID enum stable, preventing struct size changes that would break vendor module field offsets
+1. **ABI Padding Patches (1-7)** keep key container features compatible with Android GKI constraints
+2. **Cgroup safety/compatibility patch (8)** keeps upstream subsystem gating behavior and avoids forced enum/layout shifts
 3. The kernel uses standard BUG_ON() for critical errors - if something goes wrong, it will fail fast with a panic
 4. With proper ABI padding and subsystem count stability, errors shouldn't occur in the first place
 5. If you see boot issues, check kernel logs via pstore/ramoops to diagnose the actual problem

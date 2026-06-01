@@ -1,57 +1,11 @@
-From a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 Mon Sep 17 00:00:00 2001
-From: GitHub Copilot <noreply@github.com>
-Date: Thu, 12 Mar 2026 22:00:00 +0000
-Subject: [PATCH] ANDROID: GKI: always include devices cgroup subsystem for ABI
- stability
-
-When CONFIG_CGROUP_DEVICE is enabled, SUBSYS(devices) is added to the
-cgroup_subsys_id enum, increasing CGROUP_SUBSYS_COUNT. This changes
-the size of embedded arrays (subsys[], e_cset_node[], e_csets[]) in
-struct css_set and struct cgroup, shifting the offsets of all
-subsequent fields and breaking the GKI ABI for pre-compiled vendor
-modules.
-
-Fix this by always including SUBSYS(devices) in cgroup_subsys.h
-regardless of CONFIG_CGROUP_DEVICE. This keeps CGROUP_SUBSYS_COUNT,
-devices_cgrp_id, and all subsequent subsystem IDs stable whether
-CONFIG_CGROUP_DEVICE is enabled or not.
-
-A minimal stub devices_cgrp_subsys is provided in device_cgroup.c
-for when CONFIG_CGROUP_DEVICE is disabled, so the subsystem is
-properly registered and initialized without providing actual device
-cgroup functionality.
-
-Additionally, a safety check is added in
-devcgroup_legacy_check_permission() to guard against the css not
-being initialized yet during early boot. The check verifies both
-that the dev_cgroup pointer is valid and that the subsystem is
-online (behavior != DEVCG_DEFAULT_NONE), which catches the window
-between css_alloc and css_online during cgroup initialization.
-
-Change-Id: Ia1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
-Signed-off-by: GitHub Copilot <noreply@github.com>
----
- include/linux/cgroup_subsys.h |  7 +++++--
- security/device_cgroup.c      | 32 ++++++++++++++++++++++++++++++++
- 2 files changed, 37 insertions(+), 2 deletions(-)
 diff --git a/include/linux/cgroup_subsys.h b/include/linux/cgroup_subsys.h
-index 445235487230..e1a0657b4ea3 100644
 --- a/include/linux/cgroup_subsys.h
 +++ b/include/linux/cgroup_subsys.h
-@@ -32,9 +32,12 @@
+@@ -29,6 +29,7 @@
  SUBSYS(memory)
  #endif
  
--#if IS_ENABLED(CONFIG_CGROUP_DEVICE)
-+/*
-+ * Always include devices subsystem to keep CGROUP_SUBSYS_COUNT stable
-+ * for GKI ABI compatibility. A stub is provided when
-+ * CONFIG_CGROUP_DEVICE is disabled.
-+ */
++/* Keep devices subsystem gated by CONFIG_CGROUP_DEVICE. */
+ #if IS_ENABLED(CONFIG_CGROUP_DEVICE)
  SUBSYS(devices)
--#endif
- 
- #if IS_ENABLED(CONFIG_CGROUP_FREEZER)
- SUBSYS(freezer)
--- 
-2.34.1
+ #endif
