@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import logging
 import re
@@ -396,7 +397,7 @@ CONFIG_NULL_TTY=y
             raise FileNotFoundError(f"containerd patch 目录不存在: {patch_dir}")
 
         # Map android_version (e.g. "android14") to short form (e.g. "a14")
-        av_short = "a" + self.config.android_version.replace("android", "")
+        av_short = "a" + self.config.android_version[len("android"):]
         kv = self.config.kernel_version
         versioned_patch_dir = patch_dir / f"{av_short}-{kv}"
         if not versioned_patch_dir.exists():
@@ -408,7 +409,7 @@ CONFIG_NULL_TTY=y
 
         self._chdir(common_dir)
         for patch_file in patch_files:
-            self._run_cmd(f"patch -p1 --fuzz=3 < {patch_file}")
+            self._run_cmd(f"patch -p1 --fuzz=3 < {shlex.quote(str(patch_file))}")
 
         config_file = common_dir / "arch/arm64/configs/gki_defconfig"
         if not config_file.exists():
@@ -425,7 +426,7 @@ CONFIG_NULL_TTY=y
 
         if new_lines:
             with config_file.open("a", encoding="utf-8") as f:
-                if existing_lines and existing_lines[-1] != "":
+                if existing_lines and existing_lines[-1]:
                     f.write("\n")
                 f.write("\n".join(new_lines))
                 f.write("\n")
