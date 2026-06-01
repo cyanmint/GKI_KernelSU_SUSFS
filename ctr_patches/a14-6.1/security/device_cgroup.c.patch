@@ -1,0 +1,31 @@
+From 48742d5d26ce4708a2632f59f89a6cc63ed4a24a Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <noreply@github.com>
+Date: Sun, 1 Jun 2026 04:02:00 +0000
+Subject: [PATCH] ANDROID: device_cgroup: add NULL safety check for legacy
+ permission path
+
+Keep upstream cgroup subsystem behavior and apply only a minimal safety
+guard in legacy permission checks.
+
+---
+ security/device_cgroup.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/security/device_cgroup.c b/security/device_cgroup.c
+index 089c3ecd9e1e..e97e435533f5 100644
+--- a/security/device_cgroup.c
++++ b/security/device_cgroup.c
+@@ -415,6 +415,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+ 
+ 	rcu_read_lock();
+ 	dev_cgroup = task_devcgroup(current);
++	if (!dev_cgroup) {
++		rcu_read_unlock();
++		return 0;
++	}
+ 	if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
+ 		/* Can't match any of the exceptions, even partially */
+ 		rc = !match_exception_partial(&dev_cgroup->exceptions,
+-- 
+2.34.1
+
