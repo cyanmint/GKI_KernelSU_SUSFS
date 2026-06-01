@@ -382,6 +382,7 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
         self._chdir(self.work_dir)
         for patch_file in patch_files:
             if patch_file == config_patch:
+                # This patch only documents the extra defconfig entries; apply them explicitly below.
                 continue
             self._run_cmd(f"patch -p1 --fuzz=3 < {patch_file}")
 
