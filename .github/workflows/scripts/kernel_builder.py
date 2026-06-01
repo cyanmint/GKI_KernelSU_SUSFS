@@ -97,6 +97,27 @@ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 """
 
+    CONTAINERD_CONFIG_TEMPLATE = """
+# === Containerd: Namespaces & IPC ===
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_UTS_NS=y
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_USER_NS=y
+CONFIG_NET_NS=y
+
+# === Containerd: Networking ===
+CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+CONFIG_IP6_NF_NAT=y
+CONFIG_IP6_NF_TARGET_MASQUERADE=y
+
+# === Containerd: Device Support ===
+CONFIG_DEVTMPFS=y
+CONFIG_NULL_TTY=y
+"""
+
     ZRAM_CONFIG_5_10 = "CONFIG_ZSMALLOC=y\nCONFIG_ZRAM=y\nCONFIG_MODULE_SIG=n\nCONFIG_CRYPTO_LZO=y\nCONFIG_ZRAM_DEF_COMP_LZ4KD=y\n"
     ZRAM_CONFIG_COMMON = "CONFIG_CRYPTO_LZ4HC=y\nCONFIG_CRYPTO_LZ4K=y\nCONFIG_CRYPTO_LZ4KD=y\nCONFIG_CRYPTO_842=y\nCONFIG_CRYPTO_LZ4K_OPLUS=y\nCONFIG_ZRAM_WRITEBACK=y\n"
 
@@ -374,20 +395,20 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
         if not patch_dir.exists():
             raise FileNotFoundError(f"containerd patch 目录不存在: {patch_dir}")
 
-        patch_files = sorted(patch_dir.glob("*.patch"))
+        # Map android_version (e.g. "android14") to short form (e.g. "a14")
+        av_short = "a" + self.config.android_version.replace("android", "")
+        kv = self.config.kernel_version
+        versioned_patch_dir = patch_dir / f"{av_short}-{kv}"
+        if not versioned_patch_dir.exists():
+            raise FileNotFoundError(f"containerd patch 目录不存在: {versioned_patch_dir}")
+
+        patch_files = sorted(versioned_patch_dir.rglob("*.patch"))
         if not patch_files:
-            raise FileNotFoundError(f"containerd patch 目录为空: {patch_dir}")
+            raise FileNotFoundError(f"containerd patch 目录为空: {versioned_patch_dir}")
 
-        config_patch = patch_dir / "minimal_kernel.patch"
-        self._chdir(self.work_dir)
+        self._chdir(common_dir)
         for patch_file in patch_files:
-            if patch_file == config_patch:
-                # This patch only documents the extra defconfig entries; apply them explicitly below.
-                continue
             self._run_cmd(f"patch -p1 --fuzz=3 < {patch_file}")
-
-        if not config_patch.exists():
-            raise FileNotFoundError(f"containerd 配置补丁不存在: {config_patch}")
 
         config_file = common_dir / "arch/arm64/configs/gki_defconfig"
         if not config_file.exists():
@@ -395,23 +416,19 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 
         existing_lines = config_file.read_text(encoding="utf-8").splitlines()
         existing = set(existing_lines)
-        config_lines = []
-        for line in config_patch.read_text(encoding="utf-8").splitlines():
-            if line.startswith("+CONFIG_"):
-                config_line = line[1:]
-                if config_line not in existing:
-                    config_lines.append(config_line)
-                    existing.add(config_line)
+        new_lines = []
+        for line in self.CONTAINERD_CONFIG_TEMPLATE.splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and stripped not in existing:
+                new_lines.append(stripped)
+                existing.add(stripped)
 
-        if config_lines:
+        if new_lines:
             with config_file.open("a", encoding="utf-8") as f:
                 if existing_lines and existing_lines[-1] != "":
-                    f.write("
-")
-                f.write("
-".join(config_lines))
-                f.write("
-")
+                    f.write("\n")
+                f.write("\n".join(new_lines))
+                f.write("\n")
 
     def configure_kernel(self):
         logger.info("=== 配置内核 ===")
