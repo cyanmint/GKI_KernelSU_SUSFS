@@ -15,7 +15,8 @@ diff --git a/kernel/module/version.c b/kernel/module/version.c
 index 93fade94f108..55207b026c4a 100644
 --- a/kernel/module/version.c
 +++ b/kernel/module/version.c
-@@ -53,7 +53,7 @@ int check_version(const struct load_info *info,
+@@ -52,7 +52,7 @@
+ 
  bad_version:
  	pr_warn("%s: disagrees about version of symbol %s\n", info->name, symname);
 -	return 0;
