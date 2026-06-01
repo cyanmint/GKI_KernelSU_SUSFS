@@ -112,8 +112,8 @@ CONFIG_USER_NS=y
 CONFIG_NET_NS=y
 
 # Cgroups
-CONFIG_CGROUP_DEVICE=y
-CONFIG_CGROUP_FREEZER=y
+# CONFIG_CGROUP_DEVICE=y
+# CONFIG_CGROUP_FREEZER=y
 
 # Networking
 CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
@@ -137,6 +137,19 @@ CONFIG_LTO_CLANG_THIN=y
         "android15": "a15",
         "android16": "a16",
     }
+
+    # Configs to remove when enabling containerd support
+    CONTAINERD_DISABLED_CONFIGS = ("CONFIG_LTO_CLANG_FULL=", "CONFIG_MODULE_SCMVERSION=",
+                                   "# CONFIG_PID_NS is not set")
+
+    # Key containerd config prefixes used for status display
+    CONTAINERD_KEY_CONFIG_PREFIXES = [
+        "CONFIG_UTS_NS", "CONFIG_PID_NS", "CONFIG_IPC_NS", "CONFIG_USER_NS",
+        "CONFIG_NET_NS", "CONFIG_SYSVIPC", "CONFIG_POSIX_MQUEUE",
+        "CONFIG_NETFILTER_XT_TARGET_CHECKSUM", "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE",
+        "CONFIG_IP6_NF_NAT", "CONFIG_IP6_NF_TARGET_MASQUERADE",
+        "CONFIG_DEVTMPFS", "CONFIG_NULL_TTY", "CONFIG_LTO_CLANG_THIN",
+    ]
 
     def __init__(self, config: BuildConfig, workspace: str):
         self.config = config
@@ -504,8 +517,7 @@ CONFIG_LTO_CLANG_THIN=y
         filtered = []
         for line in lines:
             stripped = line.strip()
-            if any(stripped.startswith(p) for p in ("CONFIG_LTO_CLANG_FULL=", "CONFIG_MODULE_SCMVERSION=",
-                                                     "# CONFIG_PID_NS is not set")):
+            if any(stripped.startswith(p) for p in self.CONTAINERD_DISABLED_CONFIGS):
                 continue
             filtered.append(line)
         with open(config_file, "w") as f:
@@ -644,13 +656,7 @@ CONFIG_LTO_CLANG_THIN=y
 
         # 显示 Containerd 相关配置
         if self.config.use_containerd:
-            ctr_prefixes = ["CONFIG_UTS_NS", "CONFIG_PID_NS", "CONFIG_IPC_NS", "CONFIG_USER_NS",
-                            "CONFIG_NET_NS", "CONFIG_SYSVIPC", "CONFIG_POSIX_MQUEUE",
-                            "CONFIG_CGROUP_DEVICE", "CONFIG_CGROUP_FREEZER",
-                            "CONFIG_NETFILTER_XT_TARGET_CHECKSUM", "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE",
-                            "CONFIG_IP6_NF_NAT", "CONFIG_IP6_NF_TARGET_MASQUERADE",
-                            "CONFIG_DEVTMPFS", "CONFIG_NULL_TTY", "CONFIG_LTO_CLANG_THIN"]
-            ctr_configs = [c for c in config_lines if any(c.startswith(p) for p in ctr_prefixes)]
+            ctr_configs = [c for c in config_lines if any(c.startswith(p) for p in self.CONTAINERD_KEY_CONFIG_PREFIXES)]
             if ctr_configs:
                 logger.info("Containerd 相关配置:")
                 for cc in sorted(ctr_configs):
