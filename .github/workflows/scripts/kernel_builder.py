@@ -407,6 +407,29 @@ CONFIG_NULL_TTY=y
         if not patch_files:
             raise FileNotFoundError(f"containerd patch 目录为空: {versioned_patch_dir}")
 
+        if (
+            self.config.android_version == "android14"
+            and self.config.kernel_version == "6.1"
+            and self.config.sub_level == "124"
+            and self.config.os_patch_level == "2025-02"
+        ):
+            excluded_relpaths = {
+                "include/linux/cgroup-defs.h.patch",
+                "include/linux/cgroup_subsys.h.patch",
+                "kernel/module/version.c.patch",
+                "security/device_cgroup.c.patch",
+            }
+            selected_patch_files = []
+            for patch_file in patch_files:
+                relpath = str(patch_file.relative_to(versioned_patch_dir))
+                if relpath in excluded_relpaths:
+                    logger.warning(f"跳过高风险 containerd 补丁 (避免 bootloop): {relpath}")
+                    continue
+                selected_patch_files.append(patch_file)
+            patch_files = selected_patch_files
+            if not patch_files:
+                raise RuntimeError("过滤高风险 containerd 补丁后没有可用补丁")
+
         self._chdir(common_dir)
         for patch_file in patch_files:
             self._run_cmd(f"patch -p1 --fuzz=0 --forward < {shlex.quote(str(patch_file))}")
