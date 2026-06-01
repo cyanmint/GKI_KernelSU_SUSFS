@@ -95,6 +95,11 @@ on:
         required: true
         type: boolean
         default: true
+      containerd:
+        description: '应用 containerd 补丁并启用相关配置'
+        required: true
+        type: boolean
+        default: false
       send_telegram:
         description: '发送 Telegram 通知'
         required: true
@@ -146,9 +151,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.ccache
-          key: ${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.sub_level }}-ccache-${{ github.sha }}
+          key: ${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.sub_level }}-${{ github.event.inputs.containerd }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.sub_level }}-ccache-
+            ${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.sub_level }}-${{ github.event.inputs.containerd }}-ccache-
 
       - name: Build kernel
         run: |
@@ -166,6 +171,7 @@ jobs:
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           [ "${{ github.event.inputs.supp_op }}" = "true" ] && ARGS="$ARGS --op8e"
           [ "${{ github.event.inputs.set_defbbr }}" = "true" ] && ARGS="$ARGS --bbr"
+          [ "${{ github.event.inputs.containerd }}" = "true" ] && ARGS="$ARGS --containerd"
           [ -z "${{ github.event.inputs.kernelsu_commit }}" ] || ARGS="$ARGS --ksu-commit=${{ github.event.inputs.kernelsu_commit }}"
           [ -z "${{ github.event.inputs.susfs_commit }}" ] || ARGS="$ARGS --susfs-commit=${{ github.event.inputs.susfs_commit }}"
           [ -z "${{ github.event.inputs.custom_version }}" ] || ARGS="$ARGS --custom-version=${{ github.event.inputs.custom_version }}"

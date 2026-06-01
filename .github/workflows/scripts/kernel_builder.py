@@ -102,6 +102,7 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 
     def __init__(self, config: BuildConfig, workspace: str):
         self.config = config
+        self.repo_root = Path(__file__).resolve().parents[3]
         self.workspace = Path(workspace)
         self.shell = ShellCommand(cwd=workspace)
         self.env = os.environ.copy()
@@ -363,6 +364,53 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
                                     "#include <linux/cpufreq_times.h>\n#include <linux/dma-buf.h>")
             with open(base_c, "w") as f:
                 f.write(content)
+    def apply_containerd_patches(self):
+        logger.info("=== 应用 containerd 补丁 ===")
+        common_dir = self.work_dir / "common"
+        if not common_dir.exists():
+            raise RuntimeError(f"common 目录不存在: {common_dir}")
+
+        patch_dir = self.repo_root / "ctr_patches"
+        if not patch_dir.exists():
+            raise FileNotFoundError(f"containerd patch 目录不存在: {patch_dir}")
+
+        patch_files = sorted(patch_dir.glob("*.patch"))
+        if not patch_files:
+            raise FileNotFoundError(f"containerd patch 目录为空: {patch_dir}")
+
+        config_patch = patch_dir / "minimal_kernel.patch"
+        self._chdir(self.work_dir)
+        for patch_file in patch_files:
+            if patch_file == config_patch:
+                continue
+            self._run_cmd(f"patch -p1 --fuzz=3 < {patch_file}")
+
+        if not config_patch.exists():
+            raise FileNotFoundError(f"containerd 配置补丁不存在: {config_patch}")
+
+        config_file = common_dir / "arch/arm64/configs/gki_defconfig"
+        if not config_file.exists():
+            raise FileNotFoundError(f"gki_defconfig 不存在: {config_file}")
+
+        existing_lines = config_file.read_text(encoding="utf-8").splitlines()
+        existing = set(existing_lines)
+        config_lines = []
+        for line in config_patch.read_text(encoding="utf-8").splitlines():
+            if line.startswith("+CONFIG_"):
+                config_line = line[1:]
+                if config_line not in existing:
+                    config_lines.append(config_line)
+                    existing.add(config_line)
+
+        if config_lines:
+            with config_file.open("a", encoding="utf-8") as f:
+                if existing_lines and existing_lines[-1] != "":
+                    f.write("
+")
+                f.write("
+".join(config_lines))
+                f.write("
+")
 
     def configure_kernel(self):
         logger.info("=== 配置内核 ===")
@@ -706,6 +754,8 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
             self.apply_sukisu_patches()
             self.apply_zram_patches()
             self.apply_task_mmu_fixes()
+            if self.config.enable_containerd:
+                self.apply_containerd_patches()
             self.configure_kernel()
             self.configure_kernel_name()
             self.show_kernel_config()

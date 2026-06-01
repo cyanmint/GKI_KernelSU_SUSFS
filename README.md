@@ -20,6 +20,7 @@
 2. 选择 **Kernel Build**
 3. 点击 **Run workflow**
 4. 选择 Android 版本、Kernel 版本和构建选项
+   - 可选：启用 containerd 支持
 5. 可选：指定 SukiSU-Ultra 或 SUSFS 的 commit hash
 
 #### 方式二：构建所有版本
@@ -90,6 +91,7 @@ python build.py --list-matrix
 | `--bbg` | 启用 Baseband-guard | False |
 | `--op8e` | 启用 OnePlus 8E 支持 | False |
 | `--bbr` | 设置 BBR 为默认拥塞算法 | False |
+| `--containerd` | 应用 containerd 补丁并启用相关配置 | False |
 | `--no-release` | 不创建 GitHub Release | False |
 | `--custom-version` | 自定义版本名称 | - |
 | `--matrix`, `-m` | 使用预定义矩阵 | - |
