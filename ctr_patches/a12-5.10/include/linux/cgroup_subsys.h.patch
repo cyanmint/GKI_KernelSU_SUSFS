@@ -4,18 +4,14 @@ Date: Sun, 1 Jun 2026 13:00:00 +0000
 Subject: [PATCH] ANDROID: GKI: always include devices cgroup subsystem for ABI stability
 
 When CONFIG_CGROUP_DEVICE is enabled, SUBSYS(devices) inserts the
-devices subsystem into the cgroup_subsys_id enum at position 5
-(between memory and freezer). This shifts freezer_cgrp_id from 5 to 6
-and net_prio_cgrp_id from 6 to 7, breaking vendor modules that were
-compiled with the original IDs.
+devices subsystem into the cgroup_subsys_id enum between memory and
+freezer, shifting freezer_cgrp_id and net_prio_cgrp_id and breaking
+vendor modules compiled against the original IDs.
 
-Fix this by always including SUBSYS(devices) in cgroup_subsys.h
-regardless of CONFIG_CGROUP_DEVICE. This keeps CGROUP_SUBSYS_COUNT,
-devices_cgrp_id, freezer_cgrp_id, and net_prio_cgrp_id stable whether
-CONFIG_CGROUP_DEVICE is enabled or not.
-
-A minimal no-op stub devices_cgrp_subsys is provided in
-security/device_cgroup.c for when CONFIG_CGROUP_DEVICE is disabled.
+Fix by making SUBSYS(devices) unconditional to keep CGROUP_SUBSYS_COUNT
+and all subsequent subsystem IDs stable. A no-op stub devices_cgrp_subsys
+is provided in security/device_cgroup.c when CONFIG_CGROUP_DEVICE is
+disabled.
 
 Change-Id: I0000000000000000000000000000000000000001
 Signed-off-by: GitHub Copilot <noreply@github.com>
@@ -24,7 +20,6 @@ Signed-off-by: GitHub Copilot <noreply@github.com>
  1 file changed, 2 insertions(+), 3 deletions(-)
 
 diff --git a/include/linux/cgroup_subsys.h b/include/linux/cgroup_subsys.h
-index 445235487..6558d0645 100644
 --- a/include/linux/cgroup_subsys.h
 +++ b/include/linux/cgroup_subsys.h
 @@ -29,9 +29,12 @@ SUBSYS(io)

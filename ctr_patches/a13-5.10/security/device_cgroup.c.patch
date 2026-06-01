@@ -21,7 +21,6 @@ Signed-off-by: GitHub Copilot <noreply@github.com>
  1 file changed, 38 insertions(+)
 
 diff --git a/security/device_cgroup.c b/security/device_cgroup.c
-index bef2b9285..a55563381 100644
 --- a/security/device_cgroup.c
 +++ b/security/device_cgroup.c
 @@ -838,6 +838,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
@@ -33,8 +32,8 @@ index bef2b9285..a55563381 100644
 +return 0;
 +}
  if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
- /* Can't match any of the exceptions, even partially */
- rc = !match_exception_partial(&dev_cgroup->exceptions,
+ 't match any of the exceptions, even partially */
+ _partial(&dev_cgroup->exceptions,
 @@ -856,6 +860,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
  
  #endif /* CONFIG_CGROUP_DEVICE */
