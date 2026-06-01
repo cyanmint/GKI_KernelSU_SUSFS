@@ -110,6 +110,7 @@ class BuildConfig:
     use_bbg: bool = False
     support_op8e: bool = False
     set_default_bbr: bool = False
+    enable_containerd: bool = False
     make_release: bool = True
     custom_version: Optional[str] = None
     revision: Optional[str] = None
@@ -180,6 +181,7 @@ class BuildConfig:
             "use_bbg": self.use_bbg,
             "support_op8e": self.support_op8e,
             "set_default_bbr": self.set_default_bbr,
+            "enable_containerd": self.enable_containerd,
             "make_release": self.make_release,
             "custom_version": self.custom_version,
             "revision": self.revision,

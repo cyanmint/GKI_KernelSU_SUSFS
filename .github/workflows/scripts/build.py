@@ -66,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bbg", action="store_true")
     parser.add_argument("--op8e", action="store_true")
     parser.add_argument("--bbr", action="store_true")
+    parser.add_argument("--containerd", action="store_true")
     parser.add_argument("--no-release", action="store_true")
     parser.add_argument("--custom-version", dest="custom_version", default=None)
     parser.add_argument("--revision")
@@ -95,6 +96,7 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_bbg=args.bbg,
         support_op8e=args.op8e,
         set_default_bbr=args.bbr,
+        enable_containerd=args.containerd,
         make_release=not args.no_release,
         custom_version=args.custom_version,
         revision=args.revision,
@@ -160,6 +162,7 @@ def build_matrix(matrix_key: str, args: argparse.Namespace, workspace: str) -> l
                 use_bbg=args.bbg,
                 support_op8e=args.op8e,
                 set_default_bbr=args.bbr,
+                enable_containerd=args.containerd,
                 make_release=not args.no_release,
                 custom_version=args.custom_version,
                 revision=cfg_data.get("revision"),
