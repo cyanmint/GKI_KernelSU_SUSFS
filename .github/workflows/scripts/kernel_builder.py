@@ -616,6 +616,35 @@ CONFIG_NULL_TTY=y
                 for f in sorted(found):
                     logger.info(f"      -> {f}")
         
+        # 显示 containerd 相关配置
+        if self.config.enable_containerd:
+            containerd_key_configs = {
+                "CONFIG_SYSVIPC": "Containerd-SYSVIPC",
+                "CONFIG_POSIX_MQUEUE": "Containerd-POSIX_MQUEUE",
+                "CONFIG_UTS_NS": "Containerd-UTS_NS",
+                "CONFIG_PID_NS": "Containerd-PID_NS",
+                "CONFIG_IPC_NS": "Containerd-IPC_NS",
+                "CONFIG_USER_NS": "Containerd-USER_NS",
+                "CONFIG_NET_NS": "Containerd-NET_NS",
+                "CONFIG_NETFILTER_XT_TARGET_CHECKSUM": "Containerd-NETFILTER_XT_TARGET_CHECKSUM",
+                "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE": "Containerd-NETFILTER_XT_MATCH_ADDRTYPE",
+                "CONFIG_IP6_NF_NAT": "Containerd-IP6_NF_NAT",
+                "CONFIG_IP6_NF_TARGET_MASQUERADE": "Containerd-IP6_NF_TARGET_MASQUERADE",
+                "CONFIG_DEVTMPFS": "Containerd-DEVTMPFS",
+                "CONFIG_NULL_TTY": "Containerd-NULL_TTY",
+            }
+            logger.info("Containerd 配置状态:")
+            for prefix, name in containerd_key_configs.items():
+                found = [c for c in config_lines if c.startswith(prefix)]
+                if found:
+                    status = "已启用"
+                else:
+                    status = "未配置"
+                logger.info(f"  [{status}] {name}")
+                if found:
+                    for fc in sorted(found):
+                        logger.info(f"      -> {fc}")
+
         # 显示 ZRAM 相关配置
         if self.config.use_zram:
             zram_configs = [c for c in config_lines if any(x in c for x in ["ZRAM", "ZSMALLOC", "LZ4", "LZ4KD", "CRYPTO_LZ4", "MODULE_SIG"])]
