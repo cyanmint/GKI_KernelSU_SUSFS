@@ -40,5 +40,5 @@ jobs:
 
           for patch_file in "${patch_files[@]}"; do
             echo "Applying $patch_file"
-            patch -p1 --fuzz=0 < "$patch_file"
+            patch -p1 --fuzz=3 < "$patch_file"
           done
