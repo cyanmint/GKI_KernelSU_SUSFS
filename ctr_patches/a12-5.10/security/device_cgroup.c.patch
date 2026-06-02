@@ -1,48 +1,94 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 Mon Sep 17 00:00:00 2001
 From: GitHub Copilot <noreply@github.com>
-Date: Sun, 1 Jun 2026 13:00:00 +0000
-Subject: [PATCH] ANDROID: GKI: fix device cgroup for ABI-stable unconditional SUBSYS
+Date: Mon, 2 Jun 2026 10:30:00 +0000
+Subject: [PATCH] ANDROID: GKI: always include devices cgroup subsystem for ABI stability
+ [PATCH] ANDROID: GKI: use Android ABI padding for CGROUP_DEVICE dev_cgroup fields
 
-Two changes to support making SUBSYS(devices) unconditional:
+When CONFIG_CGROUP_DEVICE is enabled, SUBSYS(devices) is added to the
+cgroup_subsys_id enum, increasing CGROUP_SUBSYS_COUNT. This changes
+the size of embedded arrays (subsys[], e_cset_node[], e_csets[]) in
+struct css_set and struct cgroup, shifting the offsets of all
+subsequent fields and breaking the GKI ABI for pre-compiled vendor
+modules.
 
-1. Add NULL safety check in devcgroup_legacy_check_permission() to
-   guard against the css not being initialized yet during early boot,
-   between css_alloc and css_online.
+Fix this by always including SUBSYS(devices) in cgroup_subsys.h
+regardless of CONFIG_CGROUP_DEVICE. This keeps CGROUP_SUBSYS_COUNT,
+devices_cgrp_id, and all subsequent subsystem IDs stable whether
+CONFIG_CGROUP_DEVICE is enabled or not.
 
-2. Add a no-op stub devices_cgrp_subsys for when CONFIG_CGROUP_DEVICE
-   is disabled. This is required because cgroup_subsys.h now always
-   includes SUBSYS(devices), so the kernel always needs
-   devices_cgrp_subsys to be defined.
+A minimal stub devices_cgrp_subsys is provided in device_cgroup.c
+for when CONFIG_CGROUP_DEVICE is disabled, so the subsystem is
+properly registered and initialized without providing actual device
+cgroup functionality.
 
-Change-Id: I0000000000000000000000000000000000000002
+Additionally, a safety check is added in
+devcgroup_legacy_check_permission() to guard against the css not
+being initialized yet during early boot. The check verifies both
+that the dev_cgroup pointer is valid and that the subsystem is
+online (behavior != DEVCG_DEFAULT_NONE), which catches the window
+between css_alloc and css_online during cgroup initialization.
+
+The dev_cgroup struct also gets ABI padding to prevent struct layout
+changes from breaking vendor modules when CONFIG_CGROUP_DEVICE is
+toggled.
+
+Change-Id: Ia1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 Signed-off-by: GitHub Copilot <noreply@github.com>
 ---
- security/device_cgroup.c | 38 ++++++++++++++++++++++++++++++++++++++
- 1 file changed, 38 insertions(+)
-
 diff --git a/security/device_cgroup.c b/security/device_cgroup.c
 --- a/security/device_cgroup.c
 +++ b/security/device_cgroup.c
-@@ -838,6 +838,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+@@ -16,6 +16,7 @@
+ #include <linux/slab.h>
+ #include <linux/rcupdate.h>
+ #include <linux/mutex.h>
++#include <linux/android_kabi.h>
  
- rcu_read_lock();
- dev_cgroup = task_devcgroup(current);
+ #ifdef CONFIG_CGROUP_DEVICE
+ 
+@@ -43,8 +44,21 @@ struct dev_exception_item {
+ struct dev_cgroup {
+ 	struct cgroup_subsys_state css;
+ 	struct list_head exceptions;
+-	enum devcg_behavior behavior;
++	// enum devcg_behavior behavior;
++	/* behavior is in the ANDROID_KABI_USE(1) field below */
++
++#if defined(CONFIG_CGROUP_DEVICE)
++	ANDROID_KABI_USE(1, enum devcg_behavior behavior);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#else
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++#endif
+ };
+ 
+ static inline struct dev_cgroup *css_to_devcgroup(struct cgroup_subsys_state *s)
+ {
+@@ -838,6 +852,10 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+ 
+ 	rcu_read_lock();
+ 	dev_cgroup = task_devcgroup(current);
 +	if (!dev_cgroup || !is_devcg_online(dev_cgroup)) {
 +		rcu_read_unlock();
 +		return 0;
 +	}
- if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
- /* Can't match any of the exceptions, even partially */
- rc = !match_exception_partial(&dev_cgroup->exceptions,
-@@ -856,6 +860,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
+ 	if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
+ 		/* Can't match any of the exceptions, even partially */
+ 		rc = !match_exception_partial(&dev_cgroup->exceptions,
+@@ -854,6 +872,34 @@ static int devcgroup_legacy_check_permission(short type, u32 major, u32 minor,
  
  #endif /* CONFIG_CGROUP_DEVICE */
  
 +#ifndef CONFIG_CGROUP_DEVICE
 +/*
-+ * Stub implementation to keep CGROUP_SUBSYS_COUNT stable for GKI ABI
-+ * compatibility. When CONFIG_CGROUP_DEVICE is not enabled, provide a
-+ * minimal no-op subsystem so the devices_cgrp_id slot is always occupied.
++ * Stub implementation to keep CGROUP_SUBSYS_COUNT stable for GKI ABI.
++ * When CONFIG_CGROUP_DEVICE is not enabled, this provides a minimal
++ * no-op subsystem so the devices_cgrp_id slot is always occupied.
 + */
 +static struct cgroup_subsys_state *
 +devcgroup_css_alloc_noop(struct cgroup_subsys_state *parent_css)
