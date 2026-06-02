@@ -28,10 +28,10 @@ index bef2b9285..a55563381 100644
  
  rcu_read_lock();
  dev_cgroup = task_devcgroup(current);
-+if (!dev_cgroup) {
-+rcu_read_unlock();
-+return 0;
-+}
++	if (!dev_cgroup || !is_devcg_online(dev_cgroup)) {
++		rcu_read_unlock();
++		return 0;
++	}
  if (dev_cgroup->behavior == DEVCG_DEFAULT_ALLOW)
  /* Can't match any of the exceptions, even partially */
  rc = !match_exception_partial(&dev_cgroup->exceptions,
@@ -48,22 +48,22 @@ index bef2b9285..a55563381 100644
 +static struct cgroup_subsys_state *
 +devcgroup_css_alloc_noop(struct cgroup_subsys_state *parent_css)
 +{
-+struct cgroup_subsys_state *css;
++	struct cgroup_subsys_state *css;
 +
-+css = kzalloc(sizeof(*css), GFP_KERNEL);
-+if (!css)
-+return ERR_PTR(-ENOMEM);
-+return css;
++	css = kzalloc(sizeof(*css), GFP_KERNEL);
++	if (!css)
++		return ERR_PTR(-ENOMEM);
++	return css;
 +}
 +
 +static void devcgroup_css_free_noop(struct cgroup_subsys_state *css)
 +{
-+kfree(css);
++	kfree(css);
 +}
 +
 +struct cgroup_subsys devices_cgrp_subsys = {
-+.css_alloc= devcgroup_css_alloc_noop,
-+.css_free= devcgroup_css_free_noop,
++	.css_alloc	= devcgroup_css_alloc_noop,
++	.css_free	= devcgroup_css_free_noop,
 +};
 +#endif /* !CONFIG_CGROUP_DEVICE */
 +
