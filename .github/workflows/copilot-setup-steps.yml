@@ -27,6 +27,8 @@ jobs:
 
       - name: Apply containerd (ctr) patches
         run: |
+          set -euo pipefail
+
           KERNEL_SRC_DIR="$RUNNER_TEMP/kernel-common"
           PATCH_DIR="$GITHUB_WORKSPACE/ctr_patches/a14-6.1"
 
@@ -34,7 +36,9 @@ jobs:
           test -d "$PATCH_DIR"
 
           cd "$KERNEL_SRC_DIR"
-          find "$PATCH_DIR" -type f -name "*.patch" | sort | while read -r patch_file; do
+          mapfile -t patch_files < <(find "$PATCH_DIR" -type f -name "*.patch" | sort)
+
+          for patch_file in "${patch_files[@]}"; do
             echo "Applying $patch_file"
-            patch -p1 --fuzz=3 < "$patch_file"
+            patch -p1 --fuzz=0 < "$patch_file"
           done
