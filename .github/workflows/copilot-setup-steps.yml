@@ -36,7 +36,7 @@ jobs:
           test -d "$PATCH_DIR"
 
           cd "$KERNEL_SRC_DIR"
-          mapfile -t patch_files < <(find "$PATCH_DIR" -type f -name "*.patch" | sort)
+          mapfile -t patch_files < <(find "$PATCH_DIR" -type f -name "*.patch" | LC_ALL=C sort -V)
 
           for patch_file in "${patch_files[@]}"; do
             echo "Applying $patch_file"
