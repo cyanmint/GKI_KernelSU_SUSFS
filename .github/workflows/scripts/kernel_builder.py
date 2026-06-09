@@ -100,6 +100,57 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
     ZRAM_CONFIG_5_10 = "CONFIG_ZSMALLOC=y\nCONFIG_ZRAM=y\nCONFIG_MODULE_SIG=n\nCONFIG_CRYPTO_LZO=y\nCONFIG_ZRAM_DEF_COMP_LZ4KD=y\n"
     ZRAM_CONFIG_COMMON = "CONFIG_CRYPTO_LZ4HC=y\nCONFIG_CRYPTO_LZ4K=y\nCONFIG_CRYPTO_LZ4KD=y\nCONFIG_CRYPTO_842=y\nCONFIG_CRYPTO_LZ4K_OPLUS=y\nCONFIG_ZRAM_WRITEBACK=y\n"
 
+    CONTAINERD_CONFIG = """
+# === Containerd Config ===
+# Namespaces & IPC
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_UTS_NS=y
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_USER_NS=y
+CONFIG_NET_NS=y
+
+# Cgroups
+# CONFIG_CGROUP_DEVICE=y
+# CONFIG_CGROUP_FREEZER=y
+
+# Networking
+CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+CONFIG_IP6_NF_NAT=y
+CONFIG_IP6_NF_TARGET_MASQUERADE=y
+
+# Device Support
+CONFIG_DEVTMPFS=y
+CONFIG_NULL_TTY=y
+
+# Build Configuration
+CONFIG_LTO_CLANG_THIN=y
+"""
+
+    # android version short names for ctr_patches directory mapping
+    _ANDROID_SHORT = {
+        "android12": "a12",
+        "android13": "a13",
+        "android14": "a14",
+        "android15": "a15",
+        "android16": "a16",
+    }
+
+    # Configs to remove when enabling containerd support
+    CONTAINERD_DISABLED_CONFIGS = ("CONFIG_LTO_CLANG_FULL=", "CONFIG_MODULE_SCMVERSION=",
+                                   "# CONFIG_PID_NS is not set")
+
+    # Key containerd config prefixes used for status display
+    CONTAINERD_KEY_CONFIG_PREFIXES = [
+        "CONFIG_UTS_NS", "CONFIG_PID_NS", "CONFIG_IPC_NS", "CONFIG_USER_NS",
+        "CONFIG_NET_NS", "CONFIG_SYSVIPC", "CONFIG_POSIX_MQUEUE",
+        "CONFIG_NETFILTER_XT_TARGET_CHECKSUM", "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE",
+        "CONFIG_IP6_NF_NAT", "CONFIG_IP6_NF_TARGET_MASQUERADE",
+        "CONFIG_DEVTMPFS", "CONFIG_NULL_TTY", "CONFIG_LTO_CLANG_THIN",
+    ]
+
     def __init__(self, config: BuildConfig, workspace: str):
         self.config = config
         self.workspace = Path(workspace)
@@ -327,6 +378,31 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
             if p.exists():
                 self._run_cmd(f"patch -p1 -F 3 < {p}", check=False)
 
+    def apply_containerd_patches(self):
+        if not self.config.use_containerd:
+            return
+        logger.info("=== 应用 Containerd 补丁 ===")
+        av_short = self._ANDROID_SHORT.get(self.config.android_version, "")
+        if not av_short:
+            logger.warning(f"未知 Android 版本 {self.config.android_version}，跳过 Containerd 补丁")
+            return
+        patch_dir = Path(__file__).resolve().parents[3] / "ctr_patches" / f"{av_short}-{self.config.kernel_version}"
+        if not patch_dir.exists():
+            logger.warning(f"Containerd 补丁目录不存在: {patch_dir}，跳过")
+            return
+        common_dir = self.work_dir / "common"
+        self._chdir(common_dir)
+        patch_files = sorted(patch_dir.rglob("*.patch"))
+        if not patch_files:
+            logger.warning(f"未找到 Containerd 补丁文件: {patch_dir}")
+            return
+        for patch_file in patch_files:
+            logger.info(f"应用 Containerd 补丁: {patch_file.name}")
+            self._run_cmd(f"patch -p1 --fuzz=3 < {patch_file}", check=False)
+        self._chdir(self.work_dir)
+        logger.info("=== Containerd 补丁应用完成 ===")
+
+
     def apply_task_mmu_fixes(self):
         logger.info("=== 应用 task_mmu.c 修复 ===")
         self._chdir(self.work_dir / "common")
@@ -387,6 +463,9 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
             with open(config_file, "a") as f:
                 f.write("CONFIG_DEFAULT_BBR=y\n")
 
+        if self.config.use_containerd:
+            self._configure_containerd(config_file)
+
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
             with open(build_config, "r") as f:
@@ -429,6 +508,23 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
         config_file = self.work_dir / "common/arch/arm64/configs/gki_defconfig"
         with open(config_file, "a") as f:
             f.write("CONFIG_MODULE_SIG_FORCE=n\n")
+
+    def _configure_containerd(self, config_file: Path):
+        logger.info("=== 配置 Containerd 内核选项 ===")
+        # Remove configs that must be disabled for containerd
+        with open(config_file, "r") as f:
+            lines = f.readlines()
+        filtered = []
+        for line in lines:
+            stripped = line.strip()
+            if any(stripped.startswith(p) for p in self.CONTAINERD_DISABLED_CONFIGS):
+                continue
+            filtered.append(line)
+        with open(config_file, "w") as f:
+            f.writelines(filtered)
+        # Append required containerd configs
+        with open(config_file, "a") as f:
+            f.write(self.CONTAINERD_CONFIG)
 
     def configure_kernel_name(self):
         logger.info("=== 配置内核名称 ===")
@@ -535,6 +631,7 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
             "CONFIG_BBG": "Baseband-guard",
             "CONFIG_BBR": "BBR",
             "CONFIG_ZRAM": "ZRAM",
+            "CONFIG_UTS_NS": "Containerd",
         }
         
         logger.info("关键配置状态:")
@@ -556,6 +653,14 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
                 logger.info("ZRAM 相关配置:")
                 for zc in sorted(zram_configs):
                     logger.info(f"  -> {zc}")
+
+        # 显示 Containerd 相关配置
+        if self.config.use_containerd:
+            ctr_configs = [c for c in config_lines if any(c.startswith(p) for p in self.CONTAINERD_KEY_CONFIG_PREFIXES)]
+            if ctr_configs:
+                logger.info("Containerd 相关配置:")
+                for cc in sorted(ctr_configs):
+                    logger.info(f"  -> {cc}")
         
         logger.info("-" * 60)
 
@@ -705,6 +810,7 @@ CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
             self.apply_susfs_patches()
             self.apply_sukisu_patches()
             self.apply_zram_patches()
+            self.apply_containerd_patches()
             self.apply_task_mmu_fixes()
             self.configure_kernel()
             self.configure_kernel_name()
