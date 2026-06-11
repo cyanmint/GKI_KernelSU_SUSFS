@@ -121,6 +121,7 @@ python build.py --list-matrix
 | [LZ4KD](https://github.com/ShirkNeko/SukiSU_patch/tree/main/other) | 来自华为源码的 ZRAM 算法 |
 | [KPM](https://github.com/bmax121/KernelPatch) | 内核模块支持 |
 | [Baseband-guard](https://github.com/vc-teahouse/Baseband-guard) | 基带安全防护 |
+| **Containerd Support** | LXC/Docker 容器支持（通过 `--containerd` 启用） |
 
 <details>
 
@@ -129,6 +130,45 @@ python build.py --list-matrix
 LZ4K、LZ4HC、deflate、842、lz4k_oplus
 
 </details>
+
+---
+
+## 故障排除
+
+### 启动循环 (Boot Loop)
+
+如果刷入内核后设备无法启动并持续重启：
+
+1. **查看内核日志**
+   - 使用 `adb logcat` 或通过 UART 串口查看日志
+   - 寻找 "Kernel panic" 或 "Attempted to kill init" 消息
+
+2. **最常见原因：缺少 fstab 配置**
+   - 症状：日志显示 "failed to read default fstab"
+   - 解决方案：参见 [`BOOT_LOOP_FIX.md`](BOOT_LOOP_FIX.md) 详细指南
+   - 该文档包含：
+     * 问题根本原因分析
+     * 针对生产设备的解决方案
+     * 针对模拟器/虚拟设备的解决方案
+     * 如何创建正确的 fstab
+     * 如何验证 boot.img 配置
+
+3. **增强的错误诊断**
+   - 使用 `--containerd` 构建的内核包含增强的诊断补丁
+   - 当 init 退出时会显示详细的错误信息和解决建议
+   - 参见 [`ctr_patches/INIT_EXIT_DIAGNOSTICS.md`](ctr_patches/INIT_EXIT_DIAGNOSTICS.md) 了解详情
+
+4. **紧急恢复**
+   - 按照下方的"紧急救援指南"恢复到原始内核
+   - 确保您的设备具有正确的 fstab 配置后再次尝试
+
+### Containerd 支持问题
+
+如果使用 `--containerd` 后出现问题：
+
+1. 检查您的设备是否支持 GKI
+2. 确保 boot.img 包含完整的 ramdisk
+3. 参阅 `ctr_patches/a14-6.1/README.md`（或对应 Android 版本的文档）
 
 ---
 

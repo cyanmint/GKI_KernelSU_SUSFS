@@ -6,7 +6,9 @@ Branch: `deprecated/android14-6.1-2025-02` from https://android.googlesource.com
 ## Description
 These patches enable LXC and Docker container support on Android 14 GKI kernels (6.1). They modify the kernel to support container namespaces, overlayfs, and other necessary features while maintaining ABI compatibility.
 
-## What These Patches Do
+## Patch Categories
+
+### Core Containerd Patches (Always Applied)
 
 1. **gki_use_Android_ABI_padding_for_SYSVIPC_task_struct_fields.patch** - Use Android ABI padding for SYSVIPC task_struct fields
    - Enables `CONFIG_SYSVIPC=y` without breaking module ABI compatibility
@@ -37,6 +39,14 @@ These patches enable LXC and Docker container support on Android 14 GKI kernels 
 8. **cgroup_subsys_guarded_devices.patch** - Keep devices cgroup subsystem guarded by `CONFIG_CGROUP_DEVICE`
    - Preserves upstream subsystem registration behavior
    - Adds clarifying comment only; does not force subsystem ID changes
+
+### Diagnostic Patches (Automatically Applied)
+
+9. **kernel/exit.c.debug.patch** - Enhanced init exit diagnostics
+   - Provides detailed diagnostic messages when init exits
+   - Helps identify root cause of boot loops (e.g., missing fstab)
+   - No functional changes, only improved error messages
+   - See `../INIT_EXIT_DIAGNOSTICS.md` for details
 
 ## How It Works
 
