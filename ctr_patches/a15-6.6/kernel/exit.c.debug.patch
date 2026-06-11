@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kernel Build System <build@system>
+Date: Mon, 2 Jun 2026 07:49:00 +0000
+Subject: [PATCH] kernel/exit: Add detailed diagnostics when init exits
+
+Provide detailed diagnostic information when init (PID 1) exits,
+helping to debug boot loop issues caused by userspace configuration
+problems like missing fstab entries.
+
+This patch enhances the panic message with:
+1. Exit code breakdown (signal and exit status)
+2. Common causes for init failures
+3. Debug suggestions and next steps
+4. References to documentation
+
+This helps diagnose boot loops without requiring serial console access
+by making the panic message more informative.
+
+Change-Id: I0000000000000000000000000000000000000000
+---
+ kernel/exit.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 000000000000..111111111111 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -700,6 +700,36 @@ void __noreturn do_exit(long code)
+ 	if (unlikely(is_global_init(tsk))) {
+ 		const char *panic_reason = "Attempted to kill init!";
+ 		
++		/*
++		 * Provide detailed diagnostics to help debug init failures
++		 * This is especially useful for boot loops caused by missing fstab
++		 */
++		pr_err("====================================================\n");
++		pr_err("INIT PROCESS EXITED\n");
++		pr_err("====================================================\n");
++		pr_err("Init (PID 1) exited with code: 0x%08lx\n", code);
++		pr_err("Exit code breakdown:\n");
++		pr_err("  Signal: %ld (0x%02lx)\n", (code >> 8) & 0xFF, (code >> 8) & 0xFF);
++		pr_err("  Exit status: %ld\n", code & 0xFF);
++		pr_err("\n");
++		pr_err("Common causes:\n");
++		pr_err("1. Missing fstab (check device tree and ramdisk)\n");
++		pr_err("2. Corrupted or incompatible init binary\n");
++		pr_err("3. Missing system partitions\n");
++		pr_err("4. SELinux policy issues\n");
++		pr_err("5. Ramdisk/kernel version mismatch\n");
++		pr_err("\n");
++		pr_err("Check kernel log above for init error messages.\n");
++		pr_err("For fstab issues, see BOOT_LOOP_FIX.md\n");
++		pr_err("\n");
++		pr_err("If testing on emulator/virtual device:\n");
++		pr_err("  - Ensure proper fstab in ramdisk or device tree\n");
++		pr_err("  - Use complete Android system image, not bare kernel\n");
++		pr_err("  - Check that device tree is compatible with init\n");
++		pr_err("====================================================\n");
++		pr_err("\n");
++		pr_err("System will now panic and reboot...\n");
++		
+ 		panic("%s exitcode=0x%08lx\n", panic_reason, code);
+ 	}
+--
+2.40.0
