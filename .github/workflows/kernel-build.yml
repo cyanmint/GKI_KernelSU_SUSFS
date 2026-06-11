@@ -80,6 +80,11 @@ on:
         required: true
         type: boolean
         default: false
+      use_containerd:
+        description: '启用 Containerd 支持'
+        required: true
+        type: boolean
+        default: true
       supp_op:
         description: '启用 OnePlus 8E 支持'
         required: true
@@ -164,6 +169,7 @@ jobs:
           [ "${{ github.event.inputs.use_zram }}" = "true" ] && ARGS="$ARGS --zram"
           [ "${{ github.event.inputs.use_kpm }}" = "false" ] && ARGS="$ARGS --no-kpm"
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
+          [ "${{ github.event.inputs.use_containerd }}" = "false" ] && ARGS="$ARGS --no-containerd"
           [ "${{ github.event.inputs.supp_op }}" = "true" ] && ARGS="$ARGS --op8e"
           [ "${{ github.event.inputs.set_defbbr }}" = "true" ] && ARGS="$ARGS --bbr"
           [ -z "${{ github.event.inputs.kernelsu_commit }}" ] || ARGS="$ARGS --ksu-commit=${{ github.event.inputs.kernelsu_commit }}"

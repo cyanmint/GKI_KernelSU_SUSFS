@@ -1,0 +1,11 @@
+diff --git a/include/linux/cgroup_subsys.h b/include/linux/cgroup_subsys.h
+--- a/include/linux/cgroup_subsys.h
++++ b/include/linux/cgroup_subsys.h
+@@ -29,6 +29,7 @@
+ SUBSYS(memory)
+ #endif
+ 
++/* Keep devices subsystem gated by CONFIG_CGROUP_DEVICE. */
+ #if IS_ENABLED(CONFIG_CGROUP_DEVICE)
+ SUBSYS(devices)
+ #endif
