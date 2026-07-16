@@ -111,6 +111,8 @@ class BuildConfig:
     support_op8e: bool = False
     set_default_bbr: bool = False
     use_containerd: bool = True
+    use_susfs: bool = True
+    use_sukisu: bool = True
     make_release: bool = True
     custom_version: Optional[str] = None
     revision: Optional[str] = None

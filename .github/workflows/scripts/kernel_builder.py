@@ -333,6 +333,9 @@ CONFIG_LTO_CLANG_THIN=y
                 f.write(content)
 
     def apply_susfs_patches(self):
+        if not self.config.use_susfs:
+            logger.info("=== 跳过 SUSFS 补丁 ===")
+            return
         logger.info("=== 应用 SUSFS 补丁 ===")
         self._chdir(self.work_dir)
         common_dir = self.work_dir / "common"
@@ -353,6 +356,9 @@ CONFIG_LTO_CLANG_THIN=y
                 self._chdir(self.work_dir)
 
     def apply_sukisu_patches(self):
+        if not self.config.use_sukisu:
+            logger.info("=== 跳过 SukiSU 补丁 ===")
+            return
         logger.info("=== 应用 SukiSU 补丁 ===")
         self._chdir(self.work_dir / "common")
         hooks_patch = self.sukisu_patch_dir / "69_hide_stuff.patch"

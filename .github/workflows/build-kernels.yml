@@ -50,6 +50,16 @@ on:
         required: true
         type: boolean
         default: true
+      apply_susfs:
+        description: '应用 SUSFS 补丁'
+        required: true
+        type: boolean
+        default: true
+      apply_sukisu:
+        description: '应用 SukiSU 补丁'
+        required: true
+        type: boolean
+        default: true
       make_release:
         description: '创建 GitHub Release'
         required: true
@@ -164,6 +174,8 @@ jobs:
           [ "${{ github.event.inputs.use_kpm }}" = "false" ] && ARGS="$ARGS --no-kpm"
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           [ "${{ github.event.inputs.use_containerd }}" = "false" ] && ARGS="$ARGS --no-containerd"
+          [ "${{ github.event.inputs.apply_susfs }}" = "false" ] && ARGS="$ARGS --no-susfs"
+          [ "${{ github.event.inputs.apply_sukisu }}" = "false" ] && ARGS="$ARGS --no-sukisu"
           [ -z "${{ github.event.inputs.kernelsu_commit }}" ] || ARGS="$ARGS --ksu-commit=${{ github.event.inputs.kernelsu_commit }}"
           [ -z "${{ github.event.inputs.susfs_commit }}" ] || ARGS="$ARGS --susfs-commit=${{ github.event.inputs.susfs_commit }}"
           [ -z "${{ github.event.inputs.custom_version }}" ] || ARGS="$ARGS --custom-version=${{ github.event.inputs.custom_version }}"
