@@ -468,7 +468,15 @@ CONFIG_LTO_CLANG_THIN=y
             # 写入 "=n" 才能真正禁用，否则即使不应用 SukiSU 补丁，驱动仍会
             # 按默认值被编译进内核。
             f.write("CONFIG_KSU=y\n" if self.config.use_sukisu else "CONFIG_KSU=n\n")
-            if self.config.use_susfs:
+
+            # CONFIG_KSU_SUSFS 依赖 CONFIG_KSU（depends on KSU），禁用 SukiSU
+            # 时 SUSFS 也必然无法生效，因此需要一并禁用，避免出现请求了 SUSFS
+            # 却又禁用 SukiSU 的不一致配置。
+            enable_susfs = self.config.use_susfs and self.config.use_sukisu
+            if self.config.use_susfs and not self.config.use_sukisu:
+                logger.warning("SUSFS 依赖 SukiSU，SukiSU 被禁用时 SUSFS 也将被禁用")
+
+            if enable_susfs:
                 f.write(self.SUSFS_CONFIG_TEMPLATE)
                 if self.config.kernel_version != "6.6":
                     f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
