@@ -60,7 +60,6 @@ class ShellCommand:
 class KernelBuilder:
     KERNEL_CONFIG_TEMPLATE = """
 # === KernelSU Config ===
-CONFIG_KSU=y
 CONFIG_KPM=y
 CONFIG_KSU_SUSFS_SUS_SU=n
 
@@ -82,9 +81,13 @@ CONFIG_TCP_CONG_WESTWOOD=n
 CONFIG_TCP_CONG_HTCP=n
 """
 
-    # SukiSU-Ultra 的 drivers/kernelsu 代码在 CONFIG_KSU_SUSFS 开启时会
-    # 无条件 #include <linux/susfs.h>，因此禁用 SUSFS 补丁时必须同时关闭
-    # 该配置，否则编译会因找不到头文件而失败。
+    # SukiSU-Ultra "builtin" 分支的 kernel/Kconfig 中 CONFIG_KSU 和
+    # CONFIG_KSU_SUSFS 均为 "default y"（仅 depends on KSU），因此即使
+    # 禁用 SukiSU 或 SUSFS，只要没有在 gki_defconfig 中显式写入对应的
+    # "=n"，olddefconfig 仍会按 Kconfig 默认值将其启用。CONFIG_KSU_SUSFS=y
+    # 时 drivers/kernelsu/kernel_includes.h 会 #include <linux/susfs.h>，
+    # 而该头文件只有在应用 susfs4ksu 补丁时才会被拷贝进内核树，因此必须显式
+    # 关闭这两个配置项才能真正禁用 SukiSU/SUSFS。
     SUSFS_CONFIG_TEMPLATE = """
 # === SUSFS Config ===
 CONFIG_KSU_SUSFS=y
@@ -461,12 +464,21 @@ CONFIG_LTO_CLANG_THIN=y
 
         with open(config_file, "a") as f:
             f.write(self.KERNEL_CONFIG_TEMPLATE)
+            # CONFIG_KSU 在 SukiSU-Ultra 的 Kconfig 中 "default y"，必须显式
+            # 写入 "=n" 才能真正禁用，否则即使不应用 SukiSU 补丁，驱动仍会
+            # 按默认值被编译进内核。
+            f.write("CONFIG_KSU=y\n" if self.config.use_sukisu else "CONFIG_KSU=n\n")
             if self.config.use_susfs:
                 f.write(self.SUSFS_CONFIG_TEMPLATE)
                 if self.config.kernel_version != "6.6":
                     f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
                 else:
                     f.write("CONFIG_KSU_SUSFS_SUS_PATH=n\n")
+            else:
+                # 同样，CONFIG_KSU_SUSFS 默认值也是 y，必须显式关闭，
+                # 否则 kernel_includes.h 会尝试 #include 不存在的
+                # <linux/susfs.h>，导致编译失败。
+                f.write("CONFIG_KSU_SUSFS=n\n")
 
         if self.config.use_zram:
             self._configure_zram()
