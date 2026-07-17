@@ -175,7 +175,7 @@ jobs:
           [ "${{ github.event.inputs.use_kpm }}" = "false" ] && ARGS="$ARGS --no-kpm"
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           [ "${{ github.event.inputs.use_containerd }}" = "false" ] && ARGS="$ARGS --no-containerd"
-          [ "${{ github.event.inputs.enable_sukisu_susfs }}" = "false" ] && ARGS="$ARGS --no-susfs --no-sukisu"
+          [ "${{ github.event.inputs.enable_sukisu_susfs }}" = "false" ] && ARGS="$ARGS --no-sukisu-susfs"
           [ "${{ github.event.inputs.supp_op }}" = "true" ] && ARGS="$ARGS --op8e"
           [ "${{ github.event.inputs.set_defbbr }}" = "true" ] && ARGS="$ARGS --bbr"
           [ -z "${{ github.event.inputs.kernelsu_commit }}" ] || ARGS="$ARGS --ksu-commit=${{ github.event.inputs.kernelsu_commit }}"
