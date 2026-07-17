@@ -243,7 +243,7 @@ CONFIG_LTO_CLANG_THIN=y
         self._chdir(self.work_dir)
         formatted_branch = self.config.formatted_branch
 
-        self._run_cmd(f"$REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest "
+        self._run_cmd(f"$REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest "
                      f"-b common-{formatted_branch} --repo-rev=v2.16", check=False)
 
         remote = subprocess.run(f"git ls-remote https://android.googlesource.com/kernel/common {formatted_branch}",
