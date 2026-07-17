@@ -80,7 +80,12 @@ CONFIG_NET_SCH_FQ=y
 CONFIG_TCP_CONG_BIC=n
 CONFIG_TCP_CONG_WESTWOOD=n
 CONFIG_TCP_CONG_HTCP=n
+"""
 
+    # SukiSU-Ultra 的 drivers/kernelsu 代码在 CONFIG_KSU_SUSFS 开启时会
+    # 无条件 #include <linux/susfs.h>，因此禁用 SUSFS 补丁时必须同时关闭
+    # 该配置，否则编译会因找不到头文件而失败。
+    SUSFS_CONFIG_TEMPLATE = """
 # === SUSFS Config ===
 CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
@@ -456,10 +461,12 @@ CONFIG_LTO_CLANG_THIN=y
 
         with open(config_file, "a") as f:
             f.write(self.KERNEL_CONFIG_TEMPLATE)
-            if self.config.kernel_version != "6.6":
-                f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
-            else:
-                f.write("CONFIG_KSU_SUSFS_SUS_PATH=n\n")
+            if self.config.use_susfs:
+                f.write(self.SUSFS_CONFIG_TEMPLATE)
+                if self.config.kernel_version != "6.6":
+                    f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
+                else:
+                    f.write("CONFIG_KSU_SUSFS_SUS_PATH=n\n")
 
         if self.config.use_zram:
             self._configure_zram()
