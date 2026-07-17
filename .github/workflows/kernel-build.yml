@@ -85,6 +85,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_sukisu_susfs:
+        description: '启用 SukiSU 和 SUSFS (同时启用/禁用)'
+        required: true
+        type: boolean
+        default: true
       supp_op:
         description: '启用 OnePlus 8E 支持'
         required: true
@@ -170,6 +175,7 @@ jobs:
           [ "${{ github.event.inputs.use_kpm }}" = "false" ] && ARGS="$ARGS --no-kpm"
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           [ "${{ github.event.inputs.use_containerd }}" = "false" ] && ARGS="$ARGS --no-containerd"
+          [ "${{ github.event.inputs.enable_sukisu_susfs }}" = "false" ] && ARGS="$ARGS --no-sukisu-susfs"
           [ "${{ github.event.inputs.supp_op }}" = "true" ] && ARGS="$ARGS --op8e"
           [ "${{ github.event.inputs.set_defbbr }}" = "true" ] && ARGS="$ARGS --bbr"
           [ -z "${{ github.event.inputs.kernelsu_commit }}" ] || ARGS="$ARGS --ksu-commit=${{ github.event.inputs.kernelsu_commit }}"

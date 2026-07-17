@@ -60,7 +60,6 @@ class ShellCommand:
 class KernelBuilder:
     KERNEL_CONFIG_TEMPLATE = """
 # === KernelSU Config ===
-CONFIG_KSU=y
 CONFIG_KPM=y
 CONFIG_KSU_SUSFS_SUS_SU=n
 
@@ -80,7 +79,16 @@ CONFIG_NET_SCH_FQ=y
 CONFIG_TCP_CONG_BIC=n
 CONFIG_TCP_CONG_WESTWOOD=n
 CONFIG_TCP_CONG_HTCP=n
+"""
 
+    # SukiSU-Ultra "builtin" 分支的 kernel/Kconfig 中 CONFIG_KSU 和
+    # CONFIG_KSU_SUSFS 均为 "default y"（仅 depends on KSU），因此即使
+    # 禁用 SukiSU 或 SUSFS，只要没有在 gki_defconfig 中显式写入对应的
+    # "=n"，olddefconfig 仍会按 Kconfig 默认值将其启用。CONFIG_KSU_SUSFS=y
+    # 时 drivers/kernelsu/kernel_includes.h 会 #include <linux/susfs.h>，
+    # 而该头文件只有在应用 susfs4ksu 补丁时才会被拷贝进内核树，因此必须显式
+    # 关闭这两个配置项才能真正禁用 SukiSU/SUSFS。
+    SUSFS_CONFIG_TEMPLATE = """
 # === SUSFS Config ===
 CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
@@ -243,7 +251,7 @@ CONFIG_LTO_CLANG_THIN=y
         self._chdir(self.work_dir)
         formatted_branch = self.config.formatted_branch
 
-        self._run_cmd(f"$REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest "
+        self._run_cmd(f"$REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest "
                      f"-b common-{formatted_branch} --repo-rev=v2.16", check=False)
 
         remote = subprocess.run(f"git ls-remote https://android.googlesource.com/kernel/common {formatted_branch}",
@@ -333,6 +341,9 @@ CONFIG_LTO_CLANG_THIN=y
                 f.write(content)
 
     def apply_susfs_patches(self):
+        if not self.config.use_sukisu_susfs:
+            logger.info("=== 跳过 SUSFS 补丁 ===")
+            return
         logger.info("=== 应用 SUSFS 补丁 ===")
         self._chdir(self.work_dir)
         common_dir = self.work_dir / "common"
@@ -353,6 +364,9 @@ CONFIG_LTO_CLANG_THIN=y
                 self._chdir(self.work_dir)
 
     def apply_sukisu_patches(self):
+        if not self.config.use_sukisu_susfs:
+            logger.info("=== 跳过 SukiSU 补丁 ===")
+            return
         logger.info("=== 应用 SukiSU 补丁 ===")
         self._chdir(self.work_dir / "common")
         hooks_patch = self.sukisu_patch_dir / "69_hide_stuff.patch"
@@ -450,10 +464,24 @@ CONFIG_LTO_CLANG_THIN=y
 
         with open(config_file, "a") as f:
             f.write(self.KERNEL_CONFIG_TEMPLATE)
-            if self.config.kernel_version != "6.6":
-                f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
+            # CONFIG_KSU 在 SukiSU-Ultra 的 Kconfig 中 "default y"，必须显式
+            # 写入 "=n" 才能真正禁用，否则即使不应用 SukiSU 补丁，驱动仍会
+            # 按默认值被编译进内核。
+            f.write("CONFIG_KSU=y\n" if self.config.use_sukisu_susfs else "CONFIG_KSU=n\n")
+
+            # CONFIG_KSU_SUSFS 依赖 CONFIG_KSU（depends on KSU），SukiSU 和
+            # SUSFS 现已合并为单一开关，同步启用/禁用。
+            if self.config.use_sukisu_susfs:
+                f.write(self.SUSFS_CONFIG_TEMPLATE)
+                if self.config.kernel_version != "6.6":
+                    f.write("CONFIG_KSU_SUSFS_SUS_PATH=y\n")
+                else:
+                    f.write("CONFIG_KSU_SUSFS_SUS_PATH=n\n")
             else:
-                f.write("CONFIG_KSU_SUSFS_SUS_PATH=n\n")
+                # 同样，CONFIG_KSU_SUSFS 默认值也是 y，必须显式关闭，
+                # 否则 kernel_includes.h 会尝试 #include 不存在的
+                # <linux/susfs.h>，导致编译失败。
+                f.write("CONFIG_KSU_SUSFS=n\n")
 
         if self.config.use_zram:
             self._configure_zram()
@@ -538,18 +566,32 @@ CONFIG_LTO_CLANG_THIN=y
         if setlocalversion.exists():
             with open(setlocalversion, "r") as f:
                 content = f.read()
+
             if safe_custom_version:
                 lines = content.split('\n')
+                # Only the final "echo \"$res\"" line (with no trailing
+                # redirection/text) actually produces the kernel release
+                # string used by uname -a. Other occurrences (e.g. the
+                # "echo \"$res\" >.scmversion" line used by --save-scmversion)
+                # must not be touched, otherwise the custom version never
+                # reaches the built kernel. Take the last match in case the
+                # exact line appears more than once.
+                target_idx = None
                 for i, line in enumerate(lines):
-                    if 'echo "$res"' in line and not line.strip().startswith('#'):
-                        lines[i] = f'\techo "{safe_custom_version}$res"'
-                        break
-                with open(setlocalversion, "w") as f:
-                    f.write('\n'.join(lines))
+                    if line.strip() == 'echo "$res"':
+                        target_idx = i
+                if target_idx is not None:
+                    target_line = lines[target_idx]
+                    leading_whitespace_count = len(target_line) - len(target_line.lstrip())
+                    indent = target_line[:leading_whitespace_count]
+                    lines[target_idx] = f'{indent}echo "{safe_custom_version}$res"'
+                content = '\n'.join(lines)
+
             if "-dirty" in content:
                 content = content.replace("-dirty", "")
-                with open(setlocalversion, "w") as f:
-                    f.write(content)
+
+            with open(setlocalversion, "w") as f:
+                f.write(content)
 
         import datetime
         current_time = datetime.datetime.utcnow().strftime("%a %b %d %H:%M:%S UTC %Y")
