@@ -551,18 +551,32 @@ CONFIG_LTO_CLANG_THIN=y
         if setlocalversion.exists():
             with open(setlocalversion, "r") as f:
                 content = f.read()
+
             if safe_custom_version:
                 lines = content.split('\n')
+                # Only the final "echo \"$res\"" line (with no trailing
+                # redirection/text) actually produces the kernel release
+                # string used by uname -a. Other occurrences (e.g. the
+                # "echo \"$res\" >.scmversion" line used by --save-scmversion)
+                # must not be touched, otherwise the custom version never
+                # reaches the built kernel. Take the last match in case the
+                # exact line appears more than once.
+                target_idx = None
                 for i, line in enumerate(lines):
-                    if 'echo "$res"' in line and not line.strip().startswith('#'):
-                        lines[i] = f'\techo "{safe_custom_version}$res"'
-                        break
-                with open(setlocalversion, "w") as f:
-                    f.write('\n'.join(lines))
+                    if line.strip() == 'echo "$res"':
+                        target_idx = i
+                if target_idx is not None:
+                    target_line = lines[target_idx]
+                    leading_whitespace_count = len(target_line) - len(target_line.lstrip())
+                    indent = target_line[:leading_whitespace_count]
+                    lines[target_idx] = f'{indent}echo "{safe_custom_version}$res"'
+                content = '\n'.join(lines)
+
             if "-dirty" in content:
                 content = content.replace("-dirty", "")
-                with open(setlocalversion, "w") as f:
-                    f.write(content)
+
+            with open(setlocalversion, "w") as f:
+                f.write(content)
 
         import datetime
         current_time = datetime.datetime.utcnow().strftime("%a %b %d %H:%M:%S UTC %Y")
