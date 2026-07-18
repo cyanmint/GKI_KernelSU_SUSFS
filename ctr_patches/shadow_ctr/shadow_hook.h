@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * shadow_hook - tiny ftrace-based function hijacking helper shared by the
- * shadowns / shadow_sysvipc / shadow_mqueue / shadow_cgdevices modules.
+ * shadow_ns / shadow_sysvipc / shadow_mqueue / shadow_cgdevices subsystems.
  *
  * Motivation
  * ----------

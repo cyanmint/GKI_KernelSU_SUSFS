@@ -1,7 +1,9 @@
 # shadow_mqueue — simulated POSIX message queue subsystem
 
-`shadow_mqueue` is a standalone loadable kernel module that supplies a working
-POSIX mqueue implementation on kernels built without `CONFIG_POSIX_MQUEUE`.
+`shadow_mqueue` is one of the subsystems linked into the combined
+`shadow_ctr.ko` module (see `README.md` in this directory for the umbrella
+overview). It supplies a working POSIX mqueue implementation on kernels built
+without `CONFIG_POSIX_MQUEUE`.
 
 It now works in **two** ways:
 
@@ -26,7 +28,7 @@ block with timeout semantics close to native `mq_timedsend(2)` /
 ## Architecture
 
 ```
-  stock runtime             hooked mq_* syscalls           shadow_mqueue.ko
+  stock runtime             hooked mq_* syscalls           shadow_ctr.ko
   ┌───────────────┐         ┌────────────────────┐         ┌──────────────────────┐
   │ mq_open()     │────────▶│ __arm64_sys_mq_*   │────────▶│ shadow internal engine│
   │ mq_timedsend()│         │ (or sys_mq_*)      │         │ name hash + waitqs    │
@@ -88,7 +90,7 @@ Key pieces:
 ## Building
 
 ```sh
-cd ctr_patches/shadow_mqueue
+cd ctr_patches/shadow_ctr
 make KDIR=/path/to/kernel/build
 ```
 
@@ -101,7 +103,7 @@ make -C /path/to/kernel/build M=$(pwd) ARCH=arm64 LLVM=1 modules
 ## Loading
 
 ```sh
-insmod shadow_mqueue.ko
+insmod shadow_ctr.ko
 dmesg | grep shadow_mqueue
 ```
 

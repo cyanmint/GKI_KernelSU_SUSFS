@@ -17,7 +17,7 @@
  * kernel built without several of those options (because they cannot be
  * enabled without breaking GKI KMI compatibility, or simply were not turned
  * on), those preflight checks fail even though the shadow_* modules
- * (shadowns, shadow_sysvipc, shadow_mqueue, shadow_cgdevices) already
+ * (shadow_ns, shadow_sysvipc, shadow_mqueue, shadow_cgdevices) already
  * provide (partial, honestly-documented) behaviour for the corresponding
  * subsystem via transparent syscall hijacking.
  *

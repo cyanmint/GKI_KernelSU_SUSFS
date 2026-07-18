@@ -1,8 +1,10 @@
 # shadow_sysvipc — simulated System V IPC subsystem
 
-`shadow_sysvipc` is a **standalone loadable kernel module** that keeps enough
-SysV IPC bookkeeping alive on a kernel built **without `CONFIG_SYSVIPC`** for
-container runtimes to stop tripping over `-ENOSYS` on the resource-management
+`shadow_sysvipc` is one of the subsystems linked into the combined
+`shadow_ctr.ko` module (see `README.md` in this directory for the umbrella
+overview). It keeps enough SysV IPC bookkeeping alive on a kernel built
+**without `CONFIG_SYSVIPC`** for container runtimes to stop tripping over
+`-ENOSYS` on the resource-management
 syscalls.
 
 It now has **two front doors** backed by the same internal object registry:
@@ -139,9 +141,9 @@ with real `CONFIG_SYSVIPC=y`.
 ## Building
 
 ```sh
-cd ctr_patches/shadow_sysvipc
+cd ctr_patches/shadow_ctr
 make KDIR=/path/to/kernel/build
-sudo insmod shadow_sysvipc.ko
+sudo insmod shadow_ctr.ko
 ls -l /dev/shadow_sysvipc
 ```
 
@@ -154,7 +156,7 @@ make -C /path/to/kernel/build M=$(pwd) ARCH=arm64 LLVM=1 modules
 ## Loading
 
 ```sh
-insmod shadow_sysvipc.ko
+insmod shadow_ctr.ko
 # /dev/shadow_sysvipc still exists for the ioctl ABI
 # stock userspace can now call msgget/msgctl/semget/semctl/shmget/shmctl normally
 ```

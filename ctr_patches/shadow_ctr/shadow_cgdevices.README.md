@@ -1,8 +1,9 @@
 # shadow_cgdevices — simulated cgroup device controller
 
-`shadow_cgdevices` is a **standalone loadable kernel module** that keeps a
-shadow copy of cgroup-v1-style device allow/deny rules and can now enforce that
-policy transparently at real device-open points.
+`shadow_cgdevices` is one of the subsystems linked into the combined
+`shadow_ctr.ko` module (see `README.md` in this directory for the umbrella
+overview). It keeps a shadow copy of cgroup-v1-style device allow/deny rules
+and can now enforce that policy transparently at real device-open points.
 
 It is still **not** a full replacement for the native `devices` cgroup v1
 controller. The practical goal is narrower: keep rule authorship in a small,
@@ -30,7 +31,7 @@ policy check for device opens after the container is running.
 ## Architecture
 
 ```text
-OCI hook / init helper                     shadow_cgdevices.ko
+OCI hook / init helper                     shadow_ctr.ko
 ┌───────────────────────────────┐   ioctl  ┌─────────────────────────────────┐
 │ open /dev/shadow_cgdevices    │────────▶│ misc device session              │
 │ CREATE shadow cgroup          │         │  owned[] -> shadow_cgroup        │
@@ -139,9 +140,9 @@ Other limitations that remain:
 ## Building
 
 ```sh
-cd ctr_patches/shadow_cgdevices
+cd ctr_patches/shadow_ctr
 make KDIR=/path/to/kernel/build
-sudo insmod shadow_cgdevices.ko
+sudo insmod shadow_ctr.ko
 ls -l /dev/shadow_cgdevices
 ```
 
@@ -154,7 +155,7 @@ make -C /path/to/kernel/build M=$(pwd) ARCH=arm64 LLVM=1 modules
 ## Loading
 
 ```sh
-insmod shadow_cgdevices.ko
+insmod shadow_ctr.ko
  dmesg | grep shadow_cgdevices
 ```
 

@@ -1,8 +1,9 @@
-# shadowns — simulated ("shadow") namespace subsystem
+# shadow_ns — simulated ("shadow") namespace subsystem
 
-`shadowns` is a **standalone loadable kernel module** that provides an
-independent, reference-counted set of *shadow* namespace objects on kernels that
-were built without the native `CONFIG_*_NS` features.
+`shadow_ns` is one of the subsystems linked into the combined `shadow_ctr.ko`
+module (see `README.md` in this directory for the umbrella overview). It
+provides an independent, reference-counted set of *shadow* namespace objects on
+kernels that were built without the native `CONFIG_*_NS` features.
 
 It now has **two front doors**:
 
@@ -10,7 +11,7 @@ It now has **two front doors**:
   unmodified `containerd`/`runc`/`dockerd` can hit the shadow implementation by
   calling the real `unshare(2)`, `clone(2)`/`clone3(2)`/`fork(2)`,
   `sethostname(2)`, `setdomainname(2)` and `uname(2)` entry points; and
-* the original `/dev/shadowns` **ioctl API**, kept unchanged for diagnostics,
+* the original `/dev/shadow_ns` **ioctl API**, kept unchanged for diagnostics,
   manual control and backward compatibility.
 
 ## Why this exists
@@ -22,7 +23,7 @@ wires namespace syscalls into the core kernel. Those struct layouts are fixed
 when the kernel image is built, so a module loaded afterwards cannot add *real*
 namespaces to a running kernel.
 
-`shadowns` therefore implements a **parallel shadow model**. It can make the
+`shadow_ns` therefore implements a **parallel shadow model**. It can make the
 relevant syscalls succeed and preserve namespace identities/lifecycle, but it
 can only provide the degree of behaviour described below; it cannot conjure the
 missing in-kernel isolation machinery.
@@ -36,7 +37,7 @@ missing in-kernel isolation machinery.
                      └────────────────────┬───────────────────┘
                                           │ real syscalls
                                           ▼
-                            shadowns.ko + shadow_hook.h
+                            shadow_ctr.ko + shadow_hook.h
           ┌───────────────────────────────────────────────────────────────┐
           │ ftrace hooks on syscall wrappers                             │
           │  • per-tgid current shadow namespaces                        │
@@ -49,7 +50,7 @@ missing in-kernel isolation machinery.
           └────────────────────┬──────────────────────────────────────────┘
                                │
                      ┌─────────▼─────────┐
-                     │ /dev/shadowns     │
+                     │ /dev/shadow_ns     │
                      │ ioctl session API │
                      └───────────────────┘
 ```
@@ -60,14 +61,14 @@ missing in-kernel isolation machinery.
   table (`task_tgid_nr(current)` → `cur[TYPE]`) so ordinary syscalls can find
   the caller's current shadow namespaces without any userspace side channel.
   Dead TGID entries are reaped periodically by delayed work.
-* **Ioctl mode is keyed by open fd.** Each `open("/dev/shadowns")` still creates
+* **Ioctl mode is keyed by open fd.** Each `open("/dev/shadow_ns")` still creates
   one independent session exactly as before.
 * **Shadow namespaces are global refcounted objects.** Both paths share the same
   underlying `shadow_ns` objects and stable integer ids.
 
 ## What is actually simulated
 
-| Type    | Behaviour provided by shadowns                                            |
+| Type    | Behaviour provided by shadow_ns                                            |
 |---------|---------------------------------------------------------------------------|
 | UTS     | **Functional** per-namespace `nodename` / `domainname` storage.           |
 | IPC     | Reference-counted membership + parent lineage (bookkeeping only).          |
@@ -81,7 +82,7 @@ missing in-kernel isolation machinery.
 
 ### `unshare(2)`
 
-`shadowns` intercepts `CLONE_NEWUTS`, `CLONE_NEWIPC`, `CLONE_NEWNS`,
+`shadow_ns` intercepts `CLONE_NEWUTS`, `CLONE_NEWIPC`, `CLONE_NEWNS`,
 `CLONE_NEWPID`, `CLONE_NEWNET`, `CLONE_NEWUSER` and `CLONE_NEWCGROUP`. For each
 shadow bit it creates/replaces the caller's per-TGID shadow namespace of that
 type. Any remaining non-shadow unshare bits are passed through to the real
@@ -109,17 +110,17 @@ normal kernel behaviour.
 ### `setns(2)`
 
 The hook calls the real `setns(2)` first. If that succeeds, nothing special
-happens. If the real syscall fails with `-EINVAL`/`-ENOTTY`, `shadowns` offers
+happens. If the real syscall fails with `-EINVAL`/`-ENOTTY`, `shadow_ns` offers
 **best-effort shadow-only fallbacks**:
 
-* if `fd` is actually a `/dev/shadowns` session fd, the current TGID joins that
+* if `fd` is actually a `/dev/shadow_ns` session fd, the current TGID joins that
   session's current shadow namespace of the requested type; or
 * as a diagnostic/private encoding, if there is no real fd (`EBADF` on lookup),
   the numeric `fd` value is treated as a shadow namespace id.
 
 ## Honest scope / limitations
 
-`shadowns` remains a **simulation and bookkeeping layer**, not a replacement for
+`shadow_ns` remains a **simulation and bookkeeping layer**, not a replacement for
 real kernel isolation:
 
 * **UTS is the only fully functional namespace type here.** Hostname and domain
@@ -146,19 +147,19 @@ real kernel isolation:
 
 | Path                      | Purpose                                                     |
 |---------------------------|-------------------------------------------------------------|
-| `include/uapi/shadowns.h` | Stable ioctl ABI shared with userspace.                     |
-| `shadowns.c`              | The kernel module: ioctl path + transparent syscall hooks.  |
+| `include/uapi/shadow_ns.h` | Stable ioctl ABI shared with userspace.                     |
+| `shadow_ns.c`              | The kernel module: ioctl path + transparent syscall hooks.  |
 | `Makefile`                | Out-of-tree build (`make KDIR=...`).                        |
 
 ## Building
 
-### Out-of-tree (produces `shadowns.ko`)
+### Out-of-tree (produces `shadow_ctr.ko`)
 
 ```sh
-cd ctr_patches/shadowns
+cd ctr_patches/shadow_ctr
 make KDIR=/path/to/kernel/build
-sudo insmod shadowns.ko
-ls -l /dev/shadowns
+sudo insmod shadow_ctr.ko
+ls -l /dev/shadow_ns
 ```
 
 For an Android GKI cross build, point `KDIR` at the prepared kernel `out`
@@ -171,13 +172,13 @@ make -C /path/to/kernel/build M=$(pwd) ARCH=arm64 LLVM=1 modules
 ## Loading
 
 ```sh
-insmod shadowns.ko
-# dmesg: loaded (ABI v1, device /dev/shadowns, transparent hooks N)
+insmod shadow_ctr.ko
+# dmesg: loaded (ABI v1, device /dev/shadow_ns, transparent hooks N)
 ```
 
 ## ABI versioning
 
-The `SHADOWNS_IOC_ABI_VERSION` ioctl returns `SHADOWNS_ABI_VERSION`. Manual
-clients that use `/dev/shadowns` should check it on open and refuse to run on a
-mismatch. Bump the version in `include/uapi/shadowns.h` whenever the ioctl
+The `SHADOW_NS_IOC_ABI_VERSION` ioctl returns `SHADOW_NS_ABI_VERSION`. Manual
+clients that use `/dev/shadow_ns` should check it on open and refuse to run on a
+mismatch. Bump the version in `include/uapi/shadow_ns.h` whenever the ioctl
 layout changes incompatibly.

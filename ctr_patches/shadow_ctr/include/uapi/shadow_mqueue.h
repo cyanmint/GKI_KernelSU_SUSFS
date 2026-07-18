@@ -12,7 +12,7 @@
  * the real mq_* syscalls transparently for stock runtimes, while preserving
  * this ioctl ABI as a stable secondary interface.
  *
- * Unlike the namespace simulation in shadowns (bookkeeping only), message
+ * Unlike the namespace simulation in shadow_ns (bookkeeping only), message
  * queues here are *functional*: SEND and RECEIVE actually transfer bytes
  * through a kernel-side list, with priority ordering and blocking semantics
  * mirroring POSIX mq_send(3)/mq_receive(3).

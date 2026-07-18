@@ -1,0 +1,143 @@
+# Kernel-version-matrix build for the shadow_ctr.ko out-of-tree module.
+#
+# The "fetch a real kernel/common branch per Android/kernel version and cross
+# compile against it" matrix pattern used below is the same approach used by
+# https://github.com/SukiSU-Ultra/SukiSU-Ultra (see
+# .github/workflows/scripts/{matrix_generator.py,kernel_builder.py} and
+# .github/workflows/config/matrix.json in this repo, which already build on
+# that project's workflow design) to validate KernelSU/SUSFS across the GKI
+# kernel version matrix. Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
+#
+# Unlike those full-kernel-image workflows, this one only needs enough of the
+# kernel tree to run `modules_prepare`, so it shallow-clones each branch of
+# https://android.googlesource.com/kernel/common directly and builds
+# ctr_patches/shadow_ctr as an out-of-tree module (M=) against it, for both
+# arm64 (the real GKI device target) and x86_64 (fast host sanity build).
+
+name: Build shadow_ctr.ko
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ctr_patches/shadow_ctr/**'
+      - '.github/workflows/build-shadow-ctr.yml'
+  pull_request:
+    paths:
+      - 'ctr_patches/shadow_ctr/**'
+      - '.github/workflows/build-shadow-ctr.yml'
+  workflow_dispatch:
+    inputs:
+      kernel_branches:
+        description: 'Comma-separated kernel/common branches to build against (blank = full matrix)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  # Rolling (non-deprecated) kernel/common branches, one per Android/kernel
+  # version combination that ctr_patches/ already targets (see
+  # ctr_patches/README.md's "Kernel Source Branches" table).
+  DEFAULT_KERNEL_BRANCHES: >-
+    android12-5.10,android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Compute kernel branch matrix
+        id: set-matrix
+        run: |
+          branches="${{ github.event.inputs.kernel_branches }}"
+          if [ -z "$branches" ]; then
+            branches="$DEFAULT_KERNEL_BRANCHES"
+          fi
+          json=$(python3 -c "
+          import json, sys
+          branches = [b.strip() for b in sys.argv[1].split(',') if b.strip()]
+          print(json.dumps(branches))
+          " "$branches")
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel_branch: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc
+
+      - name: Ensure unversioned clang/LLVM tool symlinks
+        # Some runner images only ship version-suffixed binaries (e.g.
+        # clang-18, ld.lld-18) without the generic `update-alternatives`
+        # symlinks the kernel's `LLVM=1` build convention expects.
+        run: |
+          for tool in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy \
+                      llvm-objdump llvm-readelf llvm-strip llvm-strings \
+                      llvm-addr2line llvm-cov llvm-dwarfdump; do
+            command -v "$tool" >/dev/null 2>&1 && continue
+            ver=$(ls /usr/bin/${tool}-* 2>/dev/null | sed -E "s#.*-([0-9]+)\$#\1#" | sort -n | tail -1)
+            [ -n "$ver" ] && sudo ln -sf "/usr/bin/${tool}-${ver}" "/usr/bin/${tool}"
+          done
+
+      - name: Shallow clone kernel/common (${{ matrix.kernel_branch }})
+        run: |
+          git clone --depth=1 -b "${{ matrix.kernel_branch }}" \
+            https://android.googlesource.com/kernel/common kernel-common
+
+      - name: Prepare kernel module build infra (arm64)
+        run: |
+          cd kernel-common
+          make ARCH=arm64 CC=clang LLVM=1 gki_defconfig
+          echo "CONFIG_KPROBES=y" >> .config
+          make ARCH=arm64 CC=clang LLVM=1 olddefconfig
+          make ARCH=arm64 CC=clang LLVM=1 -j"$(nproc)" modules_prepare
+
+      - name: Build shadow_ctr.ko (arm64)
+        run: |
+          make -C ctr_patches/shadow_ctr \
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1
+
+      - name: Upload shadow_ctr.ko (arm64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-${{ matrix.kernel_branch }}-arm64
+          path: ctr_patches/shadow_ctr/shadow_ctr.ko
+
+      - name: Clean module build output
+        run: |
+          make -C ctr_patches/shadow_ctr \
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1 clean
+
+      - name: Prepare kernel module build infra (x86_64 host sanity build)
+        run: |
+          cd kernel-common
+          rm -f .config
+          make ARCH=x86_64 CC=clang defconfig
+          echo "CONFIG_KPROBES=y" >> .config
+          make ARCH=x86_64 CC=clang olddefconfig
+          make ARCH=x86_64 CC=clang -j"$(nproc)" modules_prepare
+
+      - name: Build shadow_ctr.ko (x86_64)
+        run: |
+          make -C ctr_patches/shadow_ctr \
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=x86_64 CC=clang
+
+      - name: Upload shadow_ctr.ko (x86_64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-${{ matrix.kernel_branch }}-x86_64
+          path: ctr_patches/shadow_ctr/shadow_ctr.ko

@@ -1,7 +1,9 @@
 # shadow_hook — shared ftrace hijacking helper
 
 `shadow_hook.h` is a small, header-only ftrace-based function hooking helper
-shared by `shadowns`, `shadow_sysvipc`, `shadow_mqueue` and `shadow_cgdevices`.
+shared by `shadow_ns`, `shadow_sysvipc`, `shadow_mqueue` and `shadow_cgdevices`
+(all linked into the combined `shadow_ctr.ko`; see `README.md` in this
+directory for the umbrella overview).
 It is what turns those modules from an ioctl API that a *patched* container
 runtime must opt into, into a **transparent MITM layer**: a stock,
 unpatched `containerd`/`runc`/`dockerd` calls the real syscalls
@@ -53,7 +55,7 @@ static struct shadow_hook unshare_hook =
 
 static struct shadow_hook *all_hooks[] = { &unshare_hook, NULL };
 
-/* module_init: */ shadow_hook_install_all(all_hooks, "shadowns");
+/* module_init: */ shadow_hook_install_all(all_hooks, "shadow_ns");
 /* module_exit: */ shadow_hook_remove_all(all_hooks);
 ```
 
@@ -62,7 +64,7 @@ static struct shadow_hook *all_hooks[] = { &unshare_hook, NULL };
 * A hook redirects *entry* to a syscall wrapper; it cannot fabricate struct
   layout support (e.g. `task_struct::nsproxy`) that was never compiled into
   `vmlinux`. Each module still only provides the level of behaviour documented
-  in its own README (e.g. `shadowns` UTS isolation is fully functional, other
+  in its own README (e.g. `shadow_ns` UTS isolation is fully functional, other
   namespace types remain bookkeeping-only) — `shadow_hook` only removes the
   *userspace patch* requirement to reach that behaviour, it does not upgrade
   the underlying simulation fidelity.
