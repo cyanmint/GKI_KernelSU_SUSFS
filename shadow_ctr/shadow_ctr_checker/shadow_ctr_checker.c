@@ -9,30 +9,43 @@
  *   - supported natively by this kernel build (compile-time IS_ENABLED(), since
  *     this module is compiled against the exact target kernel's config via the
  *     same DDK image as the other shadow modules), and/or
- *   - provided at runtime by a loaded shadow_* module.
+ *   - provided at runtime by shadow_ns_base's namespace bookkeeping, and/or
+ *   - provided by a registered "overlay" filesystem type.
  *
  * ---------------------------------------------------------------------------
- * Optional-dependency technique (important design decision)
+ * Why there is no symbol_get()-based cross-module detection any more
  * ---------------------------------------------------------------------------
- * The whole point of this checker is to work standalone regardless of which
- * subset of the other shadow_* modules happens to be loaded. It therefore has
- * NO build-time (KBUILD_EXTRA_SYMBOLS / Module.symvers) dependency edge on any
- * other shadow module. If it did, insmod of the checker would fail with an
- * "unknown symbol" error whenever a queried module was not loaded.
+ * An earlier revision resolved shadow_mqueue_is_active() / _sysvipc_/
+ * _cgdevices_is_active() and shadow_ns_base's query API purely at runtime via
+ * symbol_get()/symbol_put() (backed by __symbol_get()/__symbol_put()), so
+ * this module would have NO build-time (KBUILD_EXTRA_SYMBOLS/Module.symvers)
+ * dependency edge on any other shadow module and would load standalone
+ * regardless of which subset of them was present.
  *
- * Instead it uses the kernel's standard runtime symbol-resolution primitive,
- * symbol_get()/symbol_put() (backed by __symbol_get()), uniformly for every
- * shadow module it queries:
- *   - each queryable shadow module exports a tiny presence marker
- *     (shadow_mqueue_is_active / shadow_sysvipc_is_active /
- *     shadow_cgdevices_is_active / shadow_overlay2_is_active, and
- *     shadow_ns_base's shadow_ns_base_type_loaded / _type_real);
- *   - symbol_get("...") returns non-NULL only if the providing module is
- *     currently loaded (and pins it for the duration, released via
- *     symbol_put()), so a missing module is handled gracefully as
- *     "not loaded".
- * This is why there is deliberately no Kbuild dependency arrow from the
- * checker to any other module.
+ * However, __symbol_get()/__symbol_put() are trimmed from the exported-
+ * symbol table of production GKI kernels (unreferenced by any built-in code,
+ * so CONFIG_TRIM_UNUSED_KSYMS drops their EXPORT_SYMBOL entries even though
+ * the functions themselves remain in the kernel image). Merely *referencing*
+ * symbol_get()/symbol_put() anywhere in this module - even in a branch that
+ * is never taken - makes the whole module fail to load with "Unknown symbol
+ * __symbol_get"/"Unknown symbol __symbol_put" (insmod surfaces this as
+ * -ENOENT, i.e. "No such file or directory"), since the kernel's module
+ * loader must resolve every referenced symbol before the module can be
+ * loaded at all, regardless of runtime control flow.
+ *
+ * shadow_ns_base is foundational (per ../README.md's load order it is always
+ * loaded immediately after shadow_hijack, before every other shadow module,
+ * including this checker which loads last), so this module now takes a
+ * normal build+load-time dependency on shadow_ns_base's EXPORT_SYMBOL_GPL
+ * query API instead - the same pattern shadow_ns_uts/net/ipc/... already use
+ * (see shadow_ns_base's Makefile default KBUILD_EXTRA_SYMBOLS).
+ *
+ * The shadow_mqueue/shadow_sysvipc/shadow_cgdevices "is this specific .ko
+ * providing it" distinction has been dropped (there is no safe way left to
+ * query optional, independently-loadable modules without symbol_get()); this
+ * checker now only reports whether the underlying kernel feature is built in.
+ * Use `cat /proc/modules` (or `lsmod`) to see which shadow_* modules are
+ * actually loaded.
  *
  * For overlayfs specifically the checker additionally consults
  * get_fs_type("overlay") as ground truth, because that (not IS_ENABLED alone)
@@ -59,27 +72,12 @@
 #define SHADOW_CHECKER_REPORT_MAX  4096
 
 /*
- * Prototypes for the optionally-present exported symbols we resolve at runtime
- * via symbol_get(). These declarations exist only so symbol_get()'s
- * typeof(&x) has a type to work with; they create NO link-time relocation, so
- * the checker still builds and loads with none of these modules present.
+ * shadow_ns_base's query API. Resolved as an ordinary build+load-time
+ * dependency (see this module's Makefile); shadow_ns_base.ko must be loaded
+ * first, matching the documented load order.
  */
-extern int shadow_mqueue_is_active(void);
-extern int shadow_sysvipc_is_active(void);
-extern int shadow_cgdevices_is_active(void);
-extern int shadow_overlay2_is_active(void);
 extern bool shadow_ns_base_type_loaded(u32 type);
 extern bool shadow_ns_base_type_real(u32 type);
-
-/* Is a shadow module exporting @sym currently loaded? (pins+releases it) */
-#define shadow_checker_module_loaded(sym)			\
-	({							\
-		typeof(&sym) __p = symbol_get(sym);		\
-		bool __loaded = (__p != NULL);			\
-		if (__p)					\
-			symbol_put(sym);			\
-		__loaded;					\
-	})
 
 struct shadow_checker_buf {
 	char	data[SHADOW_CHECKER_REPORT_MAX];
@@ -101,29 +99,24 @@ shadow_checker_add(struct shadow_checker_buf *b, const char *fmt, ...)
 		b->len += min_t(size_t, (size_t)n, sizeof(b->data) - b->len - 1);
 }
 
-/*
- * Emit a "<label>: ..." line for a feature that is either builtin, provided by
- * a named shadow module, or unsupported.
- */
+/* Emit a "<label>: ..." line for a feature that is either builtin or not. */
 static void shadow_checker_feature(struct shadow_checker_buf *b,
-				  const char *label, bool builtin,
-				  bool shadow_loaded, const char *shadow_ko)
+				  const char *label, bool builtin)
 {
 	if (builtin)
 		shadow_checker_add(b, "%s: supported (builtin)\n", label);
-	else if (shadow_loaded)
-		shadow_checker_add(b, "%s: supported (%s)\n", label, shadow_ko);
 	else
-		shadow_checker_add(b, "%s: not supported\n", label);
+		shadow_checker_add(b,
+			"%s: not supported (builtin); check `lsmod`/`/proc/modules` for a shadow_* provider\n",
+			label);
 }
 
 /* Namespace line: builtin config + shadow_ns hijack state. */
 static void shadow_checker_ns(struct shadow_checker_buf *b, const char *label,
-			     bool builtin, bool (*type_loaded)(u32),
-			     bool (*type_real)(u32), u32 type)
+			     bool builtin, u32 type)
 {
-	bool hijacked = type_loaded && type_loaded(type);
-	bool real = hijacked && type_real && type_real(type);
+	bool hijacked = shadow_ns_base_type_loaded(type);
+	bool real = hijacked && shadow_ns_base_type_real(type);
 
 	if (builtin && hijacked)
 		shadow_checker_add(b,
@@ -142,8 +135,6 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 {
 	struct file_system_type *ovl;
 	bool ovl_registered, ovl_builtin, ovl_is_shadow;
-	bool (*ns_type_loaded)(u32);
-	bool (*ns_type_real)(u32);
 
 	b->len = 0;
 
@@ -153,20 +144,9 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 	shadow_checker_add(b, "----------------------------------------\n");
 
 	/* --- IPC-ish subsystems --------------------------------------- */
-	shadow_checker_feature(b, "mqueue",
-		IS_ENABLED(CONFIG_POSIX_MQUEUE),
-		shadow_checker_module_loaded(shadow_mqueue_is_active),
-		"shadow_mqueue.ko");
-
-	shadow_checker_feature(b, "sysvipc",
-		IS_ENABLED(CONFIG_SYSVIPC),
-		shadow_checker_module_loaded(shadow_sysvipc_is_active),
-		"shadow_sysvipc.ko");
-
-	shadow_checker_feature(b, "cgroup_device",
-		IS_ENABLED(CONFIG_CGROUP_DEVICE),
-		shadow_checker_module_loaded(shadow_cgdevices_is_active),
-		"shadow_cgdevices.ko");
+	shadow_checker_feature(b, "mqueue", IS_ENABLED(CONFIG_POSIX_MQUEUE));
+	shadow_checker_feature(b, "sysvipc", IS_ENABLED(CONFIG_SYSVIPC));
+	shadow_checker_feature(b, "cgroup_device", IS_ENABLED(CONFIG_CGROUP_DEVICE));
 
 	/* --- overlayfs: get_fs_type() is ground truth ----------------- */
 	ovl = get_fs_type("overlay");
@@ -188,40 +168,29 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 		shadow_checker_add(b,
 			"overlay2: supported (module: %s)\n", ovl->owner->name);
 
-	/* --- namespaces: resolve shadow_ns_base's query API at runtime - */
-	ns_type_loaded = symbol_get(shadow_ns_base_type_loaded);
-	ns_type_real = ns_type_loaded ? symbol_get(shadow_ns_base_type_real)
-				      : NULL;
-
+	/* --- namespaces: shadow_ns_base's query API (build-time dep) --- */
 	shadow_checker_add(b,
 		"# namespaces (task explicitly requests net/pid/ipc/uts; mnt/user/cgroup shown for completeness)\n");
 
 	shadow_checker_ns(b, "ns_net", IS_ENABLED(CONFIG_NET_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_NET);
+			 SHADOW_NS_TYPE_NET);
 	shadow_checker_ns(b, "ns_pid", IS_ENABLED(CONFIG_PID_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_PID);
+			 SHADOW_NS_TYPE_PID);
 	shadow_checker_ns(b, "ns_ipc", IS_ENABLED(CONFIG_IPC_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_IPC);
+			 SHADOW_NS_TYPE_IPC);
 	shadow_checker_ns(b, "ns_uts", IS_ENABLED(CONFIG_UTS_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_UTS);
+			 SHADOW_NS_TYPE_UTS);
 	shadow_checker_ns(b, "ns_mnt", IS_ENABLED(CONFIG_MNT_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_MNT);
+			 SHADOW_NS_TYPE_MNT);
 	/* User namespace: called out separately/explicitly per the task. */
 	shadow_checker_ns(b, "ns_user (user namespace)",
-			 IS_ENABLED(CONFIG_USER_NS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_USER);
+			 IS_ENABLED(CONFIG_USER_NS), SHADOW_NS_TYPE_USER);
 	/*
 	 * cgroup namespace has no dedicated Kconfig gate in mainline; CONFIG_
 	 * CGROUPS is used as its proxy for the "builtin" column here.
 	 */
 	shadow_checker_ns(b, "ns_cgroup (proxy: CONFIG_CGROUPS)",
-			 IS_ENABLED(CONFIG_CGROUPS),
-			 ns_type_loaded, ns_type_real, SHADOW_NS_TYPE_CGROUP);
-
-	if (ns_type_loaded)
-		symbol_put(shadow_ns_base_type_loaded);
-	if (ns_type_real)
-		symbol_put(shadow_ns_base_type_real);
+			 IS_ENABLED(CONFIG_CGROUPS), SHADOW_NS_TYPE_CGROUP);
 }
 
 static int shadow_checker_open(struct inode *inode, struct file *file)
@@ -294,5 +263,5 @@ module_exit(shadow_ctr_checker_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Runtime diagnostics for the shadow_ctr module family via /dev/shadow_ctr_checker (uses symbol_get for optional, standalone runtime detection of the other modules)");
+MODULE_DESCRIPTION("Runtime diagnostics for the shadow_ctr module family via /dev/shadow_ctr_checker (depends on shadow_ns_base for namespace bookkeeping status)");
 MODULE_VERSION(SHADOW_CTR_CHECKER_VERSION);

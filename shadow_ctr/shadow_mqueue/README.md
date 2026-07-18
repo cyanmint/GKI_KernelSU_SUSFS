@@ -46,15 +46,21 @@ Key pieces:
   genuine fd-like object, so later `mq_timedsend()` / `mq_timedreceive()` /
   `mq_getsetattr()` calls from the same unmodified process can resolve the queue
   through `fdget()` and `file->private_data`.
-* A minimal `"mqueue"` pseudo filesystem type is also registered
-  (`register_filesystem()`), independent of the syscall hooks above. Container
-  runtimes such as `runc` unconditionally `mount("mqueue", "/dev/mqueue",
-  "mqueue", ...)` during container init; without a registered `"mqueue"` fs
-  type that mount fails with `-ENODEV` ("no such device") and container
-  startup aborts before the hooked `mq_*` syscalls ever run. The mounted
-  filesystem's contents are empty and irrelevant — all real queue state lives
-  in the hash table above, not on this mount — it exists purely so that
-  mount(2) call succeeds.
+* `shadow_mqueue` deliberately does **not** register a `"mqueue"` filesystem
+  type. An earlier revision did so via `get_tree_nodev()`/`simple_fill_super()`
+  so that a container runtime's unconditional
+  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` call would succeed even
+  without `CONFIG_POSIX_MQUEUE`. However, those two VFS helpers are trimmed
+  from the exported-symbol table of production GKI kernels (unreferenced by
+  any built-in code, so `CONFIG_TRIM_UNUSED_KSYMS` drops their
+  `EXPORT_SYMBOL` entries), which made the *entire module* fail to load with
+  `insmod: failed to load shadow_mqueue.ko: No such file or directory`
+  (the kernel's module loader surfaces an unresolved symbol as `-ENOENT`).
+  The mq_\* syscall hooks above are fully self-contained regardless of
+  whether `"mqueue"` is mounted, so dropping the pseudo-filesystem
+  registration does not affect message-queue semantics — it only means a
+  runtime's `mount("mqueue", ...)` call will fail on kernels without
+  `CONFIG_POSIX_MQUEUE` (or another provider of that filesystem type).
 
 ## What is simulated
 
@@ -79,12 +85,12 @@ Key pieces:
   are sized for runtime init-pipe traffic, not for arbitrary large general-use
   mqueue workloads.
 * Blocking waits still round nanosecond deadlines to jiffies.
-* The queue implementation is functional, but it is still a simulation: the
-  registered `"mqueue"` filesystem type only exists so that
-  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` (as issued unconditionally
-  by container runtimes such as `runc`) succeeds — it has no persistence
-  beyond module-managed state and does not attempt to emulate every
-  edge-case of in-tree `ipc/mqueue.c`.
+* The queue implementation is functional, but it is still a simulation: it
+  has no persistence beyond module-managed state and does not attempt to
+  emulate every edge-case of in-tree `ipc/mqueue.c`. It also does not
+  register a `"mqueue"` filesystem type (see "Architecture" above), so
+  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` still requires
+  `CONFIG_POSIX_MQUEUE` or another provider of that filesystem type.
 
 ## Files
 
@@ -114,5 +120,5 @@ insmod shadow_mqueue.ko
 dmesg | grep shadow_mqueue
 ```
 
-Expected log theme: the `"mqueue"` filesystem is registered, and the `mq_*`
-hook set is installed if those syscall wrappers are present.
+Expected log theme: the `mq_*` hook set is installed if those syscall
+wrappers are present.

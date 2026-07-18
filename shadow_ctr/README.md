@@ -23,10 +23,10 @@ and so a deployer can ship exactly the subset a given kernel needs.
 | `shadow_ns_user`      | `shadow_ns_user/`    | —                       | `shadow_ns_base`  | Thin presence/extension slot for USER (bookkeeping only). |
 | `shadow_ns_cgroup`    | `shadow_ns_cgroup/`  | —                       | `shadow_ns_base`  | Thin presence/extension slot for CGROUP (bookkeeping only). |
 | `shadow_sysvipc`      | `shadow_sysvipc/`    | —                       | —                 | Simulated System V IPC (msg/sem/shm) via transparent syscall hooks. |
-| `shadow_mqueue`       | `shadow_mqueue/`     | —                       | —                 | Simulated POSIX mqueue via transparent syscall hooks + a `"mqueue"` filesystem type. |
+| `shadow_mqueue`       | `shadow_mqueue/`     | —                       | —                 | Simulated POSIX mqueue via transparent syscall hooks. |
 | `shadow_cgdevices`    | `shadow_cgdevices/`  | —                       | —                 | Transparent device-open hook shim for the cgroup-device compatibility slot. |
 | `shadow_overlay2`     | `shadow_overlay2/`   | (registers `overlay` fs)| —                 | **Real** vendored `fs/overlayfs`. **android14-6.1 only.** |
-| `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | — (runtime-optional) | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. |
+| `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | `shadow_ns_base`  | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. |
 
 Shared, header-only helpers live in `common/`:
 
@@ -39,8 +39,8 @@ Shared, header-only helpers live in `common/`:
 
 ## Dependencies & load order
 
-Only the `shadow_ns_*` per-type modules depend on another module
-(`shadow_ns_base`); everything else is fully standalone.
+The `shadow_ns_*` per-type modules and `shadow_ctr_checker` depend on
+`shadow_ns_base`; everything else is fully standalone.
 
 ```sh
 # namespaces (load base first, then whichever types you want):
@@ -60,11 +60,16 @@ insmod shadow_ctr_checker/shadow_ctr_checker.ko
 cat /dev/shadow_ctr_checker
 ```
 
-At build time the `shadow_ns_*` submodules resolve `shadow_ns_base`'s exported
-symbols via `KBUILD_EXTRA_SYMBOLS`, which each submodule's `Makefile` defaults
-to the sibling `../shadow_ns_base/Module.symvers`. **Build `shadow_ns_base`
-first.** `shadow_ctr_checker` has no build-time dependency on anything — it
-detects the other modules purely at runtime via `symbol_get()`.
+At build time the `shadow_ns_*` submodules and `shadow_ctr_checker` resolve
+`shadow_ns_base`'s exported symbols via `KBUILD_EXTRA_SYMBOLS`, which each of
+their `Makefile`s defaults to the sibling `../shadow_ns_base/Module.symvers`.
+**Build `shadow_ns_base` first.** (An earlier revision had
+`shadow_ctr_checker` detect `shadow_ns_base` and the other optional modules
+purely at runtime via `symbol_get()`/`symbol_put()` with no build-time
+dependency at all — but `__symbol_get()`/`__symbol_put()` are themselves
+trimmed from production GKI kernels' exported-symbol table, which made
+`insmod` of the checker fail unconditionally with "Unknown symbol
+__symbol_get" / `-ENOENT`. See `shadow_ctr_checker/README.md` for details.)
 
 ## Building
 

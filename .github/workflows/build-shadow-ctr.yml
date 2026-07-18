@@ -36,10 +36,13 @@
 #   shadow_ns_{uts,net,ipc,pid,mnt,user,cgroup}
 #                             -- per-type plugins depending on shadow_ns_base
 #                                (and, for shadow_ns_uts, also shadow_hijack).
-#   shadow_sysvipc, shadow_mqueue, shadow_cgdevices, shadow_ctr_checker
-#                             -- no inter-module deps, except shadow_sysvipc/
-#                                shadow_mqueue/shadow_cgdevices also depend on
-#                                shadow_hijack for their hook implementation.
+#   shadow_sysvipc, shadow_mqueue, shadow_cgdevices
+#                             -- no inter-module deps, except they also depend
+#                                on shadow_hijack for their hook implementation.
+#   shadow_ctr_checker        -- depends on shadow_ns_base's EXPORT_SYMBOL_GPL
+#                                query API via KBUILD_EXTRA_SYMBOLS=<base>/
+#                                Module.symvers; built/loaded last so it can
+#                                observe all of the other modules.
 #   shadow_overlay2           -- vendored fs/overlayfs; ONLY built for
 #                                android14-6.1 (its VFS ABI is incompatible
 #                                with the other KMIs), mirroring the old
@@ -162,7 +165,7 @@ jobs:
               build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_ctr_checker
+              build shadow_ctr_checker KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
 
               # 4) overlay2 only on android14-6.1.
               if [ "$BUILD_OVERLAY" = "1" ]; then

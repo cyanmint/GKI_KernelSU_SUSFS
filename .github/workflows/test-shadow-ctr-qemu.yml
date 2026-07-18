@@ -36,9 +36,9 @@
 # KBUILD_EXTRA_SYMBOLS, so it is built (and insmod'd) first. The shadow_ns_*
 # per-type modules additionally resolve shadow_ns_base's EXPORT_SYMBOL_GPL
 # symbols, so shadow_ns_base is built (with KBUILD_EXTRA_SYMBOLS wiring for
-# the dependents) and insmod'd right after. shadow_ctr_checker has no
-# build-time dependency on anything (it detects the other modules at runtime
-# via symbol_get), and is loaded last so it observes all of them.
+# the dependents) and insmod'd right after. shadow_ctr_checker resolves the
+# same shadow_ns_base symbols (also via KBUILD_EXTRA_SYMBOLS), and is built
+# and loaded last so it can observe all of the other modules.
 
 name: Test shadow_ctr modules (QEMU)
 
@@ -111,7 +111,7 @@ jobs:
               build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_ctr_checker
+              build shadow_ctr_checker KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
               # overlay2 is android14-6.1 compatible (this KMI), so build it too
               build shadow_overlay2
 
