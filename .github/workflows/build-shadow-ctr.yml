@@ -13,6 +13,31 @@
 # https://android.googlesource.com/kernel/common directly and builds
 # ctr_patches/shadow_ctr as an out-of-tree module (M=) against it, for both
 # arm64 (the real GKI device target) and x86_64 (fast host sanity build).
+#
+# Notes on the matrix / build environment:
+# - `android12-5.10` is intentionally excluded from the default matrix: its
+#   arch/arm64/kernel/asm-offsets.c unconditionally drags in
+#   arch/arm64/include/asm/kgdb.h (via kvm_host.h -> arch_gicv3.h ->
+#   cacheflush.h), whose `asm ("brk %0" : : "I" (KGDB_COMPILED_DBG_BRK_IMM))`
+#   fails to compile ("value out of range for constraint 'I'") with every
+#   clang version available on this runner (14, 16, 17, 18) as well as on
+#   the dated deprecated/android12-5.10-2025-02 branch -- this is a genuine
+#   kernel-source/toolchain incompatibility in that specific legacy branch,
+#   unrelated to shadow_ctr, and reproducing AOSP's original (much older,
+#   Android-specific) prebuilt clang for it is out of scope here. It can
+#   still be built on demand via workflow_dispatch's `kernel_branches` input
+#   if a compatible toolchain is available.
+# - Building an out-of-tree module without a full vmlinux/Module.symvers
+#   (as this workflow intentionally does, per the paragraph above) leaves
+#   Module.symvers without CRC/section data for core kernel symbols.
+#   modpost on kernel/common branches from ~6.4+ (e.g. android15-6.6,
+#   android16-6.12) treats every such unresolved symbol as a hard build
+#   error by default; `KBUILD_MODPOST_WARN=1` restores the older
+#   warn-only behaviour so the compile-sanity build can still succeed.
+# - `android16-6.12`'s gendwarfksyms (CONFIG_GENDWARFKSYMS, used by
+#   modules_prepare on 6.12+ branches) needs <dwarf.h>/libdw, which isn't
+#   part of Ubuntu's default toolchain packages and must be installed
+#   explicitly (`libdw-dev`).
 
 name: Build shadow_ctr.ko
 
@@ -40,9 +65,11 @@ on:
 env:
   # Rolling (non-deprecated) kernel/common branches, one per Android/kernel
   # version combination that ctr_patches/ already targets (see
-  # ctr_patches/README.md's "Kernel Source Branches" table).
+  # ctr_patches/README.md's "Kernel Source Branches" table). android12-5.10
+  # is excluded here -- see the toolchain-incompatibility note above; pass
+  # it explicitly via workflow_dispatch's kernel_branches input if needed.
   DEFAULT_KERNEL_BRANCHES: >-
-    android12-5.10,android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
+    android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
 
 jobs:
   prepare:
@@ -78,7 +105,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc
+          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc libdw-dev
 
       - name: Ensure unversioned clang/LLVM tool symlinks
         # Some runner images only ship version-suffixed binaries (e.g.
@@ -107,9 +134,16 @@ jobs:
           make ARCH=arm64 CC=clang LLVM=1 -j"$(nproc)" modules_prepare
 
       - name: Build shadow_ctr.ko (arm64)
+        # KBUILD_MODPOST_WARN=1: this workflow intentionally only runs
+        # modules_prepare (no full vmlinux build -- see header comment), so
+        # Module.symvers has no CRC data for core kernel symbols. modpost on
+        # newer kernel/common branches (~6.4+) treats every such unresolved
+        # symbol as a hard error by default; this restores the older
+        # warn-only behaviour for this compile-sanity build.
         run: |
           make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1 \
+            KBUILD_MODPOST_WARN=1
 
       - name: Upload shadow_ctr.ko (arm64)
         uses: actions/upload-artifact@v7
@@ -134,7 +168,8 @@ jobs:
       - name: Build shadow_ctr.ko (x86_64)
         run: |
           make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=x86_64 CC=clang
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=x86_64 CC=clang \
+            KBUILD_MODPOST_WARN=1
 
       - name: Upload shadow_ctr.ko (x86_64)
         uses: actions/upload-artifact@v7
