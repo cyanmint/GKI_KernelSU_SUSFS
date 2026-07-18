@@ -324,9 +324,13 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	 * address, which is available at function entry (in the link
 	 * register on arm64, or on the stack on x86-64) before any prologue
 	 * instructions have executed. If the call came from our own module,
-	 * let kprobes single-step the original (untouched) instruction and
-	 * fall through into the genuine function body instead of
-	 * redirecting again.
+	 * return 0 to tell the kprobes core the pre_handler has *not* taken
+	 * over: it will single-step the original (untouched) instruction and
+	 * resume normal execution, i.e. genuinely fall through into the
+	 * target function's real body. Otherwise (a fresh, external call)
+	 * redirect: return 1, which tells kprobes we have fully handled the
+	 * trap ourselves (regs->pc/ip already points at hook->function) and
+	 * the replaced instruction must not be single-stepped.
 	 */
 	if (within_module(shadow_hook_caller_pc(regs), THIS_MODULE))
 		return 0;

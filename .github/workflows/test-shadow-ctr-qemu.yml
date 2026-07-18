@@ -135,8 +135,8 @@ jobs:
           echo "=== SHADOW_CTR_QEMU_TEST: insmod exit code: $? ==="
           echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
-          echo "=== SHADOW_CTR_QEMU_TEST: /dev/shadowns ==="
-          /system/bin/ls -la /dev/shadowns
+          echo "=== SHADOW_CTR_QEMU_TEST: /dev/shadow_ns ==="
+          /system/bin/ls -la /dev/shadow_ns
           echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
           echo o > /proc/sysrq-trigger
           while true; do :; done
