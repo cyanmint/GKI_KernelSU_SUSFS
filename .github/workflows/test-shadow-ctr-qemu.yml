@@ -1,9 +1,8 @@
 # Boot-test shadow_ctr.ko under QEMU.
 #
-# This workflow builds shadow_ctr.ko for android14-6.1 arm64 (see
-# .github/workflows/build-shadow-ctr.yml for the same build approach), injects
-# the freshly built module into a prebuilt test kernel + ramdisk image, boots
-# it under qemu-system-aarch64, and collects the serial console log (which
+# This workflow builds shadow_ctr.ko for android14-6.1 arm64, injects the
+# freshly built module into a prebuilt test kernel + ramdisk image, boots it
+# under qemu-system-aarch64, and collects the serial console log (which
 # includes the `insmod` attempt and any resulting kernel messages) as a build
 # artifact for inspection.
 #
@@ -12,8 +11,21 @@
 # busybox/toybox utilities and does not require any additional block
 # devices, so it can boot directly from an initramfs under QEMU's "virt"
 # machine type. The kernel image booted alongside it is extracted from the
-# android14-6.1 boot.img published at the v2.2.0 release, so the module is
-# tested against an actual SukiSU/SUSFS-patched GKI kernel build.
+# android14-6.1.124-2025-02 boot.img published at the v2.2.0 release, so the
+# module is tested against an actual SukiSU/SUSFS-patched GKI kernel build.
+#
+# shadow_ctr.ko is built inside SukiSU-Ultra's prebuilt "DDK" (Driver
+# Development Kit) container image (ghcr.io/ylarod/ddk-min:<kmi>-<release>,
+# see https://github.com/SukiSU-Ultra/SukiSU-Ultra/blob/main/.github/workflows/ddk-lkm.yml),
+# which ships a genuine vmlinux + Module.symvers + matching clang toolchain
+# for this KMI, instead of a bare `git clone kernel/common` +
+# `gki_defconfig` + `modules_prepare` tree (which only has stub/empty symbol
+# CRC data). Building against the bare tree produces a .ko that reliably
+# panics in mod_sysfs_setup() during insmod on this SukiSU/SUSFS-patched
+# production kernel -- regardless of how closely the kernel sub-version is
+# matched -- because `struct module`'s CRC/CFI-relevant metadata doesn't
+# match a real build. Using the DDK sysroot's real vmlinux/Module.symvers
+# fixes this; this was confirmed by local QEMU boot testing.
 
 name: Test shadow_ctr.ko (QEMU)
 
@@ -33,9 +45,10 @@ on:
   workflow_dispatch:
 
 env:
-  KERNEL_BRANCH: android14-6.1
+  DDK_KMI: android14-6.1
+  DDK_RELEASE: '20260313'
   TEST_RAMDISK_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
-  TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.145-2025-09-boot.img
+  TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.124-2025-02-boot.img
 
 jobs:
   test:
@@ -44,48 +57,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install build and test dependencies
+      - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc cpio qemu-system-arm
-
-      - name: Ensure unversioned clang/LLVM tool symlinks
-        # Some runner images only ship version-suffixed binaries (e.g.
-        # clang-18, ld.lld-18) without the generic `update-alternatives`
-        # symlinks the kernel's `LLVM=1` build convention expects.
-        run: |
-          for tool in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy \
-                      llvm-objdump llvm-readelf llvm-strip llvm-strings \
-                      llvm-addr2line llvm-cov llvm-dwarfdump; do
-            command -v "$tool" >/dev/null 2>&1 && continue
-            ver=$(ls /usr/bin/${tool}-* 2>/dev/null | sed -E "s#.*-([0-9]+)\$#\1#" | sort -n | tail -1)
-            [ -n "$ver" ] && sudo ln -sf "/usr/bin/${tool}-${ver}" "/usr/bin/${tool}"
-          done
+          sudo apt-get install -y cpio qemu-system-arm
 
       # --- 1. Build shadow_ctr.ko for android14-6.1 arm64 ---
+      #
+      # Built inside the DDK container so the resulting .ko links against a
+      # real vmlinux/Module.symvers instead of a bare gki_defconfig tree.
 
-      - name: Shallow clone kernel/common (${{ env.KERNEL_BRANCH }})
+      - name: Pull DDK build image (${{ env.DDK_KMI }}-${{ env.DDK_RELEASE }})
         run: |
-          git clone --depth=1 -b "$KERNEL_BRANCH" \
-            https://android.googlesource.com/kernel/common kernel-common
+          docker pull "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}"
 
-      - name: Prepare kernel module build infra (arm64)
+      - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
-          cd kernel-common
-          make ARCH=arm64 CC=clang LLVM=1 gki_defconfig
-          echo "CONFIG_KPROBES=y" >> .config
-          make ARCH=arm64 CC=clang LLVM=1 olddefconfig
-          make ARCH=arm64 CC=clang LLVM=1 -j"$(nproc)" modules_prepare
-
-      - name: Build shadow_ctr.ko (arm64)
-        run: |
-          make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1
+          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
+            "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}" \
+            bash -c "make -C /opt/ddk/kdir/${DDK_KMI} M=/workspace/ctr_patches/shadow_ctr modules -j\$(nproc)"
+          ls -la ctr_patches/shadow_ctr/shadow_ctr.ko
 
       - name: Upload shadow_ctr.ko (arm64)
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-${{ env.KERNEL_BRANCH }}-arm64
+          name: shadow_ctr-${{ env.DDK_KMI }}-arm64
           path: ctr_patches/shadow_ctr/shadow_ctr.ko
 
       # --- 2. Fetch the test ramdisk and the kernel image under test ---

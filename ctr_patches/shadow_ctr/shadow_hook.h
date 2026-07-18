@@ -79,6 +79,7 @@
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/ftrace.h>
+#include <linux/module.h>
 #include <linux/version.h>
 #include <linux/string.h>
 
@@ -151,10 +152,31 @@ static inline void shadow_hook_redirect(struct pt_regs *regs, void *function)
 {
 	regs->pc = (unsigned long)function;
 }
+
+/*
+ * shadow_hook_caller_pc - return address of whoever called into the hooked
+ * function, as seen at the very first instruction of that function (i.e.
+ * before its prologue has run). On arm64 the AAPCS64 calling convention
+ * passes this in the link register (x30/regs[30]).
+ */
+static inline unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
+{
+	return regs->regs[30];
+}
 #elif defined(CONFIG_X86_64)
 static inline void shadow_hook_redirect(struct pt_regs *regs, void *function)
 {
 	regs->ip = (unsigned long)function;
+}
+
+/*
+ * shadow_hook_caller_pc - on x86-64, CALL pushes the return address onto
+ * the stack; at the hooked function's very first instruction regs->sp still
+ * points directly at it.
+ */
+static inline unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
+{
+	return *(unsigned long *)regs->sp;
 }
 #else
 #error "shadow_hook: unsupported architecture"
@@ -287,6 +309,27 @@ static inline void shadow_hook_remove(struct shadow_hook *hook)
 static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 {
 	struct shadow_hook *hook = container_of(p, struct shadow_hook, kp);
+
+	/*
+	 * The kprobe sits at the very first instruction of the hooked
+	 * function, so it also fires again when *our own* replacement
+	 * (hook->function) calls through hook->original -- which is simply
+	 * the same hooked address -- to invoke genuine kernel behaviour.
+	 * Without this check, that pass-through call would be redirected
+	 * straight back into hook->function, recursing until the kernel
+	 * stack overflows.
+	 *
+	 * Mirror the ftrace backend's within_module(parent_ip, THIS_MODULE)
+	 * guard (see shadow_hook_thunk() above) using the caller's return
+	 * address, which is available at function entry (in the link
+	 * register on arm64, or on the stack on x86-64) before any prologue
+	 * instructions have executed. If the call came from our own module,
+	 * let kprobes single-step the original (untouched) instruction and
+	 * fall through into the genuine function body instead of
+	 * redirecting again.
+	 */
+	if (within_module(shadow_hook_caller_pc(regs), THIS_MODULE))
+		return 0;
 
 	shadow_hook_redirect(regs, hook->function);
 	return 1;
