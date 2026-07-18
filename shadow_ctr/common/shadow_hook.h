@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * shadow_hook - tiny ftrace-based function hijacking helper shared by the
+ * shadow_hook - tiny ftrace/kprobe-based function hijacking ABI shared by the
  * shadow_ns / shadow_sysvipc / shadow_mqueue / shadow_cgdevices subsystems.
  *
  * Motivation
@@ -32,45 +32,47 @@
  * this particular kernel because CONFIG_SYSVIPC=y after all).
  *
  * Symbols are resolved without relying on the (largely unexported since
- * Linux 5.7, commit 0bd476e6c671) kallsyms_lookup_name(): we use the
- * well-known register_kprobe() trick instead. register_kprobe() internally
- * resolves kp.addr from kp.symbol_name using the kernel's own symbol table
- * walker, which remains available regardless of kallsyms_lookup_name()
- * export status; we immediately unregister the (never armed for our
- * purposes) kprobe and reuse the resolved address for the ftrace hook.
+ * Linux 5.7, commit 0bd476e6c671) kallsyms_lookup_name(): the implementation
+ * uses the well-known register_kprobe() trick instead. See shadow_hijack.c
+ * for the details.
  *
- * Caveats (please read before extending this file)
- * -------------------------------------------------
+ * Where the implementation lives (this changed!)
+ * ----------------------------------------------
+ * This header used to be intentionally include-only, with every helper marked
+ * `static inline` so each standalone module TU got its own private copy and
+ * there was no shared .ko to link against. That is no longer the case: now
+ * that more than one module needs the hook logic, the single source of truth
+ * lives in the standalone shadow_hijack.ko module (shadow_hijack/), which
+ * EXPORT_SYMBOL_GPL()s the five entry points declared at the bottom of this
+ * file. This header is now purely declarative: it defines the ABI (struct
+ * shadow_hook, the SHADOW_HOOK() initialiser macro, and the extern function
+ * prototypes) that both shadow_hijack.ko and its callers agree on. Every
+ * hooking module (shadow_ns_base, shadow_ns_uts, shadow_sysvipc,
+ * shadow_mqueue, shadow_cgdevices) must therefore be built against
+ * shadow_hijack's Module.symvers and, at runtime, insmod'd after
+ * shadow_hijack.ko. See shadow_hijack/README.md for the full rationale
+ * (including the compile-time ftrace-vs-kprobe backend selection and the
+ * owner-based recursion guard).
+ *
+ * Notes preserved from the original design (still true, still worth reading):
  * - The ftrace path is only usable for functions ftrace can trace (must have
  *   an mcount/patchable call site, i.e. anything not marked notrace and
  *   built with CONFIG_FUNCTION_TRACER). All in-tree syscall wrappers qualify
  *   *when that option is enabled*.
  * - Several real-world "certified"/production Android GKI boot images ship
  *   with CONFIG_FUNCTION_TRACER (and therefore CONFIG_DYNAMIC_FTRACE,
- *   register_ftrace_function(), ...) compiled out entirely, e.g. to shrink
- *   the kernel or reduce attack surface -- confirmed by inspecting the
- *   android14-6.1 "gki-certified-boot" test image, whose embedded IKCONFIG
- *   has `# CONFIG_FUNCTION_TRACER is not set`. A module built assuming
- *   ftrace is present would fail to load on such a kernel with "Unknown
- *   symbol register_ftrace_function". CONFIG_KPROBES, on the other hand, is
- *   a hard requirement of the wider KernelSU/SUSFS ecosystem this module
- *   ships alongside and is effectively always enabled.
- * - Because of that, this header picks its hooking backend at *compile
- *   time* based on what the target kernel's own Kconfig actually enables:
- *   the ftrace ops/IPMODIFY backend when CONFIG_FUNCTION_TRACER (and
+ *   register_ftrace_function(), ...) compiled out entirely. shadow_hijack.ko
+ *   therefore picks its hooking backend at *compile time*: the ftrace
+ *   ops/IPMODIFY backend when CONFIG_FUNCTION_TRACER (and
  *   CONFIG_DYNAMIC_FTRACE) are available, otherwise a kprobe pre_handler
- *   backend that redirects control flow by rewriting the trapped pt_regs
- *   program counter and returning 1 (telling the kprobes core the original
- *   instruction must not be single-stepped) -- the same generic technique
- *   used by numerous out-of-tree hooking modules on kernels without ftrace.
- *   Both backends expose the identical shadow_hook_install/remove API, so
- *   none of the calling modules need to know or care which one is active.
+ *   backend. Both backends expose the identical shadow_hook_install/remove
+ *   API declared below, so none of the calling modules need to know or care
+ *   which one is active. The struct shadow_hook layout below likewise selects
+ *   its backend field (ops vs kp) on the same compile-time condition, and is
+ *   shared verbatim by shadow_hijack.ko and its callers.
  * - IPMODIFY/kprobe hooks are exclusive per-symbol: only one shadow_hook may
  *   target a given symbol at a time. This is fine for our use (each module
  *   owns a disjoint set of syscalls).
- * - This header is intentionally include-only (all helpers are `static`) so
- *   each standalone module TU gets its own private copy; there is no shared
- *   .ko to link against, keeping every shadow_* module fully self-contained.
  */
 
 #ifndef _SHADOW_HOOK_H
@@ -97,6 +99,14 @@
  * @original: address of the real function, filled in by
  *            shadow_hook_install(); call through *this* to invoke genuine
  *            kernel behaviour.
+ * @owner:    the module that owns this hook -- i.e. the module whose
+ *            replacement @function performs the pass-through call back into
+ *            @original. The recursion guard uses within_module(caller_pc,
+ *            @owner) to distinguish that pass-through call (which must fall
+ *            through to the genuine function) from a fresh external call
+ *            (which must be redirected). This MUST be the *calling* module's
+ *            THIS_MODULE, not shadow_hijack.ko's -- the SHADOW_HOOK() macro
+ *            below plumbs it through automatically from each caller's TU.
  * @address:  resolved address of the hooked symbol.
  * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
  * @kp:       kprobe instance driving the hook (kprobe backend only).
@@ -107,6 +117,7 @@ struct shadow_hook {
 	const char		*resolved_name;
 	void			*function;
 	void			*original;
+	struct module		*owner;
 	unsigned long		address;
 #if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 	struct ftrace_ops	ops;
@@ -116,313 +127,45 @@ struct shadow_hook {
 	bool			installed;
 };
 
+/*
+ * SHADOW_HOOK - static initialiser for a struct shadow_hook.
+ *
+ * @owner is deliberately not a macro parameter: it is hard-wired to
+ * THIS_MODULE so that each expansion picks up the *calling* translation
+ * unit's own module. This is essential for the recursion guard now that the
+ * hook logic lives in a separate .ko (shadow_hijack.ko): the guard must match
+ * against the module whose replacement function calls through to @original,
+ * which is the caller's module, never shadow_hijack.ko itself.
+ */
 #define SHADOW_HOOK(_names, _function, _original_storage)		\
 	{								\
 		.names    = (_names),					\
 		.function = (_function),				\
 		.original = (_original_storage),			\
+		.owner    = THIS_MODULE,				\
 	}
 
 /*
- * shadow_hook_resolve - find the runtime address of a kernel symbol.
+ * The hook implementation lives in shadow_hijack.ko and is reached through
+ * these EXPORT_SYMBOL_GPL()'d entry points. See shadow_hijack/shadow_hijack.c
+ * for their full contracts.
  *
- * Uses the register_kprobe()/unregister_kprobe() trick so we don't depend on
- * the exported-ness of kallsyms_lookup_name(). Returns 0 if not found.
+ * shadow_hook_resolve()      - resolve a kernel symbol's runtime address (0 if
+ *                              not found), via the register_kprobe() trick.
+ * shadow_hook_install()      - resolve @hook->names and start redirecting; on
+ *                              success *(void **)hook->original holds the real
+ *                              function. Returns 0, -ENOENT if no candidate
+ *                              name resolves, or another negative errno.
+ * shadow_hook_remove()       - stop redirecting a single hook.
+ * shadow_hook_install_all()  - install a NULL-terminated array of hooks,
+ *                              skipping (-ENOENT) ones whose symbol is absent;
+ *                              returns the count installed, or negative errno.
+ * shadow_hook_remove_all()   - remove a NULL-terminated array of hooks.
  */
-static inline unsigned long shadow_hook_resolve(const char *name)
-{
-	struct kprobe kp;
-	unsigned long addr;
-	int ret;
-
-	memset(&kp, 0, sizeof(kp));
-	kp.symbol_name = name;
-
-	ret = register_kprobe(&kp);
-	if (ret < 0)
-		return 0;
-
-	addr = (unsigned long)kp.addr;
-	unregister_kprobe(&kp);
-	return addr;
-}
-
-#if defined(CONFIG_ARM64)
-static inline void shadow_hook_redirect(struct pt_regs *regs, void *function)
-{
-	regs->pc = (unsigned long)function;
-}
-
-/*
- * shadow_hook_caller_pc - return address of whoever called into the hooked
- * function, as seen at the very first instruction of that function (i.e.
- * before its prologue has run). On arm64 the AAPCS64 calling convention
- * passes this in the link register (x30/regs[30]).
- */
-static inline unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
-{
-	return regs->regs[30];
-}
-#elif defined(CONFIG_X86_64)
-static inline void shadow_hook_redirect(struct pt_regs *regs, void *function)
-{
-	regs->ip = (unsigned long)function;
-}
-
-/*
- * shadow_hook_caller_pc - on x86-64, CALL pushes the return address onto
- * the stack; at the hooked function's very first instruction regs->sp still
- * points directly at it.
- */
-static inline unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
-{
-	return *(unsigned long *)regs->sp;
-}
-#else
-#error "shadow_hook: unsupported architecture"
-#endif
-
-#if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
-
-/*
- * --- ftrace_ops/IPMODIFY backend --------------------------------------
- *
- * The ftrace callback signature changed with
- * CONFIG_DYNAMIC_FTRACE_WITH_ARGS (introduced upstream for arm64/x86-64
- * around v5.19/v6.0): the fourth argument became an opaque `struct
- * ftrace_regs *` instead of `struct pt_regs *`, accessed via the
- * ftrace_get_regs() accessor. Older kernels in our supported range
- * (5.10/5.15/6.1) still use the plain pt_regs form. Both are handled here so
- * the exact same source builds unmodified against every Android GKI branch
- * we target (5.10 through 6.12).
- */
-#ifdef CONFIG_DYNAMIC_FTRACE_WITH_ARGS
-static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
-				       struct ftrace_ops *ops, struct ftrace_regs *fregs)
-{
-	struct pt_regs *regs = ftrace_get_regs(fregs);
-	struct shadow_hook *hook = container_of(ops, struct shadow_hook, ops);
-
-	if (!regs)
-		return;
-	if (!within_module(parent_ip, THIS_MODULE))
-		shadow_hook_redirect(regs, hook->function);
-}
-#else
-static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
-				       struct ftrace_ops *ops, struct pt_regs *regs)
-{
-	struct shadow_hook *hook = container_of(ops, struct shadow_hook, ops);
-
-	if (!within_module(parent_ip, THIS_MODULE))
-		shadow_hook_redirect(regs, hook->function);
-}
-#endif
-
-/*
- * shadow_hook_install - resolve @hook->names and start redirecting calls.
- *
- * On success, *(void **)hook->original holds the genuine function's address
- * (call through it with the same prototype to invoke real kernel code), and
- * hook->installed is true.
- *
- * Returns 0 on success, negative errno otherwise. It is not an error for the
- * symbol to be missing entirely (returns -ENOENT) so callers can simply skip
- * shadowing a syscall that a particular kernel build already implements
- * natively (CONFIG_SYSVIPC=y, etc.) or does not expose at all.
- */
-static inline int shadow_hook_install(struct shadow_hook *hook)
-{
-	const char * const *name;
-	int err;
-
-	for (name = hook->names; *name; name++) {
-		hook->address = shadow_hook_resolve(*name);
-		if (hook->address) {
-			hook->resolved_name = *name;
-			pr_debug("shadow_hook: resolved candidate \"%s\" -> %px\n",
-				 *name, (void *)hook->address);
-			break;
-		}
-		pr_debug("shadow_hook: candidate \"%s\" not found, trying next\n", *name);
-	}
-	if (!hook->address)
-		return -ENOENT;
-
-	*((unsigned long *)hook->original) = hook->address;
-
-	hook->ops.func = shadow_hook_thunk;
-	hook->ops.flags = FTRACE_OPS_FL_SAVE_REGS
-			 | FTRACE_OPS_FL_IPMODIFY
-			 | FTRACE_OPS_FL_RECURSION;
-
-	err = ftrace_set_filter_ip(&hook->ops, hook->address, 0, 0);
-	if (err) {
-		pr_debug("shadow_hook: ftrace_set_filter_ip(%s) failed: %d\n",
-			 hook->resolved_name, err);
-		return err;
-	}
-
-	err = register_ftrace_function(&hook->ops);
-	if (err) {
-		pr_debug("shadow_hook: register_ftrace_function(%s) failed: %d\n",
-			 hook->resolved_name, err);
-		ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
-		return err;
-	}
-
-	hook->installed = true;
-	return 0;
-}
-
-static inline void shadow_hook_remove(struct shadow_hook *hook)
-{
-	if (!hook->installed)
-		return;
-
-	unregister_ftrace_function(&hook->ops);
-	ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
-	hook->installed = false;
-}
-
-#else /* !(CONFIG_FUNCTION_TRACER && CONFIG_DYNAMIC_FTRACE) */
-
-/*
- * --- kprobe pre_handler backend -----------------------------------------
- *
- * Used whenever the target kernel does not have CONFIG_FUNCTION_TRACER (and
- * therefore no CONFIG_DYNAMIC_FTRACE / register_ftrace_function()) compiled
- * in, e.g. several "certified"/production GKI boot images.
- *
- * A kprobe is placed at the very first instruction of the target function.
- * When it fires, the CPU has already trapped into the kernel and @regs holds
- * the exact register state the target function would have seen. Rewriting
- * the saved program counter (arm64 pc / x86-64 ip) to our replacement
- * function and returning 1 from the pre_handler tells the kprobes core that
- * the handler has fully taken over: it must NOT single-step the original
- * (now bypassed) instruction, it should just resume the CPU with the
- * (modified) register state as-is. This is the standard technique used by
- * numerous out-of-tree hooking modules on kernels without ftrace, and is
- * fully described by the kprobes documentation's "jump/int3 based
- * probing" and "pre_handler return value" semantics.
- */
-static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
-{
-	struct shadow_hook *hook = container_of(p, struct shadow_hook, kp);
-
-	/*
-	 * The kprobe sits at the very first instruction of the hooked
-	 * function, so it also fires again when *our own* replacement
-	 * (hook->function) calls through hook->original -- which is simply
-	 * the same hooked address -- to invoke genuine kernel behaviour.
-	 * Without this check, that pass-through call would be redirected
-	 * straight back into hook->function, recursing until the kernel
-	 * stack overflows.
-	 *
-	 * Mirror the ftrace backend's within_module(parent_ip, THIS_MODULE)
-	 * guard (see shadow_hook_thunk() above) using the caller's return
-	 * address, which is available at function entry (in the link
-	 * register on arm64, or on the stack on x86-64) before any prologue
-	 * instructions have executed. If the call came from our own module,
-	 * return 0 to tell the kprobes core the pre_handler has *not* taken
-	 * over: it will single-step the original (untouched) instruction and
-	 * resume normal execution, i.e. genuinely fall through into the
-	 * target function's real body. Otherwise (a fresh, external call)
-	 * redirect: return 1, which tells kprobes we have fully handled the
-	 * trap ourselves (regs->pc/ip already points at hook->function) and
-	 * the replaced instruction must not be single-stepped.
-	 */
-	if (within_module(shadow_hook_caller_pc(regs), THIS_MODULE))
-		return 0;
-
-	shadow_hook_redirect(regs, hook->function);
-	return 1;
-}
-
-static inline int shadow_hook_install(struct shadow_hook *hook)
-{
-	const char * const *name;
-	int err;
-
-	for (name = hook->names; *name; name++) {
-		hook->address = shadow_hook_resolve(*name);
-		if (hook->address) {
-			hook->resolved_name = *name;
-			pr_debug("shadow_hook: resolved candidate \"%s\" -> %px\n",
-				 *name, (void *)hook->address);
-			break;
-		}
-		pr_debug("shadow_hook: candidate \"%s\" not found, trying next\n", *name);
-	}
-	if (!hook->address)
-		return -ENOENT;
-
-	*((unsigned long *)hook->original) = hook->address;
-
-	memset(&hook->kp, 0, sizeof(hook->kp));
-	hook->kp.addr = (kprobe_opcode_t *)hook->address;
-	hook->kp.pre_handler = shadow_hook_pre_handler;
-
-	err = register_kprobe(&hook->kp);
-	if (err) {
-		pr_debug("shadow_hook: register_kprobe(%s) failed: %d\n",
-			 hook->resolved_name, err);
-		return err;
-	}
-
-	hook->installed = true;
-	return 0;
-}
-
-static inline void shadow_hook_remove(struct shadow_hook *hook)
-{
-	if (!hook->installed)
-		return;
-
-	unregister_kprobe(&hook->kp);
-	hook->installed = false;
-}
-
-#endif /* CONFIG_FUNCTION_TRACER && CONFIG_DYNAMIC_FTRACE */
-
-/*
- * shadow_hook_install_all()/shadow_hook_remove_all() - convenience helpers
- * for a NULL-terminated array of `struct shadow_hook *`. A resolution
- * failure (-ENOENT) for an individual hook is logged and skipped rather than
- * aborting the whole batch, since a given kernel build may simply not have
- * that particular syscall compiled in under any name (nothing to shadow) or
- * may already provide it natively (nothing to fall back for).
- */
-static inline int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag)
-{
-	int i, err, installed = 0;
-
-	for (i = 0; hooks[i]; i++) {
-		pr_debug("%s: attempting to install hook[%d]\n", tag, i);
-		err = shadow_hook_install(hooks[i]);
-		if (err == -ENOENT) {
-			pr_info("%s: symbol for hook[%d] not found, skipping\n", tag, i);
-			continue;
-		}
-		if (err) {
-			pr_err("%s: failed to install hook[%d]: %d\n", tag, i, err);
-			return err;
-		}
-		pr_info("%s: hooked %s at %px\n", tag, hooks[i]->resolved_name,
-			(void *)hooks[i]->address);
-		installed++;
-	}
-
-	pr_debug("%s: hook install pass complete, %d installed\n", tag, installed);
-	return installed;
-}
-
-static inline void shadow_hook_remove_all(struct shadow_hook **hooks)
-{
-	int i;
-
-	for (i = 0; hooks[i]; i++)
-		shadow_hook_remove(hooks[i]);
-}
+unsigned long shadow_hook_resolve(const char *name);
+int shadow_hook_install(struct shadow_hook *hook);
+void shadow_hook_remove(struct shadow_hook *hook);
+int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag);
+void shadow_hook_remove_all(struct shadow_hook **hooks);
 
 #endif /* _SHADOW_HOOK_H */
