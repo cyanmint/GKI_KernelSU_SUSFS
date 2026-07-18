@@ -1,43 +1,26 @@
 # Kernel-version-matrix build for the shadow_ctr.ko out-of-tree module.
 #
-# The "fetch a real kernel/common branch per Android/kernel version and cross
-# compile against it" matrix pattern used below is the same approach used by
-# https://github.com/SukiSU-Ultra/SukiSU-Ultra (see
-# .github/workflows/scripts/{matrix_generator.py,kernel_builder.py} and
-# .github/workflows/config/matrix.json in this repo, which already build on
-# that project's workflow design) to validate KernelSU/SUSFS across the GKI
-# kernel version matrix. Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
+# Like .github/workflows/test-shadow-ctr-qemu.yml, this builds shadow_ctr.ko
+# inside SukiSU-Ultra's prebuilt "DDK" (Driver Development Kit) container
+# image (ghcr.io/ylarod/ddk-min:<kmi>-<release>, see
+# https://github.com/SukiSU-Ultra/SukiSU-Ultra/blob/main/.github/workflows/ddk-lkm.yml
+# and .../build-lkm.yml for the KMI list). Each image ships a genuine
+# vmlinux + Module.symvers + matching clang toolchain for that KMI (arm64
+# only -- the real GKI device target), instead of a bare
+# `git clone kernel/common` + `gki_defconfig` + `modules_prepare` tree, which
+# only has stub/empty symbol CRC data and previously caused several
+# hard-to-diagnose build failures:
+#   - android12-5.10: arch/arm64/kernel/asm-offsets.c (via kvm_host.h ->
+#     kgdb.h) failed to compile with every clang version available on a
+#     plain Ubuntu runner ("value out of range for constraint 'I'"), because
+#     no matching prebuilt toolchain was used.
+#   - android15-6.6 / android16-6.12: modpost hard-errored on unresolved
+#     core kernel symbols (no real Module.symvers), and android16-6.12's
+#     gendwarfksyms needed libdw-dev, which wasn't installed.
+# Building against the DDK's real vmlinux/Module.symvers/toolchain avoids
+# all of the above, exactly as it did for the QEMU boot-test workflow.
 #
-# Unlike those full-kernel-image workflows, this one only needs enough of the
-# kernel tree to run `modules_prepare`, so it shallow-clones each branch of
-# https://android.googlesource.com/kernel/common directly and builds
-# ctr_patches/shadow_ctr as an out-of-tree module (M=) against it, for both
-# arm64 (the real GKI device target) and x86_64 (fast host sanity build).
-#
-# Notes on the matrix / build environment:
-# - `android12-5.10` is intentionally excluded from the default matrix: its
-#   arch/arm64/kernel/asm-offsets.c unconditionally drags in
-#   arch/arm64/include/asm/kgdb.h (via kvm_host.h -> arch_gicv3.h ->
-#   cacheflush.h), whose `asm ("brk %0" : : "I" (KGDB_COMPILED_DBG_BRK_IMM))`
-#   fails to compile ("value out of range for constraint 'I'") with every
-#   clang version available on this runner (14, 16, 17, 18) as well as on
-#   the dated deprecated/android12-5.10-2025-02 branch -- this is a genuine
-#   kernel-source/toolchain incompatibility in that specific legacy branch,
-#   unrelated to shadow_ctr, and reproducing AOSP's original (much older,
-#   Android-specific) prebuilt clang for it is out of scope here. It can
-#   still be built on demand via workflow_dispatch's `kernel_branches` input
-#   if a compatible toolchain is available.
-# - Building an out-of-tree module without a full vmlinux/Module.symvers
-#   (as this workflow intentionally does, per the paragraph above) leaves
-#   Module.symvers without CRC/section data for core kernel symbols.
-#   modpost on kernel/common branches from ~6.4+ (e.g. android15-6.6,
-#   android16-6.12) treats every such unresolved symbol as a hard build
-#   error by default; `KBUILD_MODPOST_WARN=1` restores the older
-#   warn-only behaviour so the compile-sanity build can still succeed.
-# - `android16-6.12`'s gendwarfksyms (CONFIG_GENDWARFKSYMS, used by
-#   modules_prepare on 6.12+ branches) needs <dwarf.h>/libdw, which isn't
-#   part of Ubuntu's default toolchain packages and must be installed
-#   explicitly (`libdw-dev`).
+# Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
 name: Build shadow_ctr.ko
 
@@ -56,20 +39,19 @@ on:
       - '.github/workflows/build-shadow-ctr.yml'
   workflow_dispatch:
     inputs:
-      kernel_branches:
-        description: 'Comma-separated kernel/common branches to build against (blank = full matrix)'
+      kmis:
+        description: 'Comma-separated DDK KMIs to build against (blank = full matrix)'
         required: false
         type: string
         default: ''
 
 env:
-  # Rolling (non-deprecated) kernel/common branches, one per Android/kernel
-  # version combination that ctr_patches/ already targets (see
-  # ctr_patches/README.md's "Kernel Source Branches" table). android12-5.10
-  # is excluded here -- see the toolchain-incompatibility note above; pass
-  # it explicitly via workflow_dispatch's kernel_branches input if needed.
-  DEFAULT_KERNEL_BRANCHES: >-
-    android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
+  # KMIs published by SukiSU-Ultra's ghcr.io/ylarod/ddk-min image at this
+  # DDK_RELEASE (see .../build-lkm.yml's matrix); kept in sync with the QEMU
+  # test workflow's DDK_RELEASE.
+  DEFAULT_KMIS: >-
+    android12-5.10,android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
+  DDK_RELEASE: '20260313'
 
 jobs:
   prepare:
@@ -77,18 +59,18 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Compute kernel branch matrix
+      - name: Compute KMI matrix
         id: set-matrix
         run: |
-          branches="${{ github.event.inputs.kernel_branches }}"
-          if [ -z "$branches" ]; then
-            branches="$DEFAULT_KERNEL_BRANCHES"
+          kmis="${{ github.event.inputs.kmis }}"
+          if [ -z "$kmis" ]; then
+            kmis="$DEFAULT_KMIS"
           fi
           json=$(python3 -c "
           import json, sys
-          branches = [b.strip() for b in sys.argv[1].split(',') if b.strip()]
-          print(json.dumps(branches))
-          " "$branches")
+          kmis = [k.strip() for k in sys.argv[1].split(',') if k.strip()]
+          print(json.dumps(kmis))
+          " "$kmis")
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
 
   build:
@@ -97,82 +79,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kernel_branch: ${{ fromJson(needs.prepare.outputs.matrix) }}
+        kmi: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install build dependencies
+      - name: Pull DDK build image (${{ matrix.kmi }}-${{ env.DDK_RELEASE }})
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc libdw-dev
+          docker pull "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}"
 
-      - name: Ensure unversioned clang/LLVM tool symlinks
-        # Some runner images only ship version-suffixed binaries (e.g.
-        # clang-18, ld.lld-18) without the generic `update-alternatives`
-        # symlinks the kernel's `LLVM=1` build convention expects.
+      - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
-          for tool in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy \
-                      llvm-objdump llvm-readelf llvm-strip llvm-strings \
-                      llvm-addr2line llvm-cov llvm-dwarfdump; do
-            command -v "$tool" >/dev/null 2>&1 && continue
-            ver=$(ls /usr/bin/${tool}-* 2>/dev/null | sed -E "s#.*-([0-9]+)\$#\1#" | sort -n | tail -1)
-            [ -n "$ver" ] && sudo ln -sf "/usr/bin/${tool}-${ver}" "/usr/bin/${tool}"
-          done
+          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
+            "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
+            bash -c "make -C /opt/ddk/kdir/${{ matrix.kmi }} M=/workspace/ctr_patches/shadow_ctr modules -j\$(nproc)"
+          ls -la ctr_patches/shadow_ctr/shadow_ctr.ko
 
-      - name: Shallow clone kernel/common (${{ matrix.kernel_branch }})
-        run: |
-          git clone --depth=1 -b "${{ matrix.kernel_branch }}" \
-            https://android.googlesource.com/kernel/common kernel-common
-
-      - name: Prepare kernel module build infra (arm64)
-        run: |
-          cd kernel-common
-          make ARCH=arm64 CC=clang LLVM=1 gki_defconfig
-          echo "CONFIG_KPROBES=y" >> .config
-          make ARCH=arm64 CC=clang LLVM=1 olddefconfig
-          make ARCH=arm64 CC=clang LLVM=1 -j"$(nproc)" modules_prepare
-
-      - name: Build shadow_ctr.ko (arm64)
-        # KBUILD_MODPOST_WARN=1: this workflow intentionally only runs
-        # modules_prepare (no full vmlinux build -- see header comment), so
-        # Module.symvers has no CRC data for core kernel symbols. modpost on
-        # newer kernel/common branches (~6.4+) treats every such unresolved
-        # symbol as a hard error by default; this restores the older
-        # warn-only behaviour for this compile-sanity build.
-        run: |
-          make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1 \
-            KBUILD_MODPOST_WARN=1
-
-      - name: Upload shadow_ctr.ko (arm64)
+      - name: Upload shadow_ctr.ko (${{ matrix.kmi }})
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-${{ matrix.kernel_branch }}-arm64
-          path: ctr_patches/shadow_ctr/shadow_ctr.ko
-
-      - name: Clean module build output
-        run: |
-          make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1 clean
-
-      - name: Prepare kernel module build infra (x86_64 host sanity build)
-        run: |
-          cd kernel-common
-          rm -f .config
-          make ARCH=x86_64 CC=clang defconfig
-          echo "CONFIG_KPROBES=y" >> .config
-          make ARCH=x86_64 CC=clang olddefconfig
-          make ARCH=x86_64 CC=clang -j"$(nproc)" modules_prepare
-
-      - name: Build shadow_ctr.ko (x86_64)
-        run: |
-          make -C ctr_patches/shadow_ctr \
-            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=x86_64 CC=clang \
-            KBUILD_MODPOST_WARN=1
-
-      - name: Upload shadow_ctr.ko (x86_64)
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ctr-${{ matrix.kernel_branch }}-x86_64
+          name: shadow_ctr-${{ matrix.kmi }}-arm64
           path: ctr_patches/shadow_ctr/shadow_ctr.ko
