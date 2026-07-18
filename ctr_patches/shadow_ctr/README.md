@@ -51,6 +51,18 @@ ioctl ABI, and honest scope/limitations. See
 for a CI workflow that builds `shadow_ctr.ko` against a matrix of real
 `kernel/common` branches.
 
+## Related module: shadow_overlay
+
+`shadow_ctr.ko` does **not** provide overlay filesystem support. If
+`ctr_patches/shadow_ctr/config.template` spoofs `CONFIG_OVERLAY_FS=y` (it
+does, for dockerd's `overlay2` graphdriver preflight check) but the target
+kernel wasn't actually built with it, `dockerd` will fail at mount time
+instead. See the separate, sibling
+[`../shadow_overlay/`](../shadow_overlay/README.md) module (`overlay.ko`)
+for a real, working `CONFIG_OVERLAY_FS` implementation: it vendors the
+unmodified `fs/overlayfs` kernel sources rather than simulating behaviour
+like the subsystems above, and is loaded independently of `shadow_ctr.ko`.
+
 ## Kernel compatibility
 
 `shadow_hook.h` picks its hooking backend at compile time: ftrace-based when
