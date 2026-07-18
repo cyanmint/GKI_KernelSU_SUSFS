@@ -13,6 +13,22 @@
 #ifndef _SHADOW_CTR_INTERNAL_H
 #define _SHADOW_CTR_INTERNAL_H
 
+#include <linux/file.h>
+
+/*
+ * fd_file()/fd_empty() were introduced by the "struct fd" API rework
+ * (upstream commit "file: convert to struct fd") that landed in v6.8;
+ * on the older GKI branches (e.g. 6.1) this module still targets,
+ * "struct fd" is a plain aggregate with a directly accessible ->file
+ * member, so provide compatible shims when the helpers aren't present.
+ */
+#ifndef fd_file
+#define fd_file(f) ((f).file)
+#endif
+#ifndef fd_empty
+#define fd_empty(f) (!fd_file(f))
+#endif
+
 int __init shadow_ns_init(void);
 void shadow_ns_exit(void);
 
