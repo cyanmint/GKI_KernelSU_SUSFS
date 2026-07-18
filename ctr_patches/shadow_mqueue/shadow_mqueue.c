@@ -37,6 +37,8 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/anon_inodes.h>
+#include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
@@ -53,7 +55,12 @@
 #include <linux/jiffies.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
+#include <linux/time64.h>
+#include <linux/timekeeping.h>
+#include <uapi/linux/mqueue.h>
+#include <uapi/linux/time_types.h>
 
+#include "../shadow_hook/shadow_hook.h"
 #include "include/uapi/shadow_mqueue.h"
 
 #define SHADOW_MQ_NAME_HTBITS	8	/* 256 name-hash buckets */
@@ -102,6 +109,7 @@ struct shadow_mq {
 struct mq_handle_entry {
 	struct shadow_mq *mq;
 	u32		  oflag;
+	refcount_t	  refcount;
 };
 
 /* Per-open-fd session. */
@@ -113,6 +121,25 @@ struct mq_session {
 /* Global name registry. */
 static DEFINE_HASHTABLE(mq_name_hash, SHADOW_MQ_NAME_HTBITS);
 static DEFINE_MUTEX(mq_name_lock);
+
+enum mq_wait_mode {
+	MQ_WAIT_NONBLOCK,
+	MQ_WAIT_INFINITE,
+	MQ_WAIT_RELATIVE,
+	MQ_WAIT_EXPIRED,
+};
+
+struct mq_wait_spec {
+	enum mq_wait_mode mode;
+	u64 timeout_ns;
+};
+
+static long (*real_sys_mq_open)(const struct pt_regs *regs);
+static long (*real_sys_mq_unlink)(const struct pt_regs *regs);
+static long (*real_sys_mq_timedsend)(const struct pt_regs *regs);
+static long (*real_sys_mq_timedreceive)(const struct pt_regs *regs);
+static long (*real_sys_mq_notify)(const struct pt_regs *regs);
+static long (*real_sys_mq_getsetattr)(const struct pt_regs *regs);
 
 static u32 mq_name_hash_val(const char *name)
 {
@@ -161,6 +188,430 @@ static void mq_put(struct shadow_mq *mq)
 	kfree(mq);
 }
 
+static void mq_handle_put(struct mq_handle_entry *he)
+{
+	if (!he)
+		return;
+	if (!refcount_dec_and_test(&he->refcount))
+		return;
+	mq_put(he->mq);
+	kfree(he);
+}
+
+static bool mq_handle_get(struct mq_handle_entry *he)
+{
+	return he && refcount_inc_not_zero(&he->refcount);
+}
+
+static void mq_fill_shadow_attr(struct shadow_mq *mq, struct shadow_mq_attr *attr)
+{
+	attr->mq_flags   = READ_ONCE(mq->nonblock) ? SHADOW_MQ_O_NONBLOCK : 0;
+	attr->mq_maxmsg  = mq->mq_maxmsg;
+	attr->mq_msgsize = mq->mq_msgsize;
+	attr->mq_curmsgs = (s64)atomic_read(&mq->curmsgs);
+}
+
+static void mq_fill_posix_attr(struct shadow_mq *mq, struct mq_attr *attr)
+{
+	memset(attr, 0, sizeof(*attr));
+	attr->mq_flags   = READ_ONCE(mq->nonblock) ? O_NONBLOCK : 0;
+	attr->mq_maxmsg  = mq->mq_maxmsg;
+	attr->mq_msgsize = mq->mq_msgsize;
+	attr->mq_curmsgs = atomic_read(&mq->curmsgs);
+}
+
+static void mq_clamp_shadow_attr(struct shadow_mq_attr *attr)
+{
+	if (attr->mq_maxmsg <= 0 || attr->mq_maxmsg > SHADOW_MQ_MAXMSG_MAX)
+		attr->mq_maxmsg = SHADOW_MQ_MAXMSG_DEF;
+	if (attr->mq_msgsize <= 0 || attr->mq_msgsize > SHADOW_MQ_MSGSIZE_MAX)
+		attr->mq_msgsize = SHADOW_MQ_MSGSIZE_MAX;
+}
+
+static u32 mq_posix_to_shadow_oflag(int oflag)
+{
+	u32 shadow = 0;
+
+	if (oflag & O_CREAT)
+		shadow |= SHADOW_MQ_O_CREAT;
+	if (oflag & O_EXCL)
+		shadow |= SHADOW_MQ_O_EXCL;
+	if (oflag & O_NONBLOCK)
+		shadow |= SHADOW_MQ_O_NONBLOCK;
+
+	switch (oflag & O_ACCMODE) {
+	case O_WRONLY:
+		shadow |= SHADOW_MQ_O_WRONLY;
+		break;
+	case O_RDWR:
+		shadow |= SHADOW_MQ_O_RDWR;
+		break;
+	case O_RDONLY:
+	default:
+		shadow |= SHADOW_MQ_O_RDONLY;
+		break;
+	}
+
+	return shadow;
+}
+
+static int mq_copy_name_from_user(const char __user *uname, char *name)
+{
+	long copied;
+
+	copied = strncpy_from_user(name, uname, SHADOW_MQ_NAME_MAX + 1);
+	if (copied < 0)
+		return copied;
+	if (copied == 0)
+		return -EINVAL;
+	if (copied > SHADOW_MQ_NAME_MAX)
+		return -ENAMETOOLONG;
+	if (name[0] != '/')
+		return -EINVAL;
+	return 0;
+}
+
+static void mq_wait_spec_from_ioctl(struct mq_wait_spec *wait, u32 oflag,
+				    u64 timeout_ns)
+{
+	if (oflag & SHADOW_MQ_O_NONBLOCK || timeout_ns == 0) {
+		wait->mode = MQ_WAIT_NONBLOCK;
+		wait->timeout_ns = 0;
+		return;
+	}
+	if (timeout_ns == U64_MAX) {
+		wait->mode = MQ_WAIT_INFINITE;
+		wait->timeout_ns = U64_MAX;
+		return;
+	}
+	wait->mode = MQ_WAIT_RELATIVE;
+	wait->timeout_ns = timeout_ns;
+}
+
+static int mq_wait_spec_from_abs_timeout(struct mq_wait_spec *wait, u32 oflag,
+					 const struct __kernel_timespec __user *uabs)
+{
+	struct __kernel_timespec uts;
+	struct timespec64 now, abs;
+	s64 delta_ns;
+
+	if (oflag & SHADOW_MQ_O_NONBLOCK) {
+		wait->mode = MQ_WAIT_NONBLOCK;
+		wait->timeout_ns = 0;
+		return 0;
+	}
+	if (!uabs) {
+		wait->mode = MQ_WAIT_INFINITE;
+		wait->timeout_ns = U64_MAX;
+		return 0;
+	}
+	if (copy_from_user(&uts, uabs, sizeof(uts)))
+		return -EFAULT;
+	if (uts.tv_sec < 0 || uts.tv_nsec < 0 || uts.tv_nsec >= NSEC_PER_SEC)
+		return -EINVAL;
+
+	abs.tv_sec = uts.tv_sec;
+	abs.tv_nsec = uts.tv_nsec;
+	ktime_get_real_ts64(&now);
+	delta_ns = timespec64_to_ns(&abs) - timespec64_to_ns(&now);
+	if (delta_ns <= 0) {
+		wait->mode = MQ_WAIT_EXPIRED;
+		wait->timeout_ns = 0;
+		return 0;
+	}
+
+	wait->mode = MQ_WAIT_RELATIVE;
+	wait->timeout_ns = (u64)delta_ns;
+	return 0;
+}
+
+static void mq_wake_waiters(struct shadow_mq *mq)
+{
+	wake_up_all(&mq->wait_send);
+	wake_up_all(&mq->wait_recv);
+}
+
+static long mq_do_unlink(const char *name)
+{
+	struct shadow_mq *mq;
+
+	mutex_lock(&mq_name_lock);
+	mq = mq_find_locked(name);
+	if (!mq) {
+		mutex_unlock(&mq_name_lock);
+		return -ENOENT;
+	}
+	hash_del(&mq->name_node);
+	WRITE_ONCE(mq->unlinked, true);
+	mutex_unlock(&mq_name_lock);
+
+	mq_wake_waiters(mq);
+	mq_put(mq);
+	return 0;
+}
+
+static long mq_do_open(const char *name, u32 oflag,
+		       const struct shadow_mq_attr *create_attr,
+		       struct mq_handle_entry **out_he,
+		       struct shadow_mq_attr *out_attr,
+		       bool *created_out)
+{
+	struct shadow_mq_attr attr = {
+		.mq_maxmsg = SHADOW_MQ_MAXMSG_DEF,
+		.mq_msgsize = SHADOW_MQ_MSGSIZE_MAX,
+	};
+	struct shadow_mq *mq = NULL;
+	struct mq_handle_entry *he;
+	bool created = false;
+
+	if (!name || !name[0] || name[0] != '/')
+		return -EINVAL;
+
+	if (create_attr)
+		attr = *create_attr;
+	mq_clamp_shadow_attr(&attr);
+
+	mutex_lock(&mq_name_lock);
+	mq = mq_find_locked(name);
+	if (mq) {
+		if ((oflag & SHADOW_MQ_O_CREAT) && (oflag & SHADOW_MQ_O_EXCL)) {
+			mutex_unlock(&mq_name_lock);
+			return -EEXIST;
+		}
+		if (READ_ONCE(mq->unlinked)) {
+			mutex_unlock(&mq_name_lock);
+			return -ENOENT;
+		}
+		mq_get(mq);
+	} else {
+		if (!(oflag & SHADOW_MQ_O_CREAT)) {
+			mutex_unlock(&mq_name_lock);
+			return -ENOENT;
+		}
+		mq = kzalloc(sizeof(*mq), GFP_KERNEL);
+		if (!mq) {
+			mutex_unlock(&mq_name_lock);
+			return -ENOMEM;
+		}
+		strscpy(mq->name, name, sizeof(mq->name));
+		mq->mq_maxmsg  = attr.mq_maxmsg;
+		mq->mq_msgsize = attr.mq_msgsize;
+		mq->nonblock   = !!(oflag & SHADOW_MQ_O_NONBLOCK);
+		atomic_set(&mq->curmsgs, 0);
+		spin_lock_init(&mq->msgs_lock);
+		INIT_LIST_HEAD(&mq->msgs);
+		init_waitqueue_head(&mq->wait_recv);
+		init_waitqueue_head(&mq->wait_send);
+		refcount_set(&mq->refcount, 2);
+		hash_add(mq_name_hash, &mq->name_node, mq_name_hash_val(name));
+		created = true;
+	}
+	mutex_unlock(&mq_name_lock);
+
+	he = kzalloc(sizeof(*he), GFP_KERNEL);
+	if (!he) {
+		if (created)
+			mq_do_unlink(name);
+		mq_put(mq);
+		return -ENOMEM;
+	}
+
+	he->mq = mq;
+	he->oflag = oflag;
+	refcount_set(&he->refcount, 1);
+
+	if (out_attr)
+		mq_fill_shadow_attr(mq, out_attr);
+	if (created_out)
+		*created_out = created;
+	*out_he = he;
+	return 0;
+}
+
+static long mq_do_getattr(struct mq_handle_entry *he, struct shadow_mq_attr *attr)
+{
+	if (!he || !attr)
+		return -EINVAL;
+
+	mq_fill_shadow_attr(he->mq, attr);
+	return 0;
+}
+
+static long mq_do_setattr(struct mq_handle_entry *he,
+			  const struct shadow_mq_attr *newattr,
+			  struct shadow_mq_attr *oldattr)
+{
+	u32 oflag;
+
+	if (!he)
+		return -EINVAL;
+
+	if (oldattr)
+		mq_fill_shadow_attr(he->mq, oldattr);
+	if (!newattr)
+		return 0;
+
+	WRITE_ONCE(he->mq->nonblock, !!(newattr->mq_flags & SHADOW_MQ_O_NONBLOCK));
+	oflag = READ_ONCE(he->oflag);
+	if (READ_ONCE(he->mq->nonblock))
+		oflag |= SHADOW_MQ_O_NONBLOCK;
+	else
+		oflag &= ~SHADOW_MQ_O_NONBLOCK;
+	WRITE_ONCE(he->oflag, oflag);
+	return 0;
+}
+
+static long mq_do_send(struct mq_handle_entry *he, const void *msg_data, u32 msg_len,
+		       u32 prio, const struct mq_wait_spec *wait)
+{
+	struct shadow_mq *mq;
+	struct mq_msg *msg;
+	long ret = 0;
+
+	if (!he || !msg_data || !wait)
+		return -EINVAL;
+
+	mq = he->mq;
+	if (msg_len == 0 || (s64)msg_len > mq->mq_msgsize)
+		return -EINVAL;
+
+	msg = kmalloc(sizeof(*msg) + msg_len, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	msg->prio = prio;
+	msg->len = msg_len;
+	memcpy(msg->data, msg_data, msg_len);
+
+	for (;;) {
+		spin_lock(&mq->msgs_lock);
+		if (atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg) {
+			mq_enqueue_locked(mq, msg);
+			spin_unlock(&mq->msgs_lock);
+			wake_up(&mq->wait_recv);
+			return 0;
+		}
+		spin_unlock(&mq->msgs_lock);
+
+		if (READ_ONCE(mq->unlinked)) {
+			ret = -ENOENT;
+			break;
+		}
+
+		switch (wait->mode) {
+		case MQ_WAIT_NONBLOCK:
+			ret = -EAGAIN;
+			break;
+		case MQ_WAIT_EXPIRED:
+			ret = -ETIMEDOUT;
+			break;
+		case MQ_WAIT_INFINITE:
+			ret = wait_event_interruptible(mq->wait_send,
+				atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg ||
+				READ_ONCE(mq->unlinked));
+			if (ret < 0)
+				ret = -EINTR;
+			else
+				ret = 0;
+			break;
+		case MQ_WAIT_RELATIVE:
+			ret = wait_event_interruptible_timeout(mq->wait_send,
+				atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg ||
+				READ_ONCE(mq->unlinked),
+				nsecs_to_jiffies(wait->timeout_ns) + 1);
+			if (ret == 0)
+				ret = -ETIMEDOUT;
+			else if (ret < 0)
+				ret = -EINTR;
+			else
+				ret = 0;
+			break;
+		}
+		if (ret)
+			break;
+	}
+
+	kfree(msg);
+	return ret;
+}
+
+static long mq_do_receive(struct mq_handle_entry *he, void *msg_data, u32 *msg_len,
+			  u32 *prio, const struct mq_wait_spec *wait)
+{
+	struct shadow_mq *mq;
+	struct mq_msg *msg = NULL;
+	long ret = 0;
+
+	if (!he || !msg_data || !msg_len || !wait)
+		return -EINVAL;
+
+	mq = he->mq;
+
+	for (;;) {
+		spin_lock(&mq->msgs_lock);
+		if (!list_empty(&mq->msgs)) {
+			msg = list_first_entry(&mq->msgs, struct mq_msg, node);
+			list_del(&msg->node);
+			atomic_dec(&mq->curmsgs);
+			spin_unlock(&mq->msgs_lock);
+			wake_up(&mq->wait_send);
+			break;
+		}
+		spin_unlock(&mq->msgs_lock);
+
+		if (READ_ONCE(mq->unlinked))
+			return -ENOENT;
+
+		switch (wait->mode) {
+		case MQ_WAIT_NONBLOCK:
+			return -EAGAIN;
+		case MQ_WAIT_EXPIRED:
+			return -ETIMEDOUT;
+		case MQ_WAIT_INFINITE:
+			ret = wait_event_interruptible(mq->wait_recv,
+				atomic_read(&mq->curmsgs) > 0 ||
+				READ_ONCE(mq->unlinked));
+			if (ret < 0)
+				return -EINTR;
+			break;
+		case MQ_WAIT_RELATIVE:
+			ret = wait_event_interruptible_timeout(mq->wait_recv,
+				atomic_read(&mq->curmsgs) > 0 ||
+				READ_ONCE(mq->unlinked),
+				nsecs_to_jiffies(wait->timeout_ns) + 1);
+			if (ret == 0)
+				return -ETIMEDOUT;
+			if (ret < 0)
+				return -EINTR;
+			break;
+		}
+	}
+
+	if (msg->len > *msg_len) {
+		kfree(msg);
+		return -EMSGSIZE;
+	}
+
+	if (prio)
+		*prio = msg->prio;
+	*msg_len = msg->len;
+	memcpy(msg_data, msg->data, msg->len);
+	kfree(msg);
+	return 0;
+}
+
+static struct mq_handle_entry *mq_session_lookup(struct mq_session *s, u32 handle)
+{
+	struct mq_handle_entry *he;
+
+	mutex_lock(&s->lock);
+	he = xa_load(&s->handles, handle);
+	if (!mq_handle_get(he))
+		he = NULL;
+	mutex_unlock(&s->lock);
+	return he;
+}
+
 /*
  * Enqueue a message in priority order (highest prio first).
  * Caller must hold mq->msgs_lock.
@@ -185,7 +636,6 @@ static void mq_enqueue_locked(struct shadow_mq *mq, struct mq_msg *m)
 static long mqioc_open(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_open_req *req;
-	struct shadow_mq *mq = NULL;
 	struct mq_handle_entry *he;
 	bool created = false;
 	u32 handle;
@@ -200,97 +650,19 @@ static long mqioc_open(struct mq_session *s, void __user *arg)
 		goto out_req;
 
 	req->name[SHADOW_MQ_NAME_MAX] = '\0';
-	ret = -EINVAL;
-	if (!req->name[0] || req->name[0] != '/')
+	ret = mq_do_open(req->name, req->oflag, &req->attr, &he, &req->attr,
+			 &created);
+	if (ret)
 		goto out_req;
-
-	/* Clamp mq_maxmsg and mq_msgsize. */
-	if (req->attr.mq_maxmsg <= 0 ||
-	    req->attr.mq_maxmsg > SHADOW_MQ_MAXMSG_MAX)
-		req->attr.mq_maxmsg = SHADOW_MQ_MAXMSG_DEF;
-	if (req->attr.mq_msgsize <= 0 ||
-	    req->attr.mq_msgsize > SHADOW_MQ_MSGSIZE_MAX)
-		req->attr.mq_msgsize = SHADOW_MQ_MSGSIZE_MAX;
-
-	/*
-	 * Find-or-create under the name lock so two concurrent creates with
-	 * the same name do not both allocate new queue objects.
-	 */
-	mutex_lock(&mq_name_lock);
-	mq = mq_find_locked(req->name);
-	if (mq) {
-		if ((req->oflag & SHADOW_MQ_O_CREAT) &&
-		    (req->oflag & SHADOW_MQ_O_EXCL)) {
-			mutex_unlock(&mq_name_lock);
-			ret = -EEXIST;
-			goto out_req;
-		}
-		if (READ_ONCE(mq->unlinked)) {
-			mutex_unlock(&mq_name_lock);
-			ret = -ENOENT;
-			goto out_req;
-		}
-		mq_get(mq);
-	} else {
-		if (!(req->oflag & SHADOW_MQ_O_CREAT)) {
-			mutex_unlock(&mq_name_lock);
-			ret = -ENOENT;
-			goto out_req;
-		}
-		mq = kzalloc(sizeof(*mq), GFP_KERNEL);
-		if (!mq) {
-			mutex_unlock(&mq_name_lock);
-			ret = -ENOMEM;
-			goto out_req;
-		}
-		strscpy(mq->name, req->name, sizeof(mq->name));
-		mq->mq_maxmsg  = req->attr.mq_maxmsg;
-		mq->mq_msgsize = req->attr.mq_msgsize;
-		mq->nonblock   = !!(req->oflag & SHADOW_MQ_O_NONBLOCK);
-		atomic_set(&mq->curmsgs, 0);
-		spin_lock_init(&mq->msgs_lock);
-		INIT_LIST_HEAD(&mq->msgs);
-		init_waitqueue_head(&mq->wait_recv);
-		init_waitqueue_head(&mq->wait_send);
-		/*
-		 * Start with refcount=2: one reference for the name-hash entry
-		 * and one for the first handle.  This mirrors the mq_get() call
-		 * made for an already-existing queue found above, so that the
-		 * he->mq reference and the name-hash reference are always
-		 * tracked separately and a handle close never frees a queue that
-		 * is still in the hash.
-		 */
-		refcount_set(&mq->refcount, 2); /* name-hash ref + first handle ref */
-		hash_add(mq_name_hash, &mq->name_node,
-			 mq_name_hash_val(req->name));
-		created = true;
-	}
-	mutex_unlock(&mq_name_lock);
-
-	he = kzalloc(sizeof(*he), GFP_KERNEL);
-	if (!he) {
-		mq_put(mq); /* drop handle ref; name-hash ref remains for created queue */
-		ret = -ENOMEM;
-		goto out_req;
-	}
-	he->mq    = mq;
-	he->oflag = req->oflag;
 
 	mutex_lock(&s->lock);
 	ret = xa_alloc(&s->handles, &handle, he, XA_LIMIT(1, INT_MAX),
 		       GFP_KERNEL);
 	mutex_unlock(&s->lock);
 	if (ret) {
-		kfree(he);
-		mq_put(mq);
+		mq_handle_put(he);
 		goto out_req;
 	}
-
-	/* Return actual queue attributes. */
-	req->attr.mq_flags   = READ_ONCE(mq->nonblock) ? SHADOW_MQ_O_NONBLOCK : 0;
-	req->attr.mq_maxmsg  = mq->mq_maxmsg;
-	req->attr.mq_msgsize = mq->mq_msgsize;
-	req->attr.mq_curmsgs = (s64)atomic_read(&mq->curmsgs);
 	req->handle = handle;
 
 	ret = copy_to_user(arg, req, sizeof(*req)) ? -EFAULT : 0;
@@ -299,21 +671,9 @@ static long mqioc_open(struct mq_session *s, void __user *arg)
 		mutex_lock(&s->lock);
 		xa_erase(&s->handles, handle);
 		mutex_unlock(&s->lock);
-		kfree(he);
-		mq_put(mq); /* drop handle ref */
-		if (created) {
-			/*
-			 * Also remove the newly created queue from the name hash
-			 * and drop the name-hash reference so the queue is freed.
-			 * Without this, a queue with no reachable handle would
-			 * leak permanently in the name hash.
-			 */
-			mutex_lock(&mq_name_lock);
-			hash_del(&mq->name_node);
-			WRITE_ONCE(mq->unlinked, true);
-			mutex_unlock(&mq_name_lock);
-			mq_put(mq); /* drop name-hash ref */
-		}
+		if (created)
+			mq_do_unlink(he->mq->name);
+		mq_handle_put(he);
 	}
 out_req:
 	kfree(req);
@@ -334,8 +694,7 @@ static long mqioc_close(struct mq_session *s, void __user *arg)
 	if (!he)
 		return -EBADF;
 
-	mq_put(he->mq);
-	kfree(he);
+	mq_handle_put(he);
 	return 0;
 }
 
@@ -347,32 +706,14 @@ static long mqioc_unlink(struct mq_session *s, void __user *arg)
 	if (copy_from_user(&req, arg, sizeof(req)))
 		return -EFAULT;
 	req.name[SHADOW_MQ_NAME_MAX] = '\0';
-
-	mutex_lock(&mq_name_lock);
-	mq = mq_find_locked(req.name);
-	if (!mq) {
-		mutex_unlock(&mq_name_lock);
-		return -ENOENT;
-	}
-	hash_del(&mq->name_node);
-	WRITE_ONCE(mq->unlinked, true);
-	mutex_unlock(&mq_name_lock);
-
-	/* Wake any blocked waiters so they can observe unlinked and return. */
-	wake_up_all(&mq->wait_send);
-	wake_up_all(&mq->wait_recv);
-
-	mq_put(mq); /* drop the name-hash reference */
-	return 0;
+	return mq_do_unlink(req.name);
 }
 
 static long mqioc_send(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_send_req *req;
 	struct mq_handle_entry *he;
-	struct shadow_mq *mq;
-	struct mq_msg *msg;
-	bool nonblocking;
+	struct mq_wait_spec wait;
 	long ret = 0;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -384,77 +725,13 @@ static long mqioc_send(struct mq_session *s, void __user *arg)
 		goto out_req;
 
 	ret = -EBADF;
-	mutex_lock(&s->lock);
-	he = xa_load(&s->handles, req->handle);
-	if (he)
-		mq_get(he->mq);
-	mutex_unlock(&s->lock);
+	he = mq_session_lookup(s, req->handle);
 	if (!he)
 		goto out_req;
 
-	mq = he->mq;
-	nonblocking = !!(he->oflag & SHADOW_MQ_O_NONBLOCK) ||
-		      req->timeout_ns == 0;
-
-	ret = -EINVAL;
-	if (req->msg_len == 0 || (s64)req->msg_len > mq->mq_msgsize)
-		goto out_mq;
-
-	msg = kmalloc(sizeof(*msg) + req->msg_len, GFP_KERNEL);
-	if (!msg) {
-		ret = -ENOMEM;
-		goto out_mq;
-	}
-	msg->prio = req->prio;
-	msg->len  = req->msg_len;
-	memcpy(msg->data, req->msg_data, req->msg_len);
-
-	/* Wait for space in the queue. */
-	for (;;) {
-		spin_lock(&mq->msgs_lock);
-		if (atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg) {
-			mq_enqueue_locked(mq, msg);
-			spin_unlock(&mq->msgs_lock);
-			wake_up(&mq->wait_recv);
-			ret = 0;
-			goto out_mq;
-		}
-		spin_unlock(&mq->msgs_lock);
-
-		if (READ_ONCE(mq->unlinked)) {
-			ret = -ENOENT;
-			break;
-		}
-		if (nonblocking) {
-			ret = -EAGAIN;
-			break;
-		}
-
-		if (req->timeout_ns == U64_MAX) {
-			ret = wait_event_interruptible(mq->wait_send,
-				atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg ||
-				READ_ONCE(mq->unlinked));
-		} else {
-			long j = nsecs_to_jiffies(req->timeout_ns) + 1;
-
-			ret = wait_event_interruptible_timeout(mq->wait_send,
-				atomic_read(&mq->curmsgs) < (int)mq->mq_maxmsg ||
-				READ_ONCE(mq->unlinked), j);
-			if (ret == 0) {
-				ret = -ETIMEDOUT;
-				break;
-			}
-		}
-		if (ret < 0) {
-			ret = -EINTR;
-			break;
-		}
-		ret = 0;
-	}
-
-	kfree(msg);
-out_mq:
-	mq_put(mq);
+	mq_wait_spec_from_ioctl(&wait, READ_ONCE(he->oflag), req->timeout_ns);
+	ret = mq_do_send(he, req->msg_data, req->msg_len, req->prio, &wait);
+	mq_handle_put(he);
 out_req:
 	kfree(req);
 	return ret;
@@ -464,9 +741,7 @@ static long mqioc_receive(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_recv_req *req;
 	struct mq_handle_entry *he;
-	struct shadow_mq *mq;
-	struct mq_msg *msg = NULL;
-	bool nonblocking;
+	struct mq_wait_spec wait;
 	long ret = 0;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -478,77 +753,18 @@ static long mqioc_receive(struct mq_session *s, void __user *arg)
 		goto out_req;
 
 	ret = -EBADF;
-	mutex_lock(&s->lock);
-	he = xa_load(&s->handles, req->handle);
-	if (he)
-		mq_get(he->mq);
-	mutex_unlock(&s->lock);
+	he = mq_session_lookup(s, req->handle);
 	if (!he)
 		goto out_req;
 
-	mq = he->mq;
-	nonblocking = !!(he->oflag & SHADOW_MQ_O_NONBLOCK) ||
-		      req->timeout_ns == 0;
-
-	/* Wait for a message. */
-	for (;;) {
-		spin_lock(&mq->msgs_lock);
-		if (!list_empty(&mq->msgs)) {
-			msg = list_first_entry(&mq->msgs, struct mq_msg, node);
-			list_del(&msg->node);
-			atomic_dec(&mq->curmsgs);
-			spin_unlock(&mq->msgs_lock);
-			wake_up(&mq->wait_send);
-			break;
-		}
-		spin_unlock(&mq->msgs_lock);
-
-		if (READ_ONCE(mq->unlinked)) {
-			ret = -ENOENT;
-			goto out_mq;
-		}
-		if (nonblocking) {
-			ret = -EAGAIN;
-			goto out_mq;
-		}
-
-		if (req->timeout_ns == U64_MAX) {
-			ret = wait_event_interruptible(mq->wait_recv,
-				atomic_read(&mq->curmsgs) > 0 ||
-				READ_ONCE(mq->unlinked));
-		} else {
-			long j = nsecs_to_jiffies(req->timeout_ns) + 1;
-
-			ret = wait_event_interruptible_timeout(mq->wait_recv,
-				atomic_read(&mq->curmsgs) > 0 ||
-				READ_ONCE(mq->unlinked), j);
-			if (ret == 0) {
-				ret = -ETIMEDOUT;
-				goto out_mq;
-			}
-		}
-		if (ret < 0) {
-			ret = -EINTR;
-			goto out_mq;
-		}
-		ret = 0;
-	}
-
-	/* msg was dequeued; deliver it. */
-	if (msg->len > req->msg_len) {
-		kfree(msg);
-		ret = -EMSGSIZE;
-		goto out_mq;
-	}
-	req->prio    = msg->prio;
-	req->msg_len = msg->len;
-	memcpy(req->msg_data, msg->data, msg->len);
-	kfree(msg);
+	mq_wait_spec_from_ioctl(&wait, READ_ONCE(he->oflag), req->timeout_ns);
+	ret = mq_do_receive(he, req->msg_data, &req->msg_len, &req->prio, &wait);
+	mq_handle_put(he);
+	if (ret)
+		goto out_req;
 
 	if (copy_to_user(arg, req, sizeof(*req)))
 		ret = -EFAULT;
-out_mq:
-	mq_put(mq);
 out_req:
 	kfree(req);
 	return ret;
@@ -563,20 +779,14 @@ static long mqioc_getattr(struct mq_session *s, void __user *arg)
 	if (copy_from_user(&req, arg, sizeof(req)))
 		return -EFAULT;
 
-	mutex_lock(&s->lock);
-	he = xa_load(&s->handles, req.handle);
-	if (he)
-		mq_get(he->mq);
-	mutex_unlock(&s->lock);
+	he = mq_session_lookup(s, req.handle);
 	if (!he)
 		return -EBADF;
 
-	mq = he->mq;
-	req.attr.mq_flags   = READ_ONCE(mq->nonblock) ? SHADOW_MQ_O_NONBLOCK : 0;
-	req.attr.mq_maxmsg  = mq->mq_maxmsg;
-	req.attr.mq_msgsize = mq->mq_msgsize;
-	req.attr.mq_curmsgs = (s64)atomic_read(&mq->curmsgs);
-	mq_put(mq);
+	ret = mq_do_getattr(he, &req.attr);
+	mq_handle_put(he);
+	if (ret)
+		return ret;
 
 	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
 }
@@ -585,34 +795,19 @@ static long mqioc_setattr(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_attr_req req;
 	struct mq_handle_entry *he;
-	struct shadow_mq *mq;
+	long ret;
 
 	if (copy_from_user(&req, arg, sizeof(req)))
 		return -EFAULT;
 
-	mutex_lock(&s->lock);
-	he = xa_load(&s->handles, req.handle);
-	if (he)
-		mq_get(he->mq);
-	mutex_unlock(&s->lock);
+	he = mq_session_lookup(s, req.handle);
 	if (!he)
 		return -EBADF;
 
-	mq = he->mq;
-	/* Return old attributes. */
-	req.attr.mq_flags   = READ_ONCE(mq->nonblock) ? SHADOW_MQ_O_NONBLOCK : 0;
-	req.attr.mq_maxmsg  = mq->mq_maxmsg;
-	req.attr.mq_msgsize = mq->mq_msgsize;
-	req.attr.mq_curmsgs = (s64)atomic_read(&mq->curmsgs);
-
-	/* Apply new NONBLOCK flag (the only writable attribute). */
-	WRITE_ONCE(mq->nonblock,
-		   !!(req.newattr.mq_flags & SHADOW_MQ_O_NONBLOCK));
-	if (READ_ONCE(mq->nonblock))
-		he->oflag |= SHADOW_MQ_O_NONBLOCK;
-	else
-		he->oflag &= ~SHADOW_MQ_O_NONBLOCK;
-	mq_put(mq);
+	ret = mq_do_setattr(he, &req.newattr, &req.attr);
+	mq_handle_put(he);
+	if (ret)
+		return ret;
 
 	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
 }

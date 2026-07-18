@@ -1,0 +1,17 @@
+# Stray GOPATH / Go module cache artifacts that have accidentally been
+# committed in the past (e.g. a self-referential gitlink under
+# root/src/github.com/<owner>/<repo> with no matching .gitmodules entry).
+# Keep local GOPATH/Go build caches out of version control.
+/root/
+
+# Kernel module build output
+*.o
+*.ko
+*.mod
+*.mod.c
+*.symvers
+*.order
+.tmp_versions/
+
+# Generated shadow_configz header (built from config.template at build time)
+ctr_patches/shadow_configz/config_gz_data.h

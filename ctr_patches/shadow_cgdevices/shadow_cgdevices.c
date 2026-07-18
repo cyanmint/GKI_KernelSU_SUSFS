@@ -2,38 +2,23 @@
 /*
  * shadow_cgdevices - simulated cgroup device controller
  *
- * A standalone loadable kernel module that provides bookkeeping for per-
- * container device-access policies through ioctls on /dev/shadow_cgdevices.
+ * A standalone loadable kernel module that keeps an ioctl-configured shadow
+ * device policy and, when explicitly bound to a real cgroup, enforces that
+ * policy at real device-open entry points.
  *
  * Motivation
  * ----------
  * The cgroup v1 device controller (CONFIG_CGROUP_DEVICE) lets a container
  * runtime configure which devices a container may access by writing rules to
- * the devices.allow / devices.deny files in the cgroup hierarchy.  When the
- * controller is absent those writes fail and the runtime cannot enforce device
- * restrictions.
+ * the devices.allow / devices.deny files in the cgroup hierarchy. When that
+ * controller is absent there is no native rule store and no
+ * devcgroup_check_permission() hook point to reuse.
  *
- * shadow_cgdevices provides a parallel, ioctl-driven simulation.  A patched
- * containerd/runc creates virtual "shadow cgroups", populates them with allow
- * and deny rules that mirror the OCI spec, and queries the module to check
- * whether a given device access is permitted according to those rules.
- *
- * What is simulated
- * -----------------
- * - Virtual cgroup objects with parent/child identity and stable integer ids.
- * - An ordered allow/deny rule list per cgroup matching the cgroup v1 device
- *   controller format: (type, major, minor, access, allow|deny).
- * - A CHECK ioctl that walks the rule list and returns the last-matching
- *   decision (default: deny).
- * - Reference counting tied to the open fd; cgroups are freed when their
- *   creating session closes.
- *
- * What is NOT simulated
- * ---------------------
- * Actual device-access enforcement.  Deciding whether a /dev node can be
- * opened requires kernel support (LSM hooks, BPF, or the native cgroup device
- * controller).  This module tracks the *intended* policy so a patched runtime
- * can proceed without failing.
+ * shadow_cgdevices keeps a parallel, ioctl-driven simulation. Userspace creates
+ * virtual "shadow cgroups", populates them with allow/deny rules that mirror
+ * the OCI spec, and may bind the calling task's *real* cgroup identity to one
+ * of those virtual cgroups. Once bound, subsequent device opens from that real
+ * cgroup are checked transparently in-kernel.
  */
 
 #include <linux/module.h>
@@ -48,11 +33,17 @@
 #include <linux/uaccess.h>
 #include <linux/list.h>
 #include <linux/atomic.h>
+#include <linux/hashtable.h>
+#if IS_ENABLED(CONFIG_CGROUPS)
+#include <linux/cgroup.h>
+#endif
 
+#include "../shadow_hook/shadow_hook.h"
 #include "include/uapi/shadow_cgdevices.h"
 
 #define SHADOW_CGDEV_MAX_CGROUPS	65536
 #define SHADOW_CGDEV_MAX_RULES_PER_CG	256
+#define SHADOW_CGDEV_BIND_HASH_BITS	8
 
 /*
  * struct cgdev_rule - one device allow/deny entry.
@@ -74,7 +65,8 @@ struct cgdev_rule {
  * @rules:      ordered list of cgdev_rule
  * @nrules:     current number of rules
  * @rules_lock: protects @rules and @nrules
- * @refcount:   dropped by the owning session
+ * @refcount:   held by the owning session, temporary lookups and real-cgroup
+ *              bindings
  */
 struct shadow_cgroup {
 	u32			id;
@@ -92,14 +84,86 @@ struct cgdev_session {
 };
 
 struct cgdev_owned_ref {
-	struct list_head	  node;
+	struct list_head	 node;
 	struct shadow_cgroup	 *cg;
 };
 
-/* Global registry: id -> shadow_cgroup. */
+struct cgdev_binding {
+	struct hlist_node	node;
+	u64			real_cgroup_id;
+	struct shadow_cgroup	*cg;
+};
+
+/* Global registries: id -> shadow_cgroup and real-cgroup-id -> shadow_cgroup. */
 static DEFINE_XARRAY_ALLOC1(cgdev_map);
+static DEFINE_HASHTABLE(cgdev_bindings, SHADOW_CGDEV_BIND_HASH_BITS);
 static DEFINE_MUTEX(cgdev_map_lock);
 static atomic_t cgdev_count = ATOMIC_INIT(0);
+
+static int (*real_chrdev_open)(struct inode *inode, struct file *filp);
+static int (*real_blkdev_open)(struct inode *inode, struct file *filp);
+
+static void cgdev_put(struct shadow_cgroup *cg);
+static int shadow_chrdev_open(struct inode *inode, struct file *filp);
+static int shadow_blkdev_open(struct inode *inode, struct file *filp);
+
+static const char * const cgdev_chrdev_open_names[] = {
+	"chrdev_open",
+	NULL,
+};
+
+/*
+ * Block-device open symbol naming has drifted more across kernels than the
+ * character-device path. Only same-prototype candidates are safe here, so
+ * block enforcement is best-effort and may legitimately be skipped.
+ */
+static const char * const cgdev_blkdev_open_names[] = {
+	"blkdev_open",
+	NULL,
+};
+
+static struct shadow_hook cgdev_chrdev_open_hook =
+	SHADOW_HOOK(cgdev_chrdev_open_names, shadow_chrdev_open, &real_chrdev_open);
+static struct shadow_hook cgdev_blkdev_open_hook =
+	SHADOW_HOOK(cgdev_blkdev_open_names, shadow_blkdev_open, &real_blkdev_open);
+static struct shadow_hook *cgdev_hooks[] = {
+	&cgdev_chrdev_open_hook,
+	&cgdev_blkdev_open_hook,
+	NULL,
+};
+
+static bool cgdev_current_real_cgroup_id(u64 *real_cgroup_id)
+{
+#if IS_ENABLED(CONFIG_CGROUPS)
+	struct cgroup *cgrp;
+
+	/*
+	 * task_dfl_cgroup() has been the long-stable helper across the Android GKI
+	 * 5.10 -> 6.12 range we target here; if a downstream tree renames it, the
+	 * out-of-tree build must carry the trivial compat shim.
+	 */
+	cgrp = task_dfl_cgroup(current);
+	if (!cgrp)
+		return false;
+
+	*real_cgroup_id = cgroup_id(cgrp);
+	return *real_cgroup_id != 0;
+#else
+	return false;
+#endif
+}
+
+static struct cgdev_binding *cgdev_binding_lookup_locked(u64 real_cgroup_id)
+{
+	struct cgdev_binding *binding;
+
+	hash_for_each_possible(cgdev_bindings, binding, node, real_cgroup_id) {
+		if (binding->real_cgroup_id == real_cgroup_id)
+			return binding;
+	}
+
+	return NULL;
+}
 
 static struct shadow_cgroup *cgdev_get(u32 id)
 {
@@ -115,6 +179,23 @@ static struct shadow_cgroup *cgdev_get(u32 id)
 	return cg;
 }
 
+static struct shadow_cgroup *cgdev_get_bound(u64 real_cgroup_id)
+{
+	struct cgdev_binding *binding;
+	struct shadow_cgroup *cg = NULL;
+
+	mutex_lock(&cgdev_map_lock);
+	binding = cgdev_binding_lookup_locked(real_cgroup_id);
+	if (binding) {
+		cg = binding->cg;
+		if (!refcount_inc_not_zero(&cg->refcount))
+			cg = NULL;
+	}
+	mutex_unlock(&cgdev_map_lock);
+
+	return cg;
+}
+
 static void cgdev_free_rules(struct shadow_cgroup *cg)
 {
 	struct cgdev_rule *r, *tmp;
@@ -124,6 +205,31 @@ static void cgdev_free_rules(struct shadow_cgroup *cg)
 		kfree(r);
 	}
 	cg->nrules = 0;
+}
+
+static void cgdev_unbind_all_for_shadow(struct shadow_cgroup *target)
+{
+	struct cgdev_binding *binding;
+	unsigned int bucket;
+
+	for (;;) {
+		struct shadow_cgroup *bound_cg = NULL;
+
+		mutex_lock(&cgdev_map_lock);
+		hash_for_each(cgdev_bindings, bucket, binding, node) {
+			if (binding->cg != target)
+				continue;
+			hash_del(&binding->node);
+			bound_cg = binding->cg;
+			kfree(binding);
+			break;
+		}
+		mutex_unlock(&cgdev_map_lock);
+
+		if (!bound_cg)
+			break;
+		cgdev_put(bound_cg);
+	}
 }
 
 static void cgdev_put(struct shadow_cgroup *cg)
@@ -214,6 +320,7 @@ static long cgdev_ioc_destroy(struct cgdev_session *s, void __user *arg)
 	list_for_each_entry_safe(ref, tmp, &s->owned, node) {
 		if (ref->cg->id == id) {
 			list_del(&ref->node);
+			cgdev_unbind_all_for_shadow(ref->cg);
 			cgdev_put(ref->cg);
 			kfree(ref);
 			found = true;
@@ -290,6 +397,73 @@ static long cgdev_ioc_rule_reset(struct cgdev_session *s, void __user *arg)
 	return 0;
 }
 
+static long cgdev_ioc_bind(struct cgdev_session *s, void __user *arg)
+{
+	struct shadow_cgdev_bind req;
+	struct shadow_cgroup *new_cg = NULL;
+	struct shadow_cgroup *old_cg = NULL;
+	struct cgdev_binding *binding;
+	u64 real_cgroup_id;
+	int ret = 0;
+
+	if (copy_from_user(&req, arg, sizeof(req)))
+		return -EFAULT;
+
+	if (req.flags)
+		return -EINVAL;
+	if (!cgdev_current_real_cgroup_id(&real_cgroup_id))
+		return -EOPNOTSUPP;
+
+	req.real_cgroup_id = real_cgroup_id;
+
+	if (req.cgroup_id) {
+		new_cg = cgdev_get(req.cgroup_id);
+		if (!new_cg)
+			return -ENOENT;
+	}
+
+	mutex_lock(&cgdev_map_lock);
+	binding = cgdev_binding_lookup_locked(real_cgroup_id);
+	if (!binding) {
+		if (!new_cg)
+			goto out_unlock;
+
+		binding = kzalloc(sizeof(*binding), GFP_KERNEL);
+		if (!binding) {
+			ret = -ENOMEM;
+			goto out_unlock;
+		}
+		binding->real_cgroup_id = real_cgroup_id;
+		binding->cg = new_cg;
+		hash_add(cgdev_bindings, &binding->node, real_cgroup_id);
+		new_cg = NULL;
+		goto out_unlock;
+	}
+
+	if (!new_cg) {
+		hash_del(&binding->node);
+		old_cg = binding->cg;
+		kfree(binding);
+		goto out_unlock;
+	}
+
+	if (binding->cg == new_cg)
+		goto out_unlock;
+
+	old_cg = binding->cg;
+	binding->cg = new_cg;
+	new_cg = NULL;
+
+out_unlock:
+	mutex_unlock(&cgdev_map_lock);
+	cgdev_put(old_cg);
+	cgdev_put(new_cg);
+
+	if (ret)
+		return ret;
+	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
+}
+
 /*
  * Check whether a device access is allowed by the cgroup's rule list.
  * Walk all rules; the *last* matching rule determines the result.
@@ -314,17 +488,62 @@ static bool cgdev_check_access(struct shadow_cgroup *cg, u8 dev_type,
 		if (rule->minor != -1 && rule->minor != minor)
 			continue;
 		/*
-		 * Match access bits.  access=0 means "any access" (wildcard),
-		 * so a zero value always matches.  For non-zero requests the
-		 * rule must cover at least the requested bits.
+		 * Match access bits. access=0 means "any access" (wildcard), so a
+		 * zero value always matches. For non-zero requests the rule must cover
+		 * at least the requested bits.
 		 */
-		if (access && !(rule->access & access))
+		if (access && (rule->access & access) != access)
 			continue;
 		/* Last matching rule wins. */
 		allowed = rule->allow;
 	}
 	mutex_unlock(&cg->rules_lock);
 	return allowed;
+}
+
+static bool cgdev_check_current_task_access(struct inode *inode,
+					   struct file *filp)
+{
+	struct shadow_cgroup *cg;
+	u64 real_cgroup_id;
+	u8 access = 0;
+	u8 dev_type;
+	bool allowed;
+
+	if (!inode || !filp)
+		return true;
+	if (!cgdev_current_real_cgroup_id(&real_cgroup_id))
+		return true;
+
+	cg = cgdev_get_bound(real_cgroup_id);
+	if (!cg)
+		return true;
+
+	if (filp->f_mode & FMODE_READ)
+		access |= SHADOW_CGDEV_READ;
+	if (filp->f_mode & FMODE_WRITE)
+		access |= SHADOW_CGDEV_WRITE;
+
+	dev_type = S_ISBLK(inode->i_mode) ? SHADOW_CGDEV_TYPE_BLOCK
+					     : SHADOW_CGDEV_TYPE_CHAR;
+	allowed = cgdev_check_access(cg, dev_type, imajor(inode), iminor(inode),
+				     access);
+	cgdev_put(cg);
+	return allowed;
+}
+
+static int shadow_chrdev_open(struct inode *inode, struct file *filp)
+{
+	if (!cgdev_check_current_task_access(inode, filp))
+		return -EPERM;
+	return real_chrdev_open(inode, filp);
+}
+
+static int shadow_blkdev_open(struct inode *inode, struct file *filp)
+{
+	if (!cgdev_check_current_task_access(inode, filp))
+		return -EPERM;
+	return real_blkdev_open(inode, filp);
 }
 
 static long cgdev_ioc_check(struct cgdev_session *s, void __user *arg)
@@ -364,6 +583,7 @@ static long cgdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SHADOW_CGDEV_IOC_DESTROY:	   return cgdev_ioc_destroy(s, uarg);
 	case SHADOW_CGDEV_IOC_RULE_ADD:	   return cgdev_ioc_rule_add(s, uarg);
 	case SHADOW_CGDEV_IOC_RULE_RESET:  return cgdev_ioc_rule_reset(s, uarg);
+	case SHADOW_CGDEV_IOC_BIND:	   return cgdev_ioc_bind(s, uarg);
 	case SHADOW_CGDEV_IOC_CHECK:	   return cgdev_ioc_check(s, uarg);
 	default:			   return -ENOTTY;
 	}
@@ -392,6 +612,7 @@ static int cgdev_release(struct inode *inode, struct file *file)
 
 	list_for_each_entry_safe(ref, tmp, &s->owned, node) {
 		list_del(&ref->node);
+		cgdev_unbind_all_for_shadow(ref->cg);
 		cgdev_put(ref->cg);
 		kfree(ref);
 	}
@@ -419,6 +640,7 @@ static struct miscdevice cgdev_miscdev = {
 
 static int __init shadow_cgdevices_init(void)
 {
+	int hooked;
 	int ret;
 
 	ret = misc_register(&cgdev_miscdev);
@@ -427,17 +649,36 @@ static int __init shadow_cgdevices_init(void)
 		       ret);
 		return ret;
 	}
-	pr_info("shadow_cgdevices: simulated cgroup device controller loaded (ABI v%d) at %s\n",
-		SHADOW_CGDEV_ABI_VERSION, SHADOW_CGDEV_DEVICE_PATH);
+
+	hooked = shadow_hook_install_all(cgdev_hooks, "shadow_cgdevices");
+	if (hooked < 0) {
+		shadow_hook_remove_all(cgdev_hooks);
+		misc_deregister(&cgdev_miscdev);
+		return hooked;
+	}
+
+	pr_info("shadow_cgdevices: loaded (ABI v%d) at %s; transparent hooks installed for %d symbol(s)\n",
+		SHADOW_CGDEV_ABI_VERSION, SHADOW_CGDEV_DEVICE_PATH, hooked);
 	return 0;
 }
 
 static void __exit shadow_cgdevices_exit(void)
 {
 	struct shadow_cgroup *cg;
+	struct cgdev_binding *binding;
+	struct hlist_node *tmp;
 	unsigned long id;
+	unsigned int bucket;
 
+	shadow_hook_remove_all(cgdev_hooks);
 	misc_deregister(&cgdev_miscdev);
+
+	mutex_lock(&cgdev_map_lock);
+	hash_for_each_safe(cgdev_bindings, bucket, tmp, binding, node) {
+		hash_del(&binding->node);
+		kfree(binding);
+	}
+	mutex_unlock(&cgdev_map_lock);
 
 	mutex_lock(&cgdev_map_lock);
 	xa_for_each(&cgdev_map, id, cg) {
@@ -449,7 +690,7 @@ static void __exit shadow_cgdevices_exit(void)
 	mutex_unlock(&cgdev_map_lock);
 	xa_destroy(&cgdev_map);
 
-	pr_info("shadow_cgdevices: simulated cgroup device controller unloaded\n");
+	pr_info("shadow_cgdevices: unloaded\n");
 }
 
 module_init(shadow_cgdevices_init);
@@ -457,5 +698,5 @@ module_exit(shadow_cgdevices_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated cgroup device controller for patched containerd");
-MODULE_VERSION("1.0");
+MODULE_DESCRIPTION("Shadow cgroup device controller with transparent open enforcement");
+MODULE_VERSION("1.1");

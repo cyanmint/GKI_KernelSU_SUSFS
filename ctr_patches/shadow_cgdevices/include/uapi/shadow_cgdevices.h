@@ -3,20 +3,19 @@
  * shadow_cgdevices - simulated cgroup device controller UAPI
  *
  * Stable ABI shared between the shadow_cgdevices kernel module and userspace
- * clients (e.g. a patched containerd/runc).
+ * clients.
  *
  * The Linux cgroup v1 device controller (CONFIG_CGROUP_DEVICE) lets a runtime
  * configure per-container device access policies by writing "allow" / "deny"
- * rules to devices.allow / devices.deny in the cgroup hierarchy.  When the
- * controller is absent this module provides a simulation: a patched runtime
- * drives virtual "shadow cgroups" through ioctls on /dev/shadow_cgdevices,
- * recording device rules and answering CHECK queries.
+ * rules to devices.allow / devices.deny in the cgroup hierarchy. When the
+ * controller is absent this module provides a shadow rule store driven through
+ * ioctls on /dev/shadow_cgdevices.
  *
- * Like the IPC/MNT/... types in shadowns this is *bookkeeping*, not real
- * kernel-level enforcement.  Actual device access control requires either the
- * native cgroup device controller or a kernel LSM.  Use this module so that a
- * patched runtime can proceed without failing, and to track the intended policy
- * for audit or userspace-enforced security layers.
+ * The ioctl ABI still exposes explicit create/rule/check bookkeeping, but a
+ * caller may now also bind the *calling task's real cgroup* to an existing
+ * shadow cgroup. Once bound, character-device opens (and best-effort block-
+ * device opens on kernels where the symbol can be hooked) are enforced in-
+ * kernel without any per-open userspace round trip.
  *
  * See ctr_patches/shadow_cgdevices/README.md for design and limitations.
  */
@@ -54,7 +53,7 @@
  * @id:        allocated shadow cgroup id (out).
  *
  * The new cgroup inherits no rules from its parent (rules are independent per
- * cgroup, as in cgroup v2).  The id is stable for the lifetime of the session
+ * cgroup, as in cgroup v2). The id is stable for the lifetime of the session
  * that created it.
  */
 struct shadow_cgdev_create {
@@ -87,14 +86,32 @@ struct shadow_cgdev_rule {
 };
 
 /*
+ * struct shadow_cgdev_bind - bind the caller's real cgroup to a shadow one.
+ *
+ * @cgroup_id:      shadow cgroup id to bind to the current task's real cgroup.
+ *                  Set to 0 to unbind the current real cgroup instead.
+ * @flags:          reserved, must be zero for now.
+ * @real_cgroup_id: stable kernel cgroup id observed for the caller (out).
+ *
+ * The binding key is the caller's real default-hierarchy cgroup id, not a
+ * userspace-provided pathname. That lets later device opens by any task in the
+ * same cgroup be checked transparently inside the kernel.
+ */
+struct shadow_cgdev_bind {
+	__u32 cgroup_id;
+	__u32 flags;
+	__u64 real_cgroup_id;
+};
+
+/*
  * struct shadow_cgdev_check - query whether a device access is permitted.
  *
- * Walks the rule list of the given cgroup.  The last matching rule determines
+ * Walks the rule list of the given cgroup. The last matching rule determines
  * the result; if no rule matches the default is deny (0).
  *
  * @cgroup_id: shadow cgroup to query (in)
  * @dev_type:  'b' or 'c' (in; 'a' is not a valid query type)
- * @access:    one of SHADOW_CGDEV_READ / WRITE / MKNOD (in)
+ * @access:    OR of SHADOW_CGDEV_READ / WRITE / MKNOD (in)
  * @allowed:   1 = access permitted, 0 = access denied (out)
  * @major:     device major number (in)
  * @minor:     device minor number (in)
@@ -129,5 +146,8 @@ struct shadow_cgdev_check {
 /* Check whether a device access is permitted by the cgroup's rules. */
 #define SHADOW_CGDEV_IOC_CHECK \
 	_IOWR(SHADOW_CGDEV_IOC_MAGIC, 5, struct shadow_cgdev_check)
+/* Bind/unbind the caller's real cgroup to/from a shadow cgroup. */
+#define SHADOW_CGDEV_IOC_BIND \
+	_IOWR(SHADOW_CGDEV_IOC_MAGIC, 6, struct shadow_cgdev_bind)
 
 #endif /* _UAPI_SHADOW_CGDEVICES_H */

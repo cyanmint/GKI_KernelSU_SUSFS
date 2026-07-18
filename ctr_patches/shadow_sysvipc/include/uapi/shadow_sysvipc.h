@@ -2,13 +2,14 @@
 /*
  * shadow_sysvipc - simulated System V IPC subsystem UAPI
  *
- * Stable ABI shared between the shadow_sysvipc kernel module and userspace
- * clients (e.g. a patched containerd/runc).
+ * Stable ioctl ABI shared between the shadow_sysvipc kernel module and
+ * userspace clients that choose to talk to /dev/shadow_sysvipc directly.
  *
  * On kernels built without CONFIG_SYSVIPC the msgget/semget/shmget family of
  * syscalls return ENOSYS.  This module provides an out-of-tree simulation that
- * a patched runtime can drive through ioctls on /dev/shadow_sysvipc to track
- * virtual SysV IPC resources without needing in-kernel SysV support.
+ * can be reached either transparently via ftrace-hooked syscall wrappers or
+ * explicitly through ioctls on /dev/shadow_sysvipc to track virtual SysV IPC
+ * resources without needing in-kernel SysV support.
  *
  * See ctr_patches/shadow_sysvipc/README.md for design and limitations.
  */
@@ -26,7 +27,8 @@
 
 /*
  * Virtual IPC resource types.  Values mirror the three classic SysV IPC object
- * kinds so a patched runtime can map IPC_* operations directly.
+ * kinds so transparent syscall hooks and explicit ioctl clients can both map
+ * IPC_* operations directly.
  */
 enum shadow_sysvipc_type {
 	SHADOW_SYSVIPC_TYPE_MSGQ = 0,	/* message queue  */

@@ -2,16 +2,14 @@
 /*
  * shadowns - simulated ("shadow") namespace subsystem UAPI
  *
- * This header defines the stable ABI shared between the shadowns kernel
- * module and userspace clients (e.g. a patched containerd/runc).
+ * This header defines the stable ioctl ABI shared between the shadowns kernel
+ * module and userspace clients.
  *
- * The shadow namespace system is an *out-of-tree simulation* of the kernel
- * namespace model. It does NOT replace or hook the native namespace syscalls
- * (unshare(2)/setns(2)/clone(2)); instead it maintains an independent set of
- * reference-counted namespace objects that userspace drives explicitly through
- * ioctls on /dev/shadowns. A container runtime that has been patched to talk to
- * this ABI can therefore obtain namespace-like bookkeeping and UTS isolation on
- * a kernel that was built without the native CONFIG_*_NS options.
+ * The shadow namespace system is an out-of-tree simulation of the kernel
+ * namespace model. The module now has both transparent syscall hooks and this
+ * explicit ioctl interface: stock userspace can drive the shadow model through
+ * unshare(2)/setns(2)/clone(2) and the hostname-related syscalls, while
+ * /dev/shadowns remains available for diagnostics and manual control.
  *
  * See ctr_patches/shadowns/README.md for the design and scope/limitations.
  */
