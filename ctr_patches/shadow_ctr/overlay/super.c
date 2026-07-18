@@ -17,10 +17,14 @@
 #include <linux/exportfs.h>
 #include <linux/file.h>
 #include "overlayfs.h"
+#include "../shadow_ctr_internal.h"
 
-MODULE_AUTHOR("Miklos Szeredi <miklos@szeredi.hu>");
-MODULE_DESCRIPTION("Overlay filesystem");
-MODULE_LICENSE("GPL");
+/*
+ * MODULE_AUTHOR()/MODULE_DESCRIPTION()/MODULE_LICENSE() are deliberately not
+ * repeated here: this file is linked into the combined shadow_ctr.ko (see
+ * ../shadow_ctr_main.c), which already carries that module-wide metadata
+ * once, exactly like the other shadow_ctr.ko subsystem source files do.
+ */
 
 
 struct ovl_dir_cache;
@@ -2222,7 +2226,16 @@ static void ovl_inode_init_once(void *foo)
 	inode_init_once(&oi->vfs_inode);
 }
 
-static int __init ovl_init(void)
+/*
+ * Named shadow_overlay_{init,exit}() rather than the upstream ovl_init()/
+ * ovl_exit(), and not wired up via module_init()/module_exit(): those macros
+ * create the init_module()/cleanup_module() aliases, and the Linux module
+ * loader only allows one such alias per linked .ko. shadow_ctr_main.c is the
+ * only file in the combined shadow_ctr.ko allowed to use them; it calls
+ * these two explicitly instead, exactly like every other shadow_ctr.ko
+ * subsystem (see shadow_ctr_internal.h).
+ */
+int __init shadow_overlay_init(void)
 {
 	int err;
 
@@ -2247,7 +2260,7 @@ static int __init ovl_init(void)
 	return err;
 }
 
-static void __exit ovl_exit(void)
+void __exit shadow_overlay_exit(void)
 {
 	unregister_filesystem(&ovl_fs_type);
 
@@ -2259,6 +2272,3 @@ static void __exit ovl_exit(void)
 	kmem_cache_destroy(ovl_inode_cachep);
 	ovl_aio_request_cache_destroy();
 }
-
-module_init(ovl_init);
-module_exit(ovl_exit);

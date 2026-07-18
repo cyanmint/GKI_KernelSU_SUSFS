@@ -14,9 +14,9 @@
 # without a working shadow module behind it would just turn a clear
 # "-ENOSYS at startup" failure into a confusing runtime malfunction instead -
 # only ship this module together with the shadow_* modules it is meant to
-# front for. CONFIG_OVERLAY_FS below is fronted by the separate
-# ../shadow_overlay/ module (overlay.ko), not by anything in shadow_ctr.ko
-# itself - see ../shadow_overlay/README.md.
+# front for. CONFIG_OVERLAY_FS below is fronted by the overlay/ subsystem
+# also linked into shadow_ctr.ko (default-on, android14-6.1 only) - see
+# overlay/README.md and shadow_configspoof.README.md.
 CONFIG_NAMESPACES=y
 CONFIG_UTS_NS=y
 CONFIG_IPC_NS=y

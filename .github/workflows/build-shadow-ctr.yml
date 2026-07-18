@@ -20,6 +20,12 @@
 # Building against the DDK's real vmlinux/Module.symvers/toolchain avoids
 # all of the above, exactly as it did for the QEMU boot-test workflow.
 #
+# shadow_ctr.ko's overlay/ subsystem (vendored fs/overlayfs, providing real
+# CONFIG_OVERLAY_FS support for dockerd's overlay2 graphdriver -- see
+# ctr_patches/shadow_ctr/overlay/README.md) is linked in by default but is
+# only source-compatible with android14-6.1, so every other KMI in this
+# matrix is built with WITH_SHADOW_OVERLAY=0.
+#
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
 name: Build shadow_ctr.ko
@@ -90,9 +96,16 @@ jobs:
 
       - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
+          # overlay/ (linked in by default) is only source-compatible with
+          # android14-6.1 -- see ctr_patches/shadow_ctr/overlay/README.md.
+          if [ "${{ matrix.kmi }}" = "android14-6.1" ]; then
+            with_overlay=1
+          else
+            with_overlay=0
+          fi
           docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
             "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
-            bash -c "make -C /opt/ddk/kdir/${{ matrix.kmi }} M=/workspace/ctr_patches/shadow_ctr modules -j\$(nproc)"
+            bash -c "make -C /opt/ddk/kdir/${{ matrix.kmi }} M=/workspace/ctr_patches/shadow_ctr WITH_SHADOW_OVERLAY=$with_overlay modules -j\$(nproc)"
           ls -la ctr_patches/shadow_ctr/shadow_ctr.ko
 
       - name: Upload shadow_ctr.ko (${{ matrix.kmi }})

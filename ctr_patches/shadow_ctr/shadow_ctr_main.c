@@ -15,6 +15,10 @@
  *   - shadow_cgdevices.c    transparent cgroup device-access enforcement
  *                           (chrdev_open/blkdev_open hijacking)
  *   - shadow_configspoof.c  /proc/config.gz spoofing overlay
+ *   - overlay/ files        real "overlay" filesystem type (vendored,
+ *                           unmodified fs/overlayfs), linked in only when
+ *                           built with WITH_SHADOW_OVERLAY=1 (see Makefile
+ *                           and overlay/README.md)
  *
  * Each of the above files retains its own /dev/shadow_* misc device, ioctl
  * ABI, and hooking logic (via the shared shadow_hook.h helper), but exposes
@@ -85,9 +89,28 @@ static int __init shadow_ctr_main_init(void)
 		goto err_configspoof;
 	pr_info("shadow_ctr: shadow_configspoof_init() succeeded\n");
 
-	pr_info("shadow_ctr: combined shadow container-support module loaded (shadow_ns + shadow_sysvipc + shadow_mqueue + shadow_cgdevices + shadow_configspoof)\n");
+#ifdef SHADOW_CTR_WITH_OVERLAY
+	pr_info("shadow_ctr: entering shadow_overlay_init()\n");
+	ret = shadow_overlay_init();
+	if (ret)
+		goto err_overlay;
+	pr_info("shadow_ctr: shadow_overlay_init() succeeded\n");
+#endif
+
+	pr_info("shadow_ctr: combined shadow container-support module loaded (shadow_ns + shadow_sysvipc + shadow_mqueue + shadow_cgdevices + shadow_configspoof"
+#ifdef SHADOW_CTR_WITH_OVERLAY
+		" + shadow_overlay"
+#endif
+		")\n");
 	return 0;
 
+#ifdef SHADOW_CTR_WITH_OVERLAY
+err_overlay:
+	pr_err("shadow_ctr: shadow_overlay_init() failed (%d), unwinding shadow_configspoof + shadow_cgdevices\n", ret);
+	shadow_configspoof_exit();
+	shadow_cgdevices_exit();
+	goto err_mqueue;
+#endif
 err_configspoof:
 	pr_err("shadow_ctr: shadow_configspoof_init() failed (%d), unwinding shadow_cgdevices\n", ret);
 	shadow_cgdevices_exit();
@@ -110,6 +133,10 @@ static void __exit shadow_ctr_main_exit(void)
 	pr_info("shadow_ctr: module exit starting\n");
 
 	/* Tear down in the reverse order of initialisation. */
+#ifdef SHADOW_CTR_WITH_OVERLAY
+	pr_info("shadow_ctr: entering shadow_overlay_exit()\n");
+	shadow_overlay_exit();
+#endif
 	pr_info("shadow_ctr: entering shadow_configspoof_exit()\n");
 	shadow_configspoof_exit();
 	pr_info("shadow_ctr: entering shadow_cgdevices_exit()\n");

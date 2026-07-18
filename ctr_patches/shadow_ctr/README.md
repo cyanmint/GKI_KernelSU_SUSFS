@@ -1,8 +1,8 @@
 # shadow_ctr — combined containerd-support kernel module
 
-`shadow_ctr.ko` is a single out-of-tree kernel module that links together five
-independently documented subsystems, each of which used to be its own
-standalone module:
+`shadow_ctr.ko` is a single out-of-tree kernel module that links together
+five independently documented, always-built-in subsystems, each of which
+used to be its own standalone module, plus one optional subsystem:
 
 | Subsystem            | Source                  | Docs                                            |
 |-----------------------|--------------------------|--------------------------------------------------|
@@ -12,6 +12,7 @@ standalone module:
 | cgroup device control | `shadow_cgdevices.c`      | [`shadow_cgdevices.README.md`](shadow_cgdevices.README.md) |
 | `/proc/config.gz` spoof | `shadow_configspoof.c` | [`shadow_configspoof.README.md`](shadow_configspoof.README.md) |
 | ftrace/kprobe hijack helper | `shadow_hook.h`     | [`shadow_hook.README.md`](shadow_hook.README.md)         |
+| overlay filesystem (optional, android14-6.1 only) | `overlay/*.c` | [`overlay/README.md`](overlay/README.md) |
 
 `shadow_ctr_main.c` only carries the combined module's metadata/banner; each
 subsystem exposes plain (non-`module_init`/`module_exit`) init/exit functions
@@ -22,12 +23,16 @@ the `module_init()`/`module_exit()` macros).
 
 ## Why merge them
 
-Each subsystem simulates a piece of GKI kernel functionality
+Most subsystems simulate a piece of GKI kernel functionality
 (`CONFIG_*_NS`, `CONFIG_SYSVIPC`, `CONFIG_POSIX_MQUEUE`, cgroup-v1 device
 control, and the corresponding `/proc/config.gz` advertisement) for kernels
 built without it, so that a stock, unpatched `containerd`/`runc`/`dockerd` can
-run on them. Building and loading a single `shadow_ctr.ko` is simpler to ship
-and version than five separate `.ko` files that must be kept in lockstep.
+run on them. `overlay/` is the one exception — it's a vendored, unmodified
+copy of the real `fs/overlayfs` kernel code, needed because production GKI
+boot images generally ship with `CONFIG_OVERLAY_FS` disabled outright (see
+[`overlay/README.md`](overlay/README.md)). Building and loading a single
+`shadow_ctr.ko` is simpler to ship and version than several separate `.ko`
+files that must be kept in lockstep.
 
 ## Building
 
@@ -45,23 +50,19 @@ For an Android GKI cross build:
 make KDIR=/path/to/kernel/build ARCH=arm64 LLVM=1
 ```
 
+`overlay/` (see table above) is linked in by default (`WITH_SHADOW_OVERLAY=1`)
+but only compiles against the **android14-6.1** kernel branch; builds
+targeting any other `ctr_patches/` branch must disable it:
+
+```sh
+make KDIR=/path/to/kernel/build ARCH=arm64 LLVM=1 WITH_SHADOW_OVERLAY=0
+```
+
 See each subsystem's own README (linked above) for its specific `/dev/*` node,
 ioctl ABI, and honest scope/limitations. See
 [`../../.github/workflows/build-shadow-ctr.yml`](../../.github/workflows/build-shadow-ctr.yml)
 for a CI workflow that builds `shadow_ctr.ko` against a matrix of real
 `kernel/common` branches.
-
-## Related module: shadow_overlay
-
-`shadow_ctr.ko` does **not** provide overlay filesystem support. If
-`ctr_patches/shadow_ctr/config.template` spoofs `CONFIG_OVERLAY_FS=y` (it
-does, for dockerd's `overlay2` graphdriver preflight check) but the target
-kernel wasn't actually built with it, `dockerd` will fail at mount time
-instead. See the separate, sibling
-[`../shadow_overlay/`](../shadow_overlay/README.md) module (`overlay.ko`)
-for a real, working `CONFIG_OVERLAY_FS` implementation: it vendors the
-unmodified `fs/overlayfs` kernel sources rather than simulating behaviour
-like the subsystems above, and is loaded independently of `shadow_ctr.ko`.
 
 ## Kernel compatibility
 
@@ -74,3 +75,8 @@ Some subsystems (e.g. `shadow_mqueue.c`'s `fd_file()`/`fd_empty()` use) target
 kernel APIs that only exist from Linux v6.8 onward; `shadow_ctr_internal.h`
 provides compatibility shims so the same source builds unmodified against
 older GKI kernel branches (e.g. 6.1) that predate those helpers.
+
+`overlay/` is the exception to the above: it is only source-compatible with
+android14-6.1, so `build-shadow-ctr.yml`'s CI matrix builds it with
+`WITH_SHADOW_OVERLAY=0` for every KMI except `android14-6.1` (see
+[`overlay/README.md`](overlay/README.md) for why).

@@ -44,4 +44,21 @@ void shadow_cgdevices_exit(void);
 int __init shadow_configspoof_init(void);
 void shadow_configspoof_exit(void);
 
+/*
+ * shadow_overlay_{init,exit}() (overlay/super.c) provide the real,
+ * vendored-from-upstream `fs/overlayfs` "overlay" filesystem type — unlike
+ * the subsystems above, this isn't a simulation of kernel behaviour missing
+ * from a stock GKI build, it's the genuine implementation, needed because
+ * production GKI boot images generally ship with CONFIG_OVERLAY_FS disabled
+ * outright (breaking dockerd's overlay2 graphdriver). See
+ * overlay/README.md and shadow_configspoof.README.md's CONFIG_OVERLAY_FS
+ * note for details. Only linked in when built with WITH_SHADOW_OVERLAY=1
+ * (the Makefile's default), since the vendored sources currently only
+ * compile against the android14-6.1 kernel branch.
+ */
+#ifdef SHADOW_CTR_WITH_OVERLAY
+int __init shadow_overlay_init(void);
+void shadow_overlay_exit(void);
+#endif
+
 #endif /* _SHADOW_CTR_INTERNAL_H */

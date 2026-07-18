@@ -41,14 +41,15 @@ remain unimplemented, `shadow_cgdevices` enforcement requires an explicit bind
 step). Spoofing the config is a userspace-preflight compatibility shim, not
 a claim that every corresponding kernel subsystem is now fully implemented.
 
-`CONFIG_OVERLAY_FS` is the one spoofed symbol *not* backed by a subsystem
-linked into `shadow_ctr.ko` itself — it is instead backed by the sibling,
-separately-loaded [`../shadow_overlay/`](../shadow_overlay/README.md)
-module (`overlay.ko`), which is a vendored, unmodified copy of the real
-`fs/overlayfs` kernel code rather than a simulation. Load it alongside
-`shadow_ctr.ko` on any target where `CONFIG_OVERLAY_FS=y` is spoofed here,
-or dockerd's `overlay2` graphdriver will fail at mount time instead of at
-the config preflight check.
+`CONFIG_OVERLAY_FS` is backed by the `overlay/` subsystem also linked into
+`shadow_ctr.ko` (see [`overlay/README.md`](overlay/README.md)), which is a
+vendored, unmodified copy of the real `fs/overlayfs` kernel code rather than
+a simulation like the subsystems above. It is linked in by default
+(`WITH_SHADOW_OVERLAY=1`), but only compiles against the android14-6.1
+kernel branch; if `shadow_ctr.ko` was built with `WITH_SHADOW_OVERLAY=0` for
+a different branch, `CONFIG_OVERLAY_FS=y` should not be spoofed here, or
+dockerd's `overlay2` graphdriver will fail at mount time instead of at the
+config preflight check.
 
 ## Implementation
 
