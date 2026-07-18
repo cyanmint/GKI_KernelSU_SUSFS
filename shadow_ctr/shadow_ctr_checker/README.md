@@ -18,8 +18,8 @@ Example output:
 ```
 shadow_ctr_checker v2.0 - shadow container-support status
 ----------------------------------------
-mqueue: not supported (builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
-sysvipc: not supported (builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
+mqueue: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
+sysvipc: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
 cgroup_device: supported (builtin)
 overlay2: supported (shadow_overlay2.ko)
 # namespaces (task explicitly requests net/pid/ipc/uts; mnt/user/cgroup shown for completeness)

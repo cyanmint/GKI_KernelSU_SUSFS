@@ -107,7 +107,7 @@ static void shadow_checker_feature(struct shadow_checker_buf *b,
 		shadow_checker_add(b, "%s: supported (builtin)\n", label);
 	else
 		shadow_checker_add(b,
-			"%s: not supported (builtin); check `lsmod`/`/proc/modules` for a shadow_* provider\n",
+			"%s: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider\n",
 			label);
 }
 
