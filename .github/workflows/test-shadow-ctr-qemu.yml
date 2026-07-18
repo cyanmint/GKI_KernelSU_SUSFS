@@ -1,10 +1,13 @@
-# Boot-test shadow_ctr.ko under QEMU.
+# Boot-test the shadow_ctr module family under QEMU.
 #
-# This workflow builds shadow_ctr.ko for android14-6.1 arm64, injects the
-# freshly built module into a prebuilt test kernel + ramdisk image, boots it
-# under qemu-system-aarch64, and collects the serial console log (which
-# includes the `insmod` attempt and any resulting kernel messages) as a build
-# artifact for inspection.
+# shadow_ctr used to be a single combined shadow_ctr.ko; it is now split into
+# several independently loadable modules under shadow_ctr/ (see
+# shadow_ctr/README.md). This workflow builds ALL of the android14-6.1 arm64
+# modules, injects the freshly built .ko files into a prebuilt test kernel +
+# ramdisk image, boots it under qemu-system-aarch64, insmods them in
+# dependency order, and collects the serial console log (including the insmod
+# attempts, resulting kernel messages, the presence of each /dev node, and the
+# contents of /dev/shadow_ctr_checker) as a build artifact for inspection.
 #
 # The test ramdisk is a standalone (system-as-root) recovery image published
 # at the v2.1.0 release specifically for this kind of smoke test; it ships
@@ -12,9 +15,9 @@
 # devices, so it can boot directly from an initramfs under QEMU's "virt"
 # machine type. The kernel image booted alongside it is extracted from the
 # android14-6.1.124-2025-02 boot.img published at the v2.2.0 release, so the
-# module is tested against an actual SukiSU/SUSFS-patched GKI kernel build.
+# modules are tested against an actual SukiSU/SUSFS-patched GKI kernel build.
 #
-# shadow_ctr.ko is built inside SukiSU-Ultra's prebuilt "DDK" (Driver
+# The modules are built inside SukiSU-Ultra's prebuilt "DDK" (Driver
 # Development Kit) container image (ghcr.io/ylarod/ddk-min:<kmi>-<release>,
 # see https://github.com/SukiSU-Ultra/SukiSU-Ultra/blob/main/.github/workflows/ddk-lkm.yml),
 # which ships a genuine vmlinux + Module.symvers + matching clang toolchain
@@ -26,8 +29,15 @@
 # matched -- because `struct module`'s CRC/CFI-relevant metadata doesn't
 # match a real build. Using the DDK sysroot's real vmlinux/Module.symvers
 # fixes this; this was confirmed by local QEMU boot testing.
+#
+# Dependency note: the shadow_ns_* per-type modules resolve shadow_ns_base's
+# EXPORT_SYMBOL_GPL symbols, so shadow_ns_base is built (with
+# KBUILD_EXTRA_SYMBOLS wiring for the dependents) and insmod'd first.
+# shadow_ctr_checker has no build-time dependency on anything (it detects the
+# other modules at runtime via symbol_get), and is loaded last so it observes
+# all of them.
 
-name: Test shadow_ctr.ko (QEMU)
+name: Test shadow_ctr modules (QEMU)
 
 permissions:
   contents: read
@@ -36,11 +46,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'ctr_patches/shadow_ctr/**'
+      - 'shadow_ctr/**'
       - '.github/workflows/test-shadow-ctr-qemu.yml'
   pull_request:
     paths:
-      - 'ctr_patches/shadow_ctr/**'
+      - 'shadow_ctr/**'
       - '.github/workflows/test-shadow-ctr-qemu.yml'
   workflow_dispatch:
 
@@ -62,27 +72,53 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cpio qemu-system-arm
 
-      # --- 1. Build shadow_ctr.ko for android14-6.1 arm64 ---
+      # --- 1. Build all shadow_ctr modules for android14-6.1 arm64 ---
       #
-      # Built inside the DDK container so the resulting .ko links against a
-      # real vmlinux/Module.symvers instead of a bare gki_defconfig tree.
+      # Built inside the DDK container so the resulting .ko files link against
+      # a real vmlinux/Module.symvers instead of a bare gki_defconfig tree.
 
       - name: Pull DDK build image (${{ env.DDK_KMI }}-${{ env.DDK_RELEASE }})
         run: |
           docker pull "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}"
 
-      - name: Build shadow_ctr.ko (arm64, via DDK container)
+      - name: Build all shadow_ctr modules (arm64, via DDK container)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
+            -e KMI="${DDK_KMI}" \
             "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}" \
-            bash -c "make -C /opt/ddk/kdir/${DDK_KMI} M=/workspace/ctr_patches/shadow_ctr modules -j\$(nproc)"
-          ls -la ctr_patches/shadow_ctr/shadow_ctr.ko
+            bash -euxo pipefail -c '
+              KDIR="/opt/ddk/kdir/${KMI}"
+              ROOT="/workspace/shadow_ctr"
+              J="$(nproc)"
 
-      - name: Upload shadow_ctr.ko (arm64)
+              build() { local dir="$1"; shift; make -C "$KDIR" M="$ROOT/$dir" modules -j"$J" "$@"; }
+
+              # base first (produces Module.symvers for the ns_* dependents)
+              build shadow_ns_base
+              BASE_SYMS="$ROOT/shadow_ns_base/Module.symvers"
+              for t in uts net ipc pid mnt user cgroup; do
+                build "shadow_ns_$t" KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
+              done
+              build shadow_sysvipc
+              build shadow_mqueue
+              build shadow_cgdevices
+              build shadow_ctr_checker
+              # overlay2 is android14-6.1 compatible (this KMI), so build it too
+              build shadow_overlay2
+
+              # collect all built .ko into one staging dir for injection/upload
+              mkdir -p /workspace/modules-out
+              find "$ROOT" -name "*.ko" -exec cp {} /workspace/modules-out/ \;
+              echo "=== staged modules ==="
+              ls -la /workspace/modules-out
+            '
+          ls -la modules-out
+
+      - name: Upload built modules (arm64)
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-${{ env.DDK_KMI }}-arm64
-          path: ctr_patches/shadow_ctr/shadow_ctr.ko
+          name: shadow_ctr-modules-${{ env.DDK_KMI }}-arm64
+          path: modules-out/
 
       # --- 2. Fetch the test ramdisk and the kernel image under test ---
 
@@ -106,37 +142,60 @@ jobs:
           cp out-bootimg/kernel test-image/kernel
           ls -la test-image
 
-      # --- 3. Inject the freshly built shadow_ctr.ko into the ramdisk ---
+      # --- 3. Inject the freshly built modules into the ramdisk ---
 
-      - name: Inject shadow_ctr.ko into ramdisk
+      - name: Inject shadow_ctr modules into ramdisk
         run: |
           set -e
           workdir="$GITHUB_WORKSPACE/ramdisk-root"
           mkdir -p "$workdir"
           (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
 
-          cp ctr_patches/shadow_ctr/shadow_ctr.ko "$workdir/shadow_ctr.ko"
+          # Drop every freshly built .ko at the ramdisk root.
+          mkdir -p "$workdir/modules"
+          cp "$GITHUB_WORKSPACE"/modules-out/*.ko "$workdir/modules/"
+          ls -la "$workdir/modules"
 
           # Minimal PID-1 test script, executed directly via the kernel's
           # rdinit= command line option (bypassing the image's real Android
           # init, which expects a full device environment). It mounts the
-          # pseudo-filesystems bionic needs, inserts shadow_ctr.ko, and dumps
-          # the resulting kernel log. All utilities are invoked with absolute
-          # paths: bionic's dynamic linker requires /proc/self/exe (or a
-          # resolvable argv[0]) to load shared objects, which only holds once
-          # /proc is mounted and the path is absolute.
+          # pseudo-filesystems bionic needs, inserts the modules in dependency
+          # order, and dumps the resulting kernel log + status. All utilities
+          # are invoked with absolute paths: bionic's dynamic linker requires
+          # /proc/self/exe (or a resolvable argv[0]) to load shared objects,
+          # which only holds once /proc is mounted and the path is absolute.
           cat > "$workdir/test_init.sh" <<'EOF'
           #!/system/bin/sh
           /system/bin/mount -t proc proc /proc
           /system/bin/mount -t sysfs sysfs /sys
           /system/bin/mount -t devtmpfs devtmpfs /dev
-          echo "=== SHADOW_CTR_QEMU_TEST: inserting shadow_ctr.ko ==="
-          /system/bin/insmod /shadow_ctr.ko
-          echo "=== SHADOW_CTR_QEMU_TEST: insmod exit code: $? ==="
+          M=/modules
+          echo "=== SHADOW_CTR_QEMU_TEST: inserting modules (dependency order) ==="
+          # shadow_ns_base MUST go first (the ns_* modules depend on it).
+          /system/bin/insmod $M/shadow_ns_base.ko
+          echo "insmod shadow_ns_base.ko -> $?"
+          for m in shadow_ns_uts shadow_ns_net shadow_ns_ipc shadow_ns_pid \
+                   shadow_ns_mnt shadow_ns_user shadow_ns_cgroup \
+                   shadow_sysvipc shadow_mqueue shadow_cgdevices \
+                   shadow_overlay2; do
+            if [ -f "$M/$m.ko" ]; then
+              /system/bin/insmod "$M/$m.ko"
+              echo "insmod $m.ko -> $?"
+            fi
+          done
+          # checker last so it observes everything already loaded.
+          /system/bin/insmod $M/shadow_ctr_checker.ko
+          echo "insmod shadow_ctr_checker.ko -> $?"
+
           echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
-          echo "=== SHADOW_CTR_QEMU_TEST: /dev/shadow_ns ==="
-          /system/bin/ls -la /dev/shadow_ns
+          echo "=== SHADOW_CTR_QEMU_TEST: /dev nodes ==="
+          /system/bin/ls -la /dev/shadow_ns /dev/shadow_sysvipc \
+            /dev/shadow_mqueue /dev/shadow_cgdevices /dev/shadow_ctr_checker
+          echo "=== SHADOW_CTR_QEMU_TEST: overlay registered? ==="
+          /system/bin/grep overlay /proc/filesystems
+          echo "=== SHADOW_CTR_QEMU_TEST: cat /dev/shadow_ctr_checker ==="
+          /system/bin/cat /dev/shadow_ctr_checker
           echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
           echo o > /proc/sysrq-trigger
           while true; do :; done

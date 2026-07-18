@@ -16,6 +16,3 @@
 .*.cmd
 .tmp_versions/
 modules.order
-
-# Generated shadow_ctr config.gz header (built from config.template at build time)
-ctr_patches/shadow_ctr/config_gz_data.h

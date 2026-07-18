@@ -141,7 +141,7 @@ CONFIG_LTO_CLANG_THIN=y
     # enables dynamic_debug so that kernel/module.c's pr_debug() traces (e.g.
     # vermagic/module_layout mismatches, relocation/symbol resolution steps)
     # as well as any pr_debug()/dev_dbg() calls added to out-of-tree modules
-    # (such as ctr_patches/shadow_ctr) show up in dmesg without needing to
+    # (such as shadow_ctr) show up in dmesg without needing to
     # manually poke debugfs on the device.
     VERBOSE_MODULE_CONFIG = """
 # === Verbose module loading Config ===
