@@ -1,0 +1,157 @@
+# Boot-test shadow_ctr.ko under QEMU.
+#
+# This workflow builds shadow_ctr.ko for android14-6.1 arm64 (see
+# .github/workflows/build-shadow-ctr.yml for the same build approach), injects
+# the freshly built module into a prebuilt test kernel + ramdisk image, boots
+# it under qemu-system-aarch64, and collects the serial console log (which
+# includes the `insmod` attempt and any resulting kernel messages) as a build
+# artifact for inspection.
+#
+# The test kernel/ramdisk pair is a standalone (system-as-root) recovery
+# image published at the v2.1.0 release specifically for this kind of
+# smoke test; it ships busybox/toybox utilities and does not require any
+# additional block devices, so it can boot directly from an initramfs under
+# QEMU's "virt" machine type.
+
+name: Test shadow_ctr.ko (QEMU)
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ctr_patches/shadow_ctr/**'
+      - '.github/workflows/test-shadow-ctr-qemu.yml'
+  pull_request:
+    paths:
+      - 'ctr_patches/shadow_ctr/**'
+      - '.github/workflows/test-shadow-ctr-qemu.yml'
+  workflow_dispatch:
+
+env:
+  KERNEL_BRANCH: android14-6.1
+  TEST_IMAGE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm libelf-dev flex bison bc cpio qemu-system-arm
+
+      - name: Ensure unversioned clang/LLVM tool symlinks
+        # Some runner images only ship version-suffixed binaries (e.g.
+        # clang-18, ld.lld-18) without the generic `update-alternatives`
+        # symlinks the kernel's `LLVM=1` build convention expects.
+        run: |
+          for tool in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy \
+                      llvm-objdump llvm-readelf llvm-strip llvm-strings \
+                      llvm-addr2line llvm-cov llvm-dwarfdump; do
+            command -v "$tool" >/dev/null 2>&1 && continue
+            ver=$(ls /usr/bin/${tool}-* 2>/dev/null | sed -E "s#.*-([0-9]+)\$#\1#" | sort -n | tail -1)
+            [ -n "$ver" ] && sudo ln -sf "/usr/bin/${tool}-${ver}" "/usr/bin/${tool}"
+          done
+
+      # --- 1. Build shadow_ctr.ko for android14-6.1 arm64 ---
+
+      - name: Shallow clone kernel/common (${{ env.KERNEL_BRANCH }})
+        run: |
+          git clone --depth=1 -b "$KERNEL_BRANCH" \
+            https://android.googlesource.com/kernel/common kernel-common
+
+      - name: Prepare kernel module build infra (arm64)
+        run: |
+          cd kernel-common
+          make ARCH=arm64 CC=clang LLVM=1 gki_defconfig
+          echo "CONFIG_KPROBES=y" >> .config
+          make ARCH=arm64 CC=clang LLVM=1 olddefconfig
+          make ARCH=arm64 CC=clang LLVM=1 -j"$(nproc)" modules_prepare
+
+      - name: Build shadow_ctr.ko (arm64)
+        run: |
+          make -C ctr_patches/shadow_ctr \
+            KDIR="$GITHUB_WORKSPACE/kernel-common" ARCH=arm64 CC=clang LLVM=1
+
+      - name: Upload shadow_ctr.ko (arm64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-${{ env.KERNEL_BRANCH }}-arm64
+          path: ctr_patches/shadow_ctr/shadow_ctr.ko
+
+      # --- 2. Fetch the test kernel + ramdisk ---
+
+      - name: Download test kernel and ramdisk
+        run: |
+          curl -fL -o testkernelramdisk.zip "$TEST_IMAGE_URL"
+          mkdir -p test-image
+          unzip -o testkernelramdisk.zip -d test-image
+          ls -la test-image
+
+      # --- 3. Inject the freshly built shadow_ctr.ko into the ramdisk ---
+
+      - name: Inject shadow_ctr.ko into ramdisk
+        run: |
+          set -e
+          workdir="$GITHUB_WORKSPACE/ramdisk-root"
+          mkdir -p "$workdir"
+          (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
+
+          cp ctr_patches/shadow_ctr/shadow_ctr.ko "$workdir/shadow_ctr.ko"
+
+          # Minimal PID-1 test script, executed directly via the kernel's
+          # rdinit= command line option (bypassing the image's real Android
+          # init, which expects a full device environment). It mounts the
+          # pseudo-filesystems bionic needs, inserts shadow_ctr.ko, and dumps
+          # the resulting kernel log. All utilities are invoked with absolute
+          # paths: bionic's dynamic linker requires /proc/self/exe (or a
+          # resolvable argv[0]) to load shared objects, which only holds once
+          # /proc is mounted and the path is absolute.
+          cat > "$workdir/test_init.sh" <<'EOF'
+          #!/system/bin/sh
+          /system/bin/mount -t proc proc /proc
+          /system/bin/mount -t sysfs sysfs /sys
+          /system/bin/mount -t devtmpfs devtmpfs /dev
+          echo "=== SHADOW_CTR_QEMU_TEST: inserting shadow_ctr.ko ==="
+          /system/bin/insmod /shadow_ctr.ko
+          echo "=== SHADOW_CTR_QEMU_TEST: insmod exit code: $? ==="
+          echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
+          /system/bin/dmesg
+          echo "=== SHADOW_CTR_QEMU_TEST: /dev/shadowns ==="
+          /system/bin/ls -la /dev/shadowns
+          echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+          echo o > /proc/sysrq-trigger
+          while true; do :; done
+          EOF
+          chmod 755 "$workdir/test_init.sh"
+
+          (cd "$workdir" && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio")
+          ls -la "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio"
+
+      # --- 4. Boot under QEMU and collect the serial log ---
+
+      - name: Boot test kernel + ramdisk under QEMU
+        run: |
+          set +e
+          timeout --signal=KILL 120 \
+            qemu-system-aarch64 \
+              -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
+              -kernel test-image/kernel \
+              -initrd test-image/ramdisk-test.cpio \
+              -append "console=ttyAMA0 rdinit=/test_init.sh earlycon panic=-1" \
+            > qemu-console.log 2>&1
+          echo "QEMU exited with status $?"
+          tail -n 200 qemu-console.log
+
+      - name: Upload QEMU console log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-qemu-console-log
+          path: qemu-console.log
