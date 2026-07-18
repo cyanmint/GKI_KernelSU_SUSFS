@@ -31,8 +31,9 @@ ifeq ($(CONFIG_SHADOW_NS_UTS),)
 obj-m += shadow_ns_uts.o
 endif
 
-# shadow_hook.h + plugin API header live in ../common; the UAPI ioctl header
-# lives under ../shadow_ns_base (included as "include/uapi/shadow_ns.h").
+# shadow_hook.h + plugin API header live in ../common; the shared namespace
+# type/UTS layout header lives under ../shadow_ns_base (included as
+# "include/uapi/shadow_ns.h").
 ccflags-y += -I$(src)/../common -I$(src)/../shadow_ns_base
 
 else

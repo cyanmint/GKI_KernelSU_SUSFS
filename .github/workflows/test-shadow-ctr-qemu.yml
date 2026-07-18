@@ -6,8 +6,8 @@
 # modules, injects the freshly built .ko files into a prebuilt test kernel +
 # ramdisk image, boots it under qemu-system-aarch64, insmods them in
 # dependency order, and collects the serial console log (including the insmod
-# attempts, resulting kernel messages, the presence of each /dev node, and the
-# contents of /dev/shadow_ctr_checker) as a build artifact for inspection.
+# attempts, resulting kernel messages, and the contents of
+# /dev/shadow_ctr_checker) as a build artifact for inspection.
 #
 # The test ramdisk is a standalone (system-as-root) recovery image published
 # at the v2.1.0 release specifically for this kind of smoke test; it ships
@@ -202,8 +202,7 @@ jobs:
           echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
           echo "=== SHADOW_CTR_QEMU_TEST: /dev nodes ==="
-          /system/bin/ls -la /dev/shadow_ns /dev/shadow_sysvipc \
-            /dev/shadow_mqueue /dev/shadow_cgdevices /dev/shadow_ctr_checker
+          /system/bin/ls -la /dev/shadow_ctr_checker
           echo "=== SHADOW_CTR_QEMU_TEST: overlay registered? ==="
           /system/bin/grep overlay /proc/filesystems
           echo "=== SHADOW_CTR_QEMU_TEST: cat /dev/shadow_ctr_checker ==="

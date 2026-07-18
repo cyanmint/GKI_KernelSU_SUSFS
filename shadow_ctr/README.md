@@ -14,17 +14,17 @@ and so a deployer can ship exactly the subset a given kernel needs.
 
 | Module                | Directory            | `/dev` node             | Depends on        | Summary |
 |-----------------------|----------------------|-------------------------|-------------------|---------|
-| `shadow_ns_base`      | `shadow_ns_base/`    | `/dev/shadow_ns`        | —                 | Generic shadow-namespace registry + `unshare/setns/clone/fork` hooks + plugin API. Bookkeeping for all 7 types works even with no submodules loaded. |
-| `shadow_ns_uts`       | `shadow_ns_uts/`     | (uses `/dev/shadow_ns`) | `shadow_ns_base`  | **Real** per-namespace UTS `nodename`/`domainname` + `sethostname`/`setdomainname`/`uname` hooks. |
+| `shadow_ns_base`      | `shadow_ns_base/`    | —                       | —                 | Generic shadow-namespace registry + `unshare/setns/clone/fork` hooks + plugin API. Bookkeeping for all 7 types works even with no submodules loaded. |
+| `shadow_ns_uts`       | `shadow_ns_uts/`     | —                       | `shadow_ns_base`  | **Real** per-namespace UTS `nodename`/`domainname` + `sethostname`/`setdomainname`/`uname` hooks. |
 | `shadow_ns_net`       | `shadow_ns_net/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for NET (bookkeeping only). |
 | `shadow_ns_ipc`       | `shadow_ns_ipc/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for IPC (bookkeeping only). |
 | `shadow_ns_pid`       | `shadow_ns_pid/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for PID (bookkeeping only). |
 | `shadow_ns_mnt`       | `shadow_ns_mnt/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for MNT (bookkeeping only). |
 | `shadow_ns_user`      | `shadow_ns_user/`    | —                       | `shadow_ns_base`  | Thin presence/extension slot for USER (bookkeeping only). |
 | `shadow_ns_cgroup`    | `shadow_ns_cgroup/`  | —                       | `shadow_ns_base`  | Thin presence/extension slot for CGROUP (bookkeeping only). |
-| `shadow_sysvipc`      | `shadow_sysvipc/`    | `/dev/shadow_sysvipc`   | —                 | Simulated System V IPC (msg/sem/shm). |
-| `shadow_mqueue`       | `shadow_mqueue/`     | `/dev/shadow_mqueue`    | —                 | Simulated POSIX mqueue + a `"mqueue"` filesystem type. |
-| `shadow_cgdevices`    | `shadow_cgdevices/`  | `/dev/shadow_cgdevices` | —                 | Simulated cgroup device allow/deny enforcement. |
+| `shadow_sysvipc`      | `shadow_sysvipc/`    | —                       | —                 | Simulated System V IPC (msg/sem/shm) via transparent syscall hooks. |
+| `shadow_mqueue`       | `shadow_mqueue/`     | —                       | —                 | Simulated POSIX mqueue via transparent syscall hooks + a `"mqueue"` filesystem type. |
+| `shadow_cgdevices`    | `shadow_cgdevices/`  | —                       | —                 | Transparent device-open hook shim for the cgroup-device compatibility slot. |
 | `shadow_overlay2`     | `shadow_overlay2/`   | (registers `overlay` fs)| —                 | **Real** vendored `fs/overlayfs`. **android14-6.1 only.** |
 | `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | — (runtime-optional) | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. |
 
@@ -108,7 +108,7 @@ Android GKI kernels, which ship with `CONFIG_FUNCTION_TRACER` disabled.
 exists from Linux v6.8 onward; `common/shadow_ctr_compat.h` provides shims so
 the same source builds unmodified against older GKI branches (e.g. 6.1).
 
-See each module's own README for its `/dev/*` node, ioctl ABI, and honest
-scope/limitations. In particular, only UTS (`shadow_ns_uts`) and overlayfs
-(`shadow_overlay2`) provide genuine functional behaviour; the other
-`shadow_ns_*` types are reference-counted bookkeeping only.
+See each module's own README for its honest scope/limitations. In particular,
+only UTS (`shadow_ns_uts`) and overlayfs (`shadow_overlay2`) provide genuine
+functional behaviour; the other `shadow_ns_*` types are reference-counted
+bookkeeping only.

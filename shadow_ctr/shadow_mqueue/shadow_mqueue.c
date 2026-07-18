@@ -17,17 +17,16 @@
  *
  * shadow_mqueue provides a drop-in replacement: stock userspace can call the
  * real mq_* syscalls and be transparently redirected into this module through
- * ftrace hooks, while the older /dev/shadow_mqueue ioctl API remains available.
- * Message transfer is fully functional: bytes written by a sender are buffered
- * in a kernel-side priority-ordered list and delivered to the receiver, with
- * blocking and timeout semantics mirroring the POSIX standard.
+ * ftrace hooks. Message transfer is fully functional: bytes written by a
+ * sender are buffered in a kernel-side priority-ordered list and delivered to
+ * the receiver, with blocking and timeout semantics mirroring the POSIX
+ * standard.
  *
  * Architecture
  * ------------
  * - Named queues persist in a global hash table keyed by name until unlinked.
  * - Transparent mq_open() returns a real anon-inode fd whose private_data is a
- *   refcounted mq_handle_entry; ioctl open("/dev/shadow_mqueue") still creates
- *   a per-fd session with its own handle table.
+ *   refcounted mq_handle_entry.
  * - Messages are stored as heap-allocated mq_msg objects in a priority list.
  * - Receivers block on a wait_queue_head_t; senders wake them on each enqueue.
  *   Senders similarly block when a queue is full and are woken on dequeue.
@@ -41,11 +40,9 @@
 #include <linux/anon_inodes.h>
 #include <linux/file.h>
 #include <linux/fs.h>
-#include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
-#include <linux/xarray.h>
 #include <linux/refcount.h>
 #include <linux/uaccess.h>
 #include <linux/list.h>
@@ -108,20 +105,11 @@ struct shadow_mq {
 	struct hlist_node	name_node;
 };
 
-/*
- * struct mq_handle_entry - per-session handle.
- * Maps a handle id to an mq + the open flags used when the handle was created.
- */
+/* Per-open mq descriptor backing the anon-inode fd returned by mq_open(). */
 struct mq_handle_entry {
 	struct shadow_mq *mq;
 	u32		  oflag;
 	refcount_t	  refcount;
-};
-
-/* Per-open-fd session. */
-struct mq_session {
-	struct xarray	handles; /* handle_id -> mq_handle_entry * */
-	struct mutex	lock;
 };
 
 /* Global name registry. */
@@ -299,23 +287,6 @@ static int mq_copy_name_from_user(const char __user *uname, char *name)
 	if (name[0] != '/')
 		return -EINVAL;
 	return 0;
-}
-
-static void mq_wait_spec_from_ioctl(struct mq_wait_spec *wait, u32 oflag,
-				    u64 timeout_ns)
-{
-	if (oflag & SHADOW_MQ_O_NONBLOCK || timeout_ns == 0) {
-		wait->mode = MQ_WAIT_NONBLOCK;
-		wait->timeout_ns = 0;
-		return;
-	}
-	if (timeout_ns == U64_MAX) {
-		wait->mode = MQ_WAIT_INFINITE;
-		wait->timeout_ns = U64_MAX;
-		return;
-	}
-	wait->mode = MQ_WAIT_RELATIVE;
-	wait->timeout_ns = timeout_ns;
 }
 
 static int mq_wait_spec_from_abs_timeout(struct mq_wait_spec *wait, u32 oflag,
@@ -630,18 +601,6 @@ static long mq_do_receive(struct mq_handle_entry *he, void *msg_data, u32 *msg_l
 	return 0;
 }
 
-static struct mq_handle_entry *mq_session_lookup(struct mq_session *s, u32 handle)
-{
-	struct mq_handle_entry *he;
-
-	mutex_lock(&s->lock);
-	he = xa_load(&s->handles, handle);
-	if (!mq_handle_get(he))
-		he = NULL;
-	mutex_unlock(&s->lock);
-	return he;
-}
-
 /*
  * Enqueue a message in priority order (highest prio first).
  * Caller must hold mq->msgs_lock.
@@ -659,208 +618,6 @@ static void mq_enqueue_locked(struct shadow_mq *mq, struct mq_msg *m)
 	}
 	list_add_tail(&m->node, &mq->msgs);
 	atomic_inc(&mq->curmsgs);
-}
-
-/* ---- ioctl handlers ---- */
-
-static long mqioc_open(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_open_req *req;
-	struct mq_handle_entry *he;
-	bool created = false;
-	u32 handle;
-	int ret;
-
-	req = kzalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
-		return -ENOMEM;
-
-	ret = -EFAULT;
-	if (copy_from_user(req, arg, sizeof(*req)))
-		goto out_req;
-
-	req->name[SHADOW_MQ_NAME_MAX] = '\0';
-	ret = mq_do_open(req->name, req->oflag, &req->attr, &he, &req->attr,
-			 &created);
-	if (ret)
-		goto out_req;
-
-	mutex_lock(&s->lock);
-	ret = xa_alloc(&s->handles, &handle, he, XA_LIMIT(1, INT_MAX),
-		       GFP_KERNEL);
-	mutex_unlock(&s->lock);
-	if (ret) {
-		mq_handle_put(he);
-		goto out_req;
-	}
-	req->handle = handle;
-
-	ret = copy_to_user(arg, req, sizeof(*req)) ? -EFAULT : 0;
-	if (ret) {
-		/* Failed to return the handle to userspace; undo allocation. */
-		mutex_lock(&s->lock);
-		xa_erase(&s->handles, handle);
-		mutex_unlock(&s->lock);
-		if (created)
-			mq_do_unlink(he->mq->name);
-		mq_handle_put(he);
-	}
-out_req:
-	kfree(req);
-	return ret;
-}
-
-static long mqioc_close(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_close_req req;
-	struct mq_handle_entry *he;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	mutex_lock(&s->lock);
-	he = xa_erase(&s->handles, req.handle);
-	mutex_unlock(&s->lock);
-	if (!he)
-		return -EBADF;
-
-	mq_handle_put(he);
-	return 0;
-}
-
-static long mqioc_unlink(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_unlink_req req;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-	req.name[SHADOW_MQ_NAME_MAX] = '\0';
-	return mq_do_unlink(req.name);
-}
-
-static long mqioc_send(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_send_req *req;
-	struct mq_handle_entry *he;
-	struct mq_wait_spec wait;
-	long ret = 0;
-
-	req = kzalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
-		return -ENOMEM;
-
-	ret = -EFAULT;
-	if (copy_from_user(req, arg, sizeof(*req)))
-		goto out_req;
-
-	ret = -EBADF;
-	he = mq_session_lookup(s, req->handle);
-	if (!he)
-		goto out_req;
-
-	mq_wait_spec_from_ioctl(&wait, READ_ONCE(he->oflag), req->timeout_ns);
-	ret = mq_do_send(he, req->msg_data, req->msg_len, req->prio, &wait);
-	mq_handle_put(he);
-out_req:
-	kfree(req);
-	return ret;
-}
-
-static long mqioc_receive(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_recv_req *req;
-	struct mq_handle_entry *he;
-	struct mq_wait_spec wait;
-	long ret = 0;
-
-	req = kzalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
-		return -ENOMEM;
-
-	ret = -EFAULT;
-	if (copy_from_user(req, arg, sizeof(*req)))
-		goto out_req;
-
-	ret = -EBADF;
-	he = mq_session_lookup(s, req->handle);
-	if (!he)
-		goto out_req;
-
-	mq_wait_spec_from_ioctl(&wait, READ_ONCE(he->oflag), req->timeout_ns);
-	ret = mq_do_receive(he, req->msg_data, &req->msg_len, &req->prio, &wait);
-	mq_handle_put(he);
-	if (ret)
-		goto out_req;
-
-	if (copy_to_user(arg, req, sizeof(*req)))
-		ret = -EFAULT;
-out_req:
-	kfree(req);
-	return ret;
-}
-
-static long mqioc_getattr(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_attr_req req;
-	struct mq_handle_entry *he;
-	long ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	he = mq_session_lookup(s, req.handle);
-	if (!he)
-		return -EBADF;
-
-	ret = mq_do_getattr(he, &req.attr);
-	mq_handle_put(he);
-	if (ret)
-		return ret;
-
-	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
-}
-
-static long mqioc_setattr(struct mq_session *s, void __user *arg)
-{
-	struct shadow_mq_attr_req req;
-	struct mq_handle_entry *he;
-	long ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	he = mq_session_lookup(s, req.handle);
-	if (!he)
-		return -EBADF;
-
-	ret = mq_do_setattr(he, &req.newattr, &req.attr);
-	mq_handle_put(he);
-	if (ret)
-		return ret;
-
-	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
-}
-
-static long mqueue_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-	struct mq_session *s = file->private_data;
-	void __user *uarg = (void __user *)arg;
-
-	switch (cmd) {
-	case SHADOW_MQUEUE_IOC_ABI_VERSION: {
-		u32 ver = SHADOW_MQUEUE_ABI_VERSION;
-
-		return copy_to_user(uarg, &ver, sizeof(ver)) ? -EFAULT : 0;
-	}
-	case SHADOW_MQUEUE_IOC_OPEN:	  return mqioc_open(s, uarg);
-	case SHADOW_MQUEUE_IOC_CLOSE:	  return mqioc_close(s, uarg);
-	case SHADOW_MQUEUE_IOC_UNLINK:	  return mqioc_unlink(s, uarg);
-	case SHADOW_MQUEUE_IOC_SEND:	  return mqioc_send(s, uarg);
-	case SHADOW_MQUEUE_IOC_RECEIVE:	  return mqioc_receive(s, uarg);
-	case SHADOW_MQUEUE_IOC_GETATTR:	  return mqioc_getattr(s, uarg);
-	case SHADOW_MQUEUE_IOC_SETATTR:	  return mqioc_setattr(s, uarg);
-	default:			  return -ENOTTY;
-	}
 }
 
 static int shadow_mq_anon_release(struct inode *inode, struct file *file)
@@ -1175,54 +932,6 @@ static struct shadow_hook *shadow_mqueue_hooks[] = {
 	NULL,
 };
 
-static int mqueue_open(struct inode *inode, struct file *file)
-{
-	struct mq_session *s;
-
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
-	if (!s)
-		return -ENOMEM;
-	xa_init(&s->handles);
-	mutex_init(&s->lock);
-	file->private_data = s;
-	return 0;
-}
-
-static int mqueue_release(struct inode *inode, struct file *file)
-{
-	struct mq_session *s = file->private_data;
-	struct mq_handle_entry *he;
-	unsigned long id;
-
-	if (!s)
-		return 0;
-
-	xa_for_each(&s->handles, id, he) {
-		mq_handle_put(he);
-	}
-	xa_destroy(&s->handles);
-	mutex_destroy(&s->lock);
-	kfree(s);
-	file->private_data = NULL;
-	return 0;
-}
-
-static const struct file_operations mqueue_fops = {
-	.owner		= THIS_MODULE,
-	.open		= mqueue_open,
-	.release	= mqueue_release,
-	.unlocked_ioctl	= mqueue_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= noop_llseek,
-};
-
-static struct miscdevice mqueue_miscdev = {
-	.minor	= MISC_DYNAMIC_MINOR,
-	.name	= SHADOW_MQUEUE_DEVICE_NAME,
-	.fops	= &mqueue_fops,
-	.mode	= 0600,
-};
-
 /*
  * shadow_mqueue_fs_type - minimal pseudo filesystem registered under the
  * name "mqueue".
@@ -1280,15 +989,6 @@ int __init shadow_mqueue_init(void)
 {
 	int ret;
 
-	pr_info("shadow_mqueue: init: registering misc device %s\n",
-		SHADOW_MQUEUE_DEVICE_PATH);
-	ret = misc_register(&mqueue_miscdev);
-	if (ret) {
-		pr_err("shadow_mqueue: failed to register misc device: %d\n", ret);
-		return ret;
-	}
-	pr_info("shadow_mqueue: init: misc device registered\n");
-
 	pr_info("shadow_mqueue: init: registering \"mqueue\" filesystem type\n");
 	ret = register_filesystem(&shadow_mqueue_fs_type);
 	if (ret == 0) {
@@ -1304,7 +1004,6 @@ int __init shadow_mqueue_init(void)
 		pr_info("shadow_mqueue: init: \"mqueue\" filesystem type already registered, skipping\n");
 	} else {
 		pr_err("shadow_mqueue: init: register_filesystem(\"mqueue\") failed: %d\n", ret);
-		misc_deregister(&mqueue_miscdev);
 		return ret;
 	}
 
@@ -1316,14 +1015,12 @@ int __init shadow_mqueue_init(void)
 			unregister_filesystem(&shadow_mqueue_fs_type);
 			shadow_mqueue_fs_registered = false;
 		}
-		misc_deregister(&mqueue_miscdev);
 		shadow_hook_remove_all(shadow_mqueue_hooks);
 		return ret;
 	}
 	pr_info("shadow_mqueue: init: %d hook(s) installed\n", ret);
 
-	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded (ABI v%d) at %s with transparent mq_* hooks\n",
-		SHADOW_MQUEUE_ABI_VERSION, SHADOW_MQUEUE_DEVICE_PATH);
+	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded with transparent mq_* hooks\n");
 	return 0;
 }
 
@@ -1340,8 +1037,6 @@ void shadow_mqueue_exit(void)
 		unregister_filesystem(&shadow_mqueue_fs_type);
 		shadow_mqueue_fs_registered = false;
 	}
-	pr_info("shadow_mqueue: exit: deregistering misc device\n");
-	misc_deregister(&mqueue_miscdev);
 
 	/*
 	 * Wake any blocked waiters, mark queues unlinked, and drop the
@@ -1376,5 +1071,5 @@ module_exit(shadow_mqueue_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated POSIX message queue subsystem with transparent mq_* syscall hijacking, a \"mqueue\" filesystem type, and /dev/shadow_mqueue control device");
+MODULE_DESCRIPTION("Simulated POSIX message queue subsystem with transparent mq_* syscall hijacking and a \"mqueue\" filesystem type");
 MODULE_VERSION(SHADOW_MQUEUE_VERSION);

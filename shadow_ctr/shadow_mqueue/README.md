@@ -6,13 +6,9 @@
 implementation on kernels built without `CONFIG_POSIX_MQUEUE`. It has no
 dependency on any other shadow module.
 
-It now works in **two** ways:
-
-1. **Transparent mode** for unmodified `runc` / `containerd` / `dockerd`: the
-   module ftrace-hooks the real `mq_*` syscalls and services them in-kernel when
-   the built-in subsystem is missing.
-2. **Legacy ioctl mode** via `/dev/shadow_mqueue`: kept unchanged for debugging
-   and backwards compatibility.
+It now works only in **transparent mode** for unmodified `runc` /
+`containerd` / `dockerd`: the module ftrace-hooks the real `mq_*` syscalls and
+services them in-kernel when the built-in subsystem is missing.
 
 ## Why this exists
 
@@ -29,7 +25,7 @@ block with timeout semantics close to native `mq_timedsend(2)` /
 ## Architecture
 
 ```
-  stock runtime             hooked mq_* syscalls           shadow_ctr.ko
+  stock runtime             hooked mq_* syscalls         shadow_mqueue.ko
   ┌───────────────┐         ┌────────────────────┐         ┌──────────────────────┐
   │ mq_open()     │────────▶│ __arm64_sys_mq_*   │────────▶│ shadow internal engine│
   │ mq_timedsend()│         │ (or sys_mq_*)      │         │ name hash + waitqs    │
@@ -50,8 +46,6 @@ Key pieces:
   genuine fd-like object, so later `mq_timedsend()` / `mq_timedreceive()` /
   `mq_getsetattr()` calls from the same unmodified process can resolve the queue
   through `fdget()` and `file->private_data`.
-* **Legacy ioctl sessions** still exist. They use the same internal helpers as
-  the hooked syscalls; there is no second message-transfer implementation.
 * A minimal `"mqueue"` pseudo filesystem type is also registered
   (`register_filesystem()`), independent of the syscall hooks above. Container
   runtimes such as `runc` unconditionally `mount("mqueue", "/dev/mqueue",
@@ -66,12 +60,12 @@ Key pieces:
 
 | Operation             | Behaviour |
 |-----------------------|-----------|
-| `mq_open` / `MQOpen`  | Create or open a named queue. Transparent mode returns a real fd; ioctl mode returns the old per-session handle. |
-| `mq_timedsend` / Send | Buffer a message; block, time out, or return immediately when full. |
-| `mq_timedreceive` / Receive | Dequeue the highest-priority message; block, time out, or return immediately when empty. |
-| `mq_unlink` / `MQUnlink` | Remove the name from the global table and wake blocked waiters. |
-| `mq_getsetattr` / `GetAttr` / `SetAttr` | Read queue state and toggle `NONBLOCK`. |
-| close / `MQClose`     | Drop the open-handle reference; anon-inode fds auto-clean up on close/exit. |
+| `mq_open` | Create or open a named queue and return a real fd. |
+| `mq_timedsend` | Buffer a message; block, time out, or return immediately when full. |
+| `mq_timedreceive` | Dequeue the highest-priority message; block, time out, or return immediately when empty. |
+| `mq_unlink` | Remove the name from the global table and wake blocked waiters. |
+| `mq_getsetattr` | Read queue state and toggle `NONBLOCK`. |
+| close | Drop the open-handle reference; anon-inode fds auto-clean up on close/exit. |
 
 ## Honest scope / limitations
 
@@ -96,8 +90,8 @@ Key pieces:
 
 | Path                           | Purpose |
 |--------------------------------|---------|
-| `include/uapi/shadow_mqueue.h` | Stable ioctl ABI and constants. |
-| `shadow_mqueue.c`              | Queue engine, ioctl API, anon-fd bridge, and syscall hooks. |
+| `include/uapi/shadow_mqueue.h` | Shared mqueue constants and attribute layout. |
+| `shadow_mqueue.c`              | Queue engine, anon-fd bridge, and syscall hooks. |
 | `Makefile`                     | Out-of-tree module build. |
 
 ## Building
@@ -120,10 +114,5 @@ insmod shadow_mqueue.ko
 dmesg | grep shadow_mqueue
 ```
 
-Expected log theme: the misc device is registered, and the `mq_*` hook set is
-installed if those syscall wrappers are present.
-
-## ABI versioning
-
-`SHADOW_MQUEUE_IOC_ABI_VERSION` still reports `SHADOW_MQUEUE_ABI_VERSION` for
-the legacy ioctl path. Bump it only if the ioctl layout changes incompatibly.
+Expected log theme: the `"mqueue"` filesystem is registered, and the `mq_*`
+hook set is installed if those syscall wrappers are present.

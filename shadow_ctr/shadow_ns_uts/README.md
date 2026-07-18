@@ -31,11 +31,6 @@ insmod shadow_ns_uts.ko
   `nodename`/`domainname` buffers) to every shadow UTS namespace through the
   `priv_alloc`/`priv_free` callbacks. A child UTS namespace inherits its
   parent's names at creation time.
-- Services the `SHADOW_NS_IOC_SET_UTS` / `SHADOW_NS_IOC_GET_UTS` ioctls on
-  `/dev/shadow_ns` through the plugin `->ioctl` escape hatch (the base
-  dispatcher forwards any command it does not recognise to registered
-  per-type handlers). The ioctl ABI in `../shadow_ns_base/include/uapi/shadow_ns.h`
-  is unchanged.
 - Installs transparent hooks (via `../common/shadow_hook.h`, the same
   ftrace/kprobe hijack helper used across the project) on the
   `sethostname(2)`, `setdomainname(2)` and `newuname(2)`/`uname(2)` syscalls:

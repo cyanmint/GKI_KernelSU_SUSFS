@@ -3,16 +3,9 @@
  * shadow_ns_base - generic ("shadow") namespace registry + syscall-hook module
  *
  * A standalone loadable kernel module that provides an independent,
- * reference-counted set of "shadow" namespace objects, plus the transparent
- * syscall-hook machinery that drives them, plus a small plugin API that
+ * reference-counted set of "shadow" namespace objects, the transparent
+ * syscall-hook machinery that drives them, and a small plugin API that
  * per-type submodules (shadow_ns_uts.ko, shadow_ns_net.ko, ...) register with.
- *
- * Two entry paths reach the same generic registry:
- *   1. ioctls on the /dev/shadow_ns misc device: each open fd is a private
- *      session that can create/join/query shadow namespaces explicitly, and
- *   2. ftrace/kprobe hooks on the real syscall entry points
- *      (unshare/setns/clone/clone3/fork/vfork), so unmodified container
- *      runtimes drive the shadow model by calling the stock syscalls.
  *
  * What this base module simulates
  * -------------------------------
@@ -26,10 +19,9 @@
  * Per-type extensions (the plugin API, see common/shadow_ns_base.h)
  * -----------------------------------------------------------------
  * A submodule may call shadow_ns_base_register_type() to attach an opaque
- * per-namespace payload (priv_alloc/priv_free), handle type-specific ioctl
- * commands this base dispatcher does not recognise (->ioctl), and advertise
- * whether it adds genuine functional behaviour (->real_support). Today only
- * shadow_ns_uts.ko does the latter (real nodename/domainname storage plus the
+ * per-namespace payload (priv_alloc/priv_free) and advertise whether it adds
+ * genuine functional behaviour (->real_support). Today only shadow_ns_uts.ko
+ * does the latter (real nodename/domainname storage plus the
  * sethostname/setdomainname/uname syscall hooks, which live in *that* module,
  * not here). If no submodule is registered for a type, its payload stays NULL
  * and behaviour is exactly the bookkeeping-only default.
@@ -38,16 +30,12 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/file.h>
-#include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/xarray.h>
 #include <linux/refcount.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
-#include <linux/list.h>
 #include <linux/atomic.h>
 #include <linux/capability.h>
 #include <linux/pid.h>
@@ -85,19 +73,6 @@ struct shadow_ns {
 };
 
 /*
- * struct shadow_session - per-open-fd state.
- * @cur:   current namespace of each type joined by this session (holds a ref)
- * @owned: namespaces created by this session that are not (or no longer) the
- *         current one, but whose creation reference is still held by the fd
- * @lock:  serialises operations within a session
- */
-struct shadow_session {
-	struct shadow_ns	*cur[SHADOW_NS_TYPE_MAX];
-	struct list_head	owned;
-	struct mutex		lock;
-};
-
-/*
  * struct shadow_task_group - transparent syscall-facing state keyed by TGID.
  * @tgid: thread-group id (what userspace sees as PID for a process)
  * @cur:  current shadow namespace of each type for this task group
@@ -108,13 +83,6 @@ struct shadow_task_group {
 	struct shadow_ns		*cur[SHADOW_NS_TYPE_MAX];
 	struct mutex			 lock;
 };
-
-struct shadow_owned_ref {
-	struct list_head	node;
-	struct shadow_ns	*ns;
-};
-
-static const struct file_operations shadow_ns_fops;
 
 /* Global registry of shadow namespaces: id -> struct shadow_ns *. */
 static DEFINE_XARRAY_ALLOC1(shadow_ns_map);
@@ -211,7 +179,7 @@ static struct shadow_hook *shadow_ns_hooks[] = {
  * static const in the submodule, so it stays valid as long as that module is
  * loaded.
  *
- * Callback invocation (priv_alloc/priv_free/ioctl) must not race with the
+ * Callback invocation (priv_alloc/priv_free) must not race with the
  * submodule unloading: we take a *per-call* try_module_get(ops->owner) around
  * each invocation (see shadow_ns_type_ops_tryget()). A held reference blocks
  * the submodule's module_exit() (hence its shadow_ns_base_unregister_type())
@@ -265,11 +233,6 @@ static void shadow_ns_type_ops_putmod(const struct shadow_ns_type_ops *ops)
 {
 	if (ops && ops->owner)
 		module_put(ops->owner);
-}
-
-static bool shadow_ns_type_valid(u32 type)
-{
-	return type < SHADOW_NS_TYPE_MAX;
 }
 
 static unsigned long shadow_ns_type_to_clone_flag(u32 type)
@@ -700,154 +663,10 @@ static int shadow_ns_install_child_state(pid_t child_tgid,
 	return 0;
 }
 
-/* Record an extra creation reference owned by this session's fd. */
-static int shadow_session_own(struct shadow_session *s, struct shadow_ns *ns)
-{
-	struct shadow_owned_ref *ref;
-
-	ref = kzalloc(sizeof(*ref), GFP_KERNEL);
-	if (!ref)
-		return -ENOMEM;
-
-	ref->ns = ns;
-	list_add(&ref->node, &s->owned);
-	return 0;
-}
-
 /* Join @ns as the current namespace of its type (consumes a ref). */
 static void shadow_join_cur(struct shadow_ns **cur, struct shadow_ns *ns)
 {
 	shadow_ns_slot_replace(&cur[ns->type], ns);
-}
-
-static long shadow_ns_ioc_create(struct shadow_session *s, void __user *arg,
-				bool join)
-{
-	struct shadow_ns_create req;
-	struct shadow_ns *ns;
-	void *parent_priv = NULL;
-	u32 parent_id = 0;
-	int ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-	if (!shadow_ns_type_valid(req.type) || req.flags != 0)
-		return -EINVAL;
-
-	mutex_lock(&s->lock);
-
-	/* Derive from the session's current namespace of this type, if any. */
-	if (s->cur[req.type]) {
-		parent_id = s->cur[req.type]->id;
-		parent_priv = s->cur[req.type]->type_priv;
-	}
-
-	ns = shadow_ns_alloc(req.type, parent_id, parent_priv);
-	if (IS_ERR(ns)) {
-		mutex_unlock(&s->lock);
-		return PTR_ERR(ns);
-	}
-
-	if (join) {
-		/* UNSHARE: the current-membership slot takes the creation ref. */
-		shadow_join_cur(s->cur, ns);
-	} else {
-		/* CREATE: the fd retains the creation ref until close/destroy. */
-		ret = shadow_session_own(s, ns);
-		if (ret) {
-			shadow_ns_put(ns);
-			mutex_unlock(&s->lock);
-			return ret;
-		}
-	}
-
-	req.id = ns->id;
-	req.parent_id = ns->parent_id;
-	mutex_unlock(&s->lock);
-
-	if (copy_to_user(arg, &req, sizeof(req)))
-		return -EFAULT;
-	return 0;
-}
-
-static long shadow_ns_ioc_setns(struct shadow_session *s, void __user *arg)
-{
-	struct shadow_ns_setns req;
-	struct shadow_ns *ns;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	ns = shadow_ns_get(req.id);
-	if (!ns)
-		return -ENOENT;
-
-	/* Optionally validate the caller's expectation of the namespace type. */
-	if (req.type != SHADOW_NS_TYPE_MAX && req.type != ns->type) {
-		shadow_ns_put(ns);
-		return -EINVAL;
-	}
-
-	mutex_lock(&s->lock);
-	shadow_join_cur(s->cur, ns); /* consumes the ref from shadow_ns_get() */
-	mutex_unlock(&s->lock);
-	return 0;
-}
-
-static long shadow_ns_ioc_get(struct shadow_session *s, void __user *arg)
-{
-	struct shadow_ns_get req;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-	if (!shadow_ns_type_valid(req.type))
-		return -EINVAL;
-
-	mutex_lock(&s->lock);
-	req.id = s->cur[req.type] ? s->cur[req.type]->id : 0;
-	mutex_unlock(&s->lock);
-
-	if (copy_to_user(arg, &req, sizeof(req)))
-		return -EFAULT;
-	return 0;
-}
-
-static long shadow_ns_ioc_destroy(struct shadow_session *s, void __user *arg)
-{
-	struct shadow_owned_ref *ref, *tmp;
-	u32 id;
-	int type;
-	bool found = false;
-
-	if (copy_from_user(&id, arg, sizeof(id)))
-		return -EFAULT;
-	if (!id)
-		return -EINVAL;
-
-	mutex_lock(&s->lock);
-
-	/* Drop a matching owned (created-but-not-joined) reference. */
-	list_for_each_entry_safe(ref, tmp, &s->owned, node) {
-		if (ref->ns->id == id) {
-			list_del(&ref->node);
-			shadow_ns_put(ref->ns);
-			kfree(ref);
-			found = true;
-			break;
-		}
-	}
-
-	/* Also release it as a current membership if the session joined it. */
-	for (type = 0; type < SHADOW_NS_TYPE_MAX; type++) {
-		if (s->cur[type] && s->cur[type]->id == id) {
-			shadow_ns_put(s->cur[type]);
-			s->cur[type] = NULL;
-			found = true;
-		}
-	}
-
-	mutex_unlock(&s->lock);
-	return found ? 0 : -ENOENT;
 }
 
 static int shadow_ns_join_task_group_ns(struct shadow_task_group *tg,
@@ -893,61 +712,6 @@ static long shadow_ns_task_group_setns_by_id(int id, int flags)
 
 	ret = shadow_ns_join_task_group_ns(tg, ns);
 	return ret;
-}
-
-static long shadow_ns_task_group_setns_by_session_fd(int fd, int flags)
-{
-	struct file *file;
-	struct shadow_session *s;
-	struct shadow_task_group *tg;
-	struct shadow_ns *ns = NULL;
-	int type;
-
-	type = shadow_ns_clone_flag_to_type(flags);
-	if (type < 0)
-		return type;
-
-	file = fget(fd);
-	if (!file)
-		return -EBADF;
-	if (file->f_op != &shadow_ns_fops) {
-		fput(file);
-		return -EINVAL;
-	}
-
-	s = file->private_data;
-	if (!s) {
-		fput(file);
-		return -ENOENT;
-	}
-
-	mutex_lock(&s->lock);
-	if (type == SHADOW_NS_TYPE_MAX) {
-		for (type = 0; type < SHADOW_NS_TYPE_MAX; type++) {
-			ns = shadow_ns_grab(s->cur[type]);
-			if (ns)
-				break;
-		}
-	} else {
-		ns = shadow_ns_grab(s->cur[type]);
-	}
-	mutex_unlock(&s->lock);
-	fput(file);
-
-	if (!ns)
-		return -ENOENT;
-	if (!capable(CAP_SYS_ADMIN)) {
-		shadow_ns_put(ns);
-		return -EPERM;
-	}
-
-	tg = shadow_ns_current_task_group(true);
-	if (IS_ERR(tg)) {
-		shadow_ns_put(ns);
-		return PTR_ERR(tg);
-	}
-
-	return shadow_ns_join_task_group_ns(tg, ns);
 }
 
 static pid_t shadow_ns_resolve_child_tgid(pid_t pid)
@@ -1036,12 +800,6 @@ static long shadow_ns_hook_setns(const struct pt_regs *regs)
 	if (ret != -EINVAL && ret != -ENOTTY)
 		return ret;
 
-	shadow_ret = shadow_ns_task_group_setns_by_session_fd(fd, flags);
-	if (!shadow_ret)
-		return 0;
-	if (shadow_ret != -EBADF)
-		return ret;
-
 	/*
 	 * Best-effort private encoding for shadow-only joins: use the numeric
 	 * namespace id directly in place of @fd when there is no real nsfs fd.
@@ -1117,136 +875,6 @@ static long shadow_ns_hook_vfork(const struct pt_regs *regs)
 
 	return shadow_ns_clone_finalize(ret, parent, 0);
 }
-
-/*
- * shadow_ns_forward_type_ioctl - escape hatch for type-specific ioctl commands.
- *
- * The base /dev/shadow_ns dispatcher only knows its own generic commands
- * (SHADOW_NS_IOC_CREATE/UNSHARE/SETNS/GET/DESTROY/ABI_VERSION). Per-type
- * submodules (currently only shadow_ns_uts.ko, for SHADOW_NS_IOC_SET_UTS/
- * GET_UTS) register a ->ioctl handler via the plugin API to service commands
- * this dispatcher does not recognise.
- *
- * For each registered type in turn, we invoke its ->ioctl with the payload of
- * the session's current namespace of that type (or NULL if the session has
- * none), holding the session lock so that payload stays valid for the
- * duration of the call. A type that does not own @cmd returns -ENOTTY, so we
- * keep trying the remaining types. This routing is deliberately generic: any
- * future type needing custom ioctls just registers its own ->ioctl and picks
- * a command number, no change to this base module required.
- */
-static long shadow_ns_forward_type_ioctl(struct shadow_session *s,
-					unsigned int cmd, unsigned long arg)
-{
-	long ret = -ENOTTY;
-	u32 type;
-
-	for (type = 0; type < SHADOW_NS_TYPE_MAX; type++) {
-		const struct shadow_ns_type_ops *ops;
-		void *priv;
-
-		ops = shadow_ns_type_ops_tryget(type);
-		if (!ops || !ops->ioctl) {
-			shadow_ns_type_ops_putmod(ops);
-			continue;
-		}
-
-		mutex_lock(&s->lock);
-		priv = s->cur[type] ? s->cur[type]->type_priv : NULL;
-		ret = ops->ioctl(s, cmd, arg, priv);
-		mutex_unlock(&s->lock);
-		shadow_ns_type_ops_putmod(ops);
-
-		if (ret != -ENOTTY)
-			break;
-	}
-
-	return ret;
-}
-
-static long shadow_ns_ioctl(struct file *file, unsigned int cmd,
-			   unsigned long arg)
-{
-	struct shadow_session *s = file->private_data;
-	void __user *uarg = (void __user *)arg;
-
-	switch (cmd) {
-	case SHADOW_NS_IOC_ABI_VERSION: {
-		u32 ver = SHADOW_NS_ABI_VERSION;
-
-		if (copy_to_user(uarg, &ver, sizeof(ver)))
-			return -EFAULT;
-		return 0;
-	}
-	case SHADOW_NS_IOC_CREATE:
-		return shadow_ns_ioc_create(s, uarg, false);
-	case SHADOW_NS_IOC_UNSHARE:
-		return shadow_ns_ioc_create(s, uarg, true);
-	case SHADOW_NS_IOC_SETNS:
-		return shadow_ns_ioc_setns(s, uarg);
-	case SHADOW_NS_IOC_GET:
-		return shadow_ns_ioc_get(s, uarg);
-	case SHADOW_NS_IOC_DESTROY:
-		return shadow_ns_ioc_destroy(s, uarg);
-	default:
-		/* Route unknown commands to a registered per-type submodule. */
-		return shadow_ns_forward_type_ioctl(s, cmd, arg);
-	}
-}
-
-static int shadow_ns_open(struct inode *inode, struct file *file)
-{
-	struct shadow_session *s;
-
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
-	if (!s)
-		return -ENOMEM;
-
-	INIT_LIST_HEAD(&s->owned);
-	mutex_init(&s->lock);
-	file->private_data = s;
-	return 0;
-}
-
-static int shadow_ns_release(struct inode *inode, struct file *file)
-{
-	struct shadow_session *s = file->private_data;
-	struct shadow_owned_ref *ref, *tmp;
-	int type;
-
-	if (!s)
-		return 0;
-
-	/* Drop every reference this session still holds; nothing may leak. */
-	list_for_each_entry_safe(ref, tmp, &s->owned, node) {
-		list_del(&ref->node);
-		shadow_ns_put(ref->ns);
-		kfree(ref);
-	}
-	for (type = 0; type < SHADOW_NS_TYPE_MAX; type++)
-		shadow_ns_put(s->cur[type]);
-
-	mutex_destroy(&s->lock);
-	kfree(s);
-	file->private_data = NULL;
-	return 0;
-}
-
-static const struct file_operations shadow_ns_fops = {
-	.owner		= THIS_MODULE,
-	.open		= shadow_ns_open,
-	.release	= shadow_ns_release,
-	.unlocked_ioctl	= shadow_ns_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= noop_llseek,
-};
-
-static struct miscdevice shadow_ns_miscdev = {
-	.minor	= MISC_DYNAMIC_MINOR,
-	.name	= SHADOW_NS_DEVICE_NAME,
-	.fops	= &shadow_ns_fops,
-	.mode	= 0600,
-};
 
 /*
  * --- exported plugin API (see common/shadow_ns_base.h) ---------------------
@@ -1328,7 +956,7 @@ void shadow_ns_base_unregister_type(u32 type)
 	 * This runs from the submodule's own module_exit(), so its priv_free
 	 * code is still resident. Per-callback try_module_get() references taken
 	 * elsewhere block that module_exit() until they are released, so no
-	 * priv_alloc/priv_free/ioctl callback can be executing concurrently here.
+	 * priv_alloc/priv_free callback can be executing concurrently here.
 	 */
 	if (ops->priv_free) {
 		mutex_lock(&shadow_ns_map_lock);
@@ -1397,21 +1025,13 @@ static int __init shadow_ns_init(void)
 
 	pr_info("shadow_ns: init starting (base module version %s)\n",
 		SHADOW_NS_VERSION);
-	pr_info("shadow_ns: init: registering misc device %s\n",
-		SHADOW_NS_DEVICE_PATH);
-	ret = misc_register(&shadow_ns_miscdev);
-	if (ret) {
-		pr_err("shadow_ns: failed to register misc device: %d\n", ret);
-		return ret;
-	}
-	pr_info("shadow_ns: init: misc device registered\n");
 
 	pr_info("shadow_ns: init: installing transparent syscall hooks\n");
 	hooked = shadow_hook_install_all(shadow_ns_hooks, "shadow_ns");
 	if (hooked < 0) {
 		ret = hooked;
 		pr_err("shadow_ns: init: shadow_hook_install_all() failed: %d\n", ret);
-		goto err_misc;
+		return ret;
 	}
 	pr_info("shadow_ns: init: %d hook(s) installed\n", hooked);
 
@@ -1419,14 +1039,9 @@ static int __init shadow_ns_init(void)
 	INIT_DELAYED_WORK(&shadow_ns_reap_work, shadow_ns_reap_workfn);
 	schedule_delayed_work(&shadow_ns_reap_work, SHADOW_NS_REAP_INTERVAL);
 
-	pr_info("shadow_ns: loaded (ABI v%d, device %s, transparent hooks %d); per-type extensions register via shadow_ns_base_register_type()\n",
-		SHADOW_NS_ABI_VERSION, SHADOW_NS_DEVICE_PATH, hooked);
+	pr_info("shadow_ns: loaded (transparent hooks %d); per-type extensions register via shadow_ns_base_register_type()\n",
+		hooked);
 	return 0;
-
-err_misc:
-	pr_info("shadow_ns: init: unwinding, deregistering misc device\n");
-	misc_deregister(&shadow_ns_miscdev);
-	return ret;
 }
 
 static void __exit shadow_ns_exit(void)
@@ -1449,8 +1064,6 @@ static void __exit shadow_ns_exit(void)
 	shadow_hook_remove_all(shadow_ns_hooks);
 	pr_info("shadow_ns: exit: cancelling reap work\n");
 	cancel_delayed_work_sync(&shadow_ns_reap_work);
-	pr_info("shadow_ns: exit: deregistering misc device\n");
-	misc_deregister(&shadow_ns_miscdev);
 
 	for (;;) {
 		id = 0;
@@ -1465,10 +1078,6 @@ static void __exit shadow_ns_exit(void)
 	}
 	xa_destroy(&shadow_ns_tgid_map);
 
-	/*
-	 * All sessions are gone once the device is deregistered and no fds remain,
-	 * but defensively free any objects that survived.
-	 */
 	mutex_lock(&shadow_ns_map_lock);
 	xa_for_each(&shadow_ns_map, id, ns) {
 		xa_erase(&shadow_ns_map, id);
@@ -1485,5 +1094,5 @@ module_exit(shadow_ns_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Shadow namespace base: generic reference-counted namespace registry, /dev/shadow_ns ioctl ABI, transparent unshare/setns/clone/fork hooks, and a plugin API for per-type extension modules (shadow_ns_uts.ko, shadow_ns_net.ko, ...)");
+MODULE_DESCRIPTION("Shadow namespace base: generic reference-counted namespace registry, transparent unshare/setns/clone/fork hooks, and a plugin API for per-type extension modules (shadow_ns_uts.ko, shadow_ns_net.ko, ...)");
 MODULE_VERSION(SHADOW_NS_VERSION);

@@ -4,11 +4,9 @@
  *
  * A standalone loadable kernel module that provides bookkeeping for virtual
  * SysV IPC resources (message queues, semaphore sets, shared-memory segments)
- * through two entry paths:
- *   1. the original /dev/shadow_sysvipc misc-device ioctl ABI, and
- *   2. transparent ftrace hooks on the real msgget/msgctl/semget/... syscall
- *      wrappers so unmodified containerd/runc/dockerd can keep using the stock
- *      SysV IPC syscalls on kernels built with CONFIG_SYSVIPC=n.
+ * through transparent ftrace hooks on the real msgget/msgctl/semget/...
+ * syscall wrappers so unmodified containerd/runc/dockerd can keep using the
+ * stock SysV IPC syscalls on kernels built with CONFIG_SYSVIPC=n.
  *
  * Motivation
  * ----------
@@ -20,15 +18,13 @@
  * shadow_sysvipc therefore implements only the resource-identity/bookkeeping
  * subset that is safe to synthesize in a module.  When the real syscall
  * wrappers merely fall through to sys_ni_syscall and return -ENOSYS, we
- * redirect selected operations into the same internal bookkeeping that backs
- * the ioctl API.
+ * redirect selected operations into shadow-managed bookkeeping.
  *
  * What is simulated
  * -----------------
  * - Virtual resource objects with stable positive integer ids.
  * - Key-based lookup semantics mirroring msgget(2)/semget(2)/shmget(2).
- * - Reference counting tied to either open file descriptors (ioctl sessions) or
- *   task groups (transparent syscall path).
+ * - Reference counting tied to task groups (transparent syscall path).
  * - msgctl/semctl/shmctl support for IPC_STAT and IPC_RMID on virtual objects.
  *
  * What is NOT simulated
@@ -45,8 +41,6 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/xarray.h>
@@ -96,16 +90,6 @@ struct svipc_resource {
 	struct hlist_node	key_node;
 };
 
-/*
- * struct svipc_session - per-open-fd state.
- * @owned: list of svipc_owned_ref tracking resources this fd created or got
- * @lock:  serialises all operations within a session
- */
-struct svipc_session {
-	struct list_head	owned;
-	struct mutex		lock;
-};
-
 struct svipc_owned_ref {
 	struct list_head	node;
 	struct svipc_resource	*res;
@@ -114,7 +98,7 @@ struct svipc_owned_ref {
 /*
  * struct svipc_tgid_owner - per-task-group ownership state for hooked syscalls.
  * @tgid: thread-group id that owns @owned references
- * @owned: list of svipc_owned_ref entries mirroring the ioctl session model
+ * @owned: list of svipc_owned_ref entries held by this task group
  * @lock: serialises operations on @owned
  * @node: hash-table linkage
  *
@@ -648,132 +632,6 @@ static void svipc_force_free_all_resources(void)
 	atomic_set(&svipc_count, 0);
 }
 
-/* ---- ioctl handlers ---- */
-
-static long svipc_ioc_create(struct svipc_session *s, void __user *arg)
-{
-	struct shadow_sysvipc_create req;
-	struct svipc_resource *res;
-	int ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	ret = svipc_resource_create_or_get(req.type, req.key, req.flags,
-					   req.nsems, req.size, &res);
-	if (ret)
-		return ret;
-
-	mutex_lock(&s->lock);
-	ret = svipc_owned_ref_add_locked(&s->owned, res);
-	mutex_unlock(&s->lock);
-	if (ret) {
-		svipc_put(res);
-		return ret;
-	}
-
-	req.id = res->id;
-	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
-}
-
-static long svipc_ioc_stat(struct svipc_session *s, void __user *arg)
-{
-	struct shadow_sysvipc_stat req;
-	int ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-
-	ret = svipc_resource_stat(req.type, req.id, &req);
-	if (ret)
-		return ret;
-
-	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
-}
-
-static long svipc_ioc_destroy(struct svipc_session *s, void __user *arg)
-{
-	struct shadow_sysvipc_destroy req;
-	int ret;
-
-	if (copy_from_user(&req, arg, sizeof(req)))
-		return -EFAULT;
-	if (!svipc_type_valid(req.type) || !req.id)
-		return -EINVAL;
-
-	mutex_lock(&s->lock);
-	ret = svipc_owned_ref_destroy_locked(&s->owned, req.type, req.id);
-	mutex_unlock(&s->lock);
-	return ret;
-}
-
-static long svipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-	struct svipc_session *s = file->private_data;
-	void __user *uarg = (void __user *)arg;
-
-	switch (cmd) {
-	case SHADOW_SYSVIPC_IOC_ABI_VERSION: {
-		u32 ver = SHADOW_SYSVIPC_ABI_VERSION;
-
-		return copy_to_user(uarg, &ver, sizeof(ver)) ? -EFAULT : 0;
-	}
-	case SHADOW_SYSVIPC_IOC_CREATE:
-		return svipc_ioc_create(s, uarg);
-	case SHADOW_SYSVIPC_IOC_STAT:
-		return svipc_ioc_stat(s, uarg);
-	case SHADOW_SYSVIPC_IOC_DESTROY:
-		return svipc_ioc_destroy(s, uarg);
-	default:
-		return -ENOTTY;
-	}
-}
-
-static int svipc_open(struct inode *inode, struct file *file)
-{
-	struct svipc_session *s;
-
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
-	if (!s)
-		return -ENOMEM;
-	INIT_LIST_HEAD(&s->owned);
-	mutex_init(&s->lock);
-	file->private_data = s;
-	return 0;
-}
-
-static int svipc_release(struct inode *inode, struct file *file)
-{
-	struct svipc_session *s = file->private_data;
-
-	if (!s)
-		return 0;
-
-	mutex_lock(&s->lock);
-	svipc_owned_ref_release_all_locked(&s->owned);
-	mutex_unlock(&s->lock);
-	mutex_destroy(&s->lock);
-	kfree(s);
-	file->private_data = NULL;
-	return 0;
-}
-
-static const struct file_operations svipc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= svipc_open,
-	.release	= svipc_release,
-	.unlocked_ioctl	= svipc_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= noop_llseek,
-};
-
-static struct miscdevice svipc_miscdev = {
-	.minor	= MISC_DYNAMIC_MINOR,
-	.name	= SHADOW_SYSVIPC_DEVICE_NAME,
-	.fops	= &svipc_fops,
-	.mode	= 0600,
-};
-
 /* ---- transparent syscall helpers ---- */
 
 static long svipc_sys_create(u32 type, s32 key, int flags, u32 nsems, u64 size)
@@ -1046,27 +904,16 @@ int __init shadow_sysvipc_init(void)
 {
 	int ret;
 
-	pr_info("shadow_sysvipc: init: registering misc device %s\n",
-		SHADOW_SYSVIPC_DEVICE_PATH);
-	ret = misc_register(&svipc_miscdev);
-	if (ret) {
-		pr_err("shadow_sysvipc: failed to register misc device: %d\n", ret);
-		return ret;
-	}
-	pr_info("shadow_sysvipc: init: misc device registered\n");
-
 	pr_info("shadow_sysvipc: init: installing transparent syscall hooks\n");
 	ret = shadow_hook_install_all(svipc_all_hooks, "shadow_sysvipc");
 	if (ret < 0) {
 		pr_err("shadow_sysvipc: init: shadow_hook_install_all() failed: %d\n", ret);
 		shadow_hook_remove_all(svipc_all_hooks);
-		misc_deregister(&svipc_miscdev);
 		return ret;
 	}
 	pr_info("shadow_sysvipc: init: %d hook(s) installed\n", ret);
 
-	pr_info("shadow_sysvipc: simulated SysV IPC subsystem loaded (ABI v%d) at %s\n",
-		SHADOW_SYSVIPC_ABI_VERSION, SHADOW_SYSVIPC_DEVICE_PATH);
+	pr_info("shadow_sysvipc: simulated SysV IPC subsystem loaded with transparent syscall hooks\n");
 	return 0;
 }
 
@@ -1074,8 +921,6 @@ void shadow_sysvipc_exit(void)
 {
 	pr_info("shadow_sysvipc: exit: removing transparent syscall hooks\n");
 	shadow_hook_remove_all(svipc_all_hooks);
-	pr_info("shadow_sysvipc: exit: deregistering misc device\n");
-	misc_deregister(&svipc_miscdev);
 
 	pr_info("shadow_sysvipc: exit: releasing per-tgid state\n");
 	svipc_tgid_release_all();
@@ -1103,5 +948,5 @@ module_exit(shadow_sysvipc_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated SysV IPC (msg/sem/shm) subsystem with transparent syscall hijacking and /dev/shadow_sysvipc control device");
+MODULE_DESCRIPTION("Simulated SysV IPC (msg/sem/shm) subsystem with transparent syscall hijacking");
 MODULE_VERSION(SHADOW_SYSVIPC_VERSION);

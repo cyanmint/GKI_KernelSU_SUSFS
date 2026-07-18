@@ -11,8 +11,6 @@
   that intercepts `unshare(2)`, `setns(2)`, `clone(2)`/`clone3(2)`/`fork(2)`/
   `vfork(2)` so a stock, unmodified `containerd`/`runc`/`dockerd` reaches the
   shadow implementation via the real syscalls;
-* the `/dev/shadow_ns` **ioctl API** (unchanged ABI) for diagnostics, manual
-  control and backward compatibility;
 * a small **plugin API** (`../common/shadow_ns_base.h`) that lets optional
   per-type submodules add behaviour on top of the generic bookkeeping.
 
@@ -26,9 +24,9 @@ This module was previously the `shadow_ns.c` translation unit inside the
 combined `shadow_ctr.ko`. In the new layout:
 
 * **UTS-specific behaviour moved out** of the generic path into
-  [`../shadow_ns_uts`](../shadow_ns_uts) (real `nodename`/`domainname` storage,
-  the `SET_UTS`/`GET_UTS` ioctls, and the `sethostname`/`setdomainname`/
-  `uname` hooks). `shadow_ns_base` itself no longer contains any UTS payload.
+  [`../shadow_ns_uts`](../shadow_ns_uts) (real `nodename`/`domainname` storage
+  plus the `sethostname`/`setdomainname`/`uname` hooks).
+  `shadow_ns_base` itself no longer contains any UTS payload.
 * Each generic `struct shadow_ns` now carries an opaque `void *type_priv`
   instead of an inline UTS struct; per-type submodules attach/detach their own
   payload through the plugin API.
@@ -52,7 +50,6 @@ void shadow_ns_base_unregister_type(u32 type);
 | `owner`        | `THIS_MODULE` of the submodule (see module-ref note below).    |
 | `priv_alloc`   | Allocate a per-namespace payload when a namespace of this type is created (inherits from parent). |
 | `priv_free`    | Free that payload just before the `shadow_ns` object is freed. |
-| `ioctl`        | Handle `/dev/shadow_ns` ioctl command numbers the base dispatcher does not recognise (the *escape hatch*, see below). |
 | `real_support` | `true` if this type gets genuine functional behaviour beyond bookkeeping (only UTS today). |
 
 Introspection helpers for consumers such as `shadow_ctr_checker`:
@@ -74,22 +71,10 @@ void             *shadow_ns_base_priv(struct shadow_ns *ns); /* the type_priv */
 
 All of the above are `EXPORT_SYMBOL_GPL()` (these are GPL-2.0 modules).
 
-### ioctl escape hatch (how UTS ioctls are routed)
-
-`/dev/shadow_ns`'s dispatcher services its own generic commands
-(`CREATE`/`UNSHARE`/`SETNS`/`GET`/`DESTROY`/`ABI_VERSION`, ioctl magic `'S'`).
-Any **unrecognised** command number is forwarded to each registered type's
-`->ioctl` handler in turn, passing the payload of the session's current
-namespace of that type; a handler that does not own the command returns
-`-ENOTTY` so the next type is tried. This is deliberately generic: a future
-type needing custom ioctls just registers its own `->ioctl` and picks a command
-number — no change to `shadow_ns_base` required. Today only `shadow_ns_uts`
-uses it (for `SET_UTS`/`GET_UTS`).
-
 ### Module-reference model (design note / deviation)
 
 The plugin API pins a submodule's `owner` with `try_module_get()` **only for
-the duration of each callback** (`priv_alloc`/`priv_free`/`->ioctl`), releasing
+the duration of each callback** (`priv_alloc`/`priv_free`), releasing
 it immediately after. It does **not** hold a persistent reference for the whole
 registration lifetime.
 
@@ -128,8 +113,9 @@ module loaded afterwards cannot add *real* namespaces to a running kernel.
 
 * Only UTS (via `shadow_ns_uts.ko`) is functionally real; all other types are
   bookkeeping-only, exactly as before the split.
-* Transparent `setns(2)` is intentionally partial (no synthesized nsfs fds for
-  `/proc/<pid>/ns/*`).
+* Transparent `setns(2)` is intentionally partial: shadow-only joins use the
+  numeric shadow namespace id fallback, not synthesized nsfs fds for
+  `/proc/<pid>/ns/*`.
 * Child shadow-state installation after fork-like syscalls is best-effort.
 * Dead-TGID state is reaped periodically (best-effort), not synchronously at
   task exit.
@@ -138,8 +124,8 @@ module loaded afterwards cannot add *real* namespaces to a running kernel.
 
 | Path                       | Purpose                                                        |
 |----------------------------|----------------------------------------------------------------|
-| `include/uapi/shadow_ns.h` | Stable ioctl ABI shared with userspace (unchanged).            |
-| `shadow_ns_base.c`         | Registry, transparent hooks, ioctl dispatcher, plugin API.     |
+| `include/uapi/shadow_ns.h` | Shared namespace-type constants + UTS payload layout.          |
+| `shadow_ns_base.c`         | Registry, transparent hooks, numeric-id `setns` fallback, plugin API. |
 | `Makefile`                 | Out-of-tree build (`make KDIR=...`).                           |
 
 ## Building
@@ -148,7 +134,6 @@ module loaded afterwards cannot add *real* namespaces to a running kernel.
 cd shadow_ctr/shadow_ns_base
 make KDIR=/path/to/kernel/build       # produces shadow_ns_base.ko + Module.symvers
 sudo insmod shadow_ns_base.ko
-ls -l /dev/shadow_ns
 ```
 
 Android GKI cross build:
@@ -164,15 +149,8 @@ The generated `Module.symvers` is what the per-type submodules consume via
 ## Loading
 
 ```sh
-insmod shadow_ns_base.ko           # /dev/shadow_ns, generic bookkeeping for all types
+insmod shadow_ns_base.ko           # generic bookkeeping + transparent hooks for all types
 insmod shadow_ns_uts.ko            # optional: real UTS support
 insmod shadow_ns_net.ko            # optional: mark NET enabled (bookkeeping)
 # ...
 ```
-
-## ABI versioning
-
-The `SHADOW_NS_IOC_ABI_VERSION` ioctl returns `SHADOW_NS_ABI_VERSION`. Manual
-clients that use `/dev/shadow_ns` should check it on open and refuse to run on a
-mismatch. Bump the version in `include/uapi/shadow_ns.h` whenever the ioctl
-layout changes incompatibly.

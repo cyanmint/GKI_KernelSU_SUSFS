@@ -7,15 +7,11 @@ alive on a kernel built **without `CONFIG_SYSVIPC`** for container runtimes to
 stop tripping over `-ENOSYS` on the resource-management syscalls. It has no
 dependency on any other shadow module.
 
-It now has **two front doors** backed by the same internal object registry:
-
-1. **Transparent mode (new):** ftrace hooks hijack the real `msgget`/`msgctl`,
-   `semget`/`semctl`, and `shmget`/`shmctl` syscall wrappers when the kernel's
-   native implementation is missing, so **unmodified stock
-   `containerd`/`runc`/`dockerd`** can keep calling the normal SysV IPC syscalls.
-2. **Explicit mode (unchanged):** the original `/dev/shadow_sysvipc` misc-device
-   ioctl ABI remains available for callers that want to drive the bookkeeping
-   directly.
+It now works only through **transparent syscall hooks**: ftrace hooks hijack
+the real `msgget`/`msgctl`, `semget`/`semctl`, and `shmget`/`shmctl` syscall
+wrappers when the kernel's native implementation is missing, so **unmodified
+stock `containerd`/`runc`/`dockerd`** can keep calling the normal SysV IPC
+syscalls.
 
 ## Why this exists
 
@@ -40,25 +36,22 @@ stock or patched userspace
 │        │                                                                  │
 │        └── CONFIG_SYSVIPC=n kernel ──ftrace──▶ shadow_sysvipc hooks      │
 │                                                │                           │
-│ /dev/shadow_sysvipc ioctls ────────────────────┘                           │
 └───────────────────────────────────────────────────────────────────────────┘
                                                  │
                                                  ▼
                                  global svipc_resource registry
                         (xarray id map + keyed hash + refcounted objects)
                                                  │
-                        ┌────────────────────────┴────────────────────────┐
-                        │                                                 │
-                 per-open-fd session refs                         per-TGID refs
-                 (ioctl path, unchanged)                         (hooked syscall path)
+                                                 ▼
+                                          per-TGID refs
+                                     (hooked syscall path)
 ```
 
 ### Internal model
 
 * **Resource objects** are refcounted `svipc_resource` records keyed by
   `(type, key)` for non-private objects and by generated id for `IPC_PRIVATE`.
-* **Transparent syscall mode** reuses the same create/stat/destroy helpers as
-  the ioctl path, but ownership is tracked per **task group** (`task_tgid_nr`) so
+* Ownership is tracked per **task group** (`task_tgid_nr`) so
   a later `msgctl(IPC_RMID)` / `semctl(IPC_RMID)` / `shmctl(IPC_RMID)` from that
   process can drop the same synthetic reference.
 * **Lazy TGID reaping:** because the hooked path does not extend `task_struct`
@@ -77,7 +70,6 @@ stock or patched userspace
 | `semctl(2)` | `IPC_STAT` and `IPC_RMID` on those virtual semaphore sets. |
 | `shmget(2)` | Create/get virtual shared-memory segments by key, remember `size`, return a fake id. |
 | `shmctl(2)` | `IPC_STAT` and `IPC_RMID` on those virtual shared-memory segments. |
-| `/dev/shadow_sysvipc` ioctls | Same create/stat/destroy ABI as before. |
 
 ### `IPC_STAT` payloads
 
@@ -134,8 +126,8 @@ with real `CONFIG_SYSVIPC=y`.
 
 | Path | Purpose |
 |---|---|
-| `include/uapi/shadow_sysvipc.h` | Stable ioctl ABI shared with userspace. |
-| `shadow_sysvipc.c` | Module implementation: resource registry, ioctl API, syscall hooks. |
+| `include/uapi/shadow_sysvipc.h` | Shared shadow SysV IPC constants + metadata structs. |
+| `shadow_sysvipc.c` | Module implementation: resource registry and syscall hooks. |
 | `Makefile` | Out-of-tree build (`make KDIR=...`). |
 
 ## Building
@@ -144,7 +136,6 @@ with real `CONFIG_SYSVIPC=y`.
 cd shadow_ctr/shadow_sysvipc
 make KDIR=/path/to/kernel/build
 sudo insmod shadow_sysvipc.ko
-ls -l /dev/shadow_sysvipc
 ```
 
 For an Android GKI cross build:
@@ -157,15 +148,8 @@ make -C /path/to/kernel/build M=$(pwd) ARCH=arm64 LLVM=1 modules
 
 ```sh
 insmod shadow_sysvipc.ko
-# /dev/shadow_sysvipc still exists for the ioctl ABI
 # stock userspace can now call msgget/msgctl/semget/semctl/shmget/shmctl normally
 ```
 
 The module logs which syscall wrapper symbols were hooked through the shared
 `shadow_hook` helper.
-
-## ABI versioning
-
-`SHADOW_SYSVIPC_IOC_ABI_VERSION` returns `SHADOW_SYSVIPC_ABI_VERSION`. Direct
-ioctl clients should still check it on open and refuse to run on a mismatch.
-Bump `include/uapi/shadow_sysvipc.h` whenever the ioctl layout changes.

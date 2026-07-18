@@ -10,9 +10,7 @@
  *
  * It plugs into shadow_ns_base via the plugin API (common/shadow_ns_base.h):
  *   - a per-UTS-namespace payload (struct shadow_uts_priv) holding the
- *     nodename/domainname, allocated/freed through priv_alloc/priv_free;
- *   - the SHADOW_NS_IOC_SET_UTS / SHADOW_NS_IOC_GET_UTS ioctls on
- *     /dev/shadow_ns, serviced through the plugin ->ioctl escape hatch;
+ *     nodename/domainname, allocated/freed through priv_alloc/priv_free; and
  *   - transparent hooks (installed by *this* module, via shadow_hook.h) on the
  *     sethostname/setdomainname/newuname(uname) syscalls, so an unmodified
  *     process observing/altering its hostname sees its shadow UTS namespace.
@@ -90,54 +88,10 @@ static void shadow_ns_uts_priv_free(void *priv)
 	kfree(p);
 }
 
-/* --- ioctl escape-hatch handler (called with the session lock held) ----- */
-
-static long shadow_ns_uts_ioctl(struct shadow_session *s, unsigned int cmd,
-			       unsigned long arg, void *priv)
-{
-	struct shadow_uts_priv *p = priv;
-	void __user *uarg = (void __user *)arg;
-	struct shadow_ns_uts req;
-
-	switch (cmd) {
-	case SHADOW_NS_IOC_SET_UTS:
-		if (!p)
-			return -ENOENT;
-		if (copy_from_user(&req, uarg, sizeof(req)))
-			return -EFAULT;
-		/* Guarantee NUL termination regardless of what userspace gave. */
-		req.nodename[SHADOW_NS_UTS_LEN] = '\0';
-		req.domainname[SHADOW_NS_UTS_LEN] = '\0';
-
-		mutex_lock(&p->lock);
-		strscpy(p->nodename, req.nodename, sizeof(p->nodename));
-		strscpy(p->domainname, req.domainname, sizeof(p->domainname));
-		mutex_unlock(&p->lock);
-		return 0;
-
-	case SHADOW_NS_IOC_GET_UTS:
-		if (!p)
-			return -ENOENT;
-		memset(&req, 0, sizeof(req));
-		mutex_lock(&p->lock);
-		strscpy(req.nodename, p->nodename, sizeof(req.nodename));
-		strscpy(req.domainname, p->domainname, sizeof(req.domainname));
-		mutex_unlock(&p->lock);
-
-		if (copy_to_user(uarg, &req, sizeof(req)))
-			return -EFAULT;
-		return 0;
-
-	default:
-		return -ENOTTY;
-	}
-}
-
 static const struct shadow_ns_type_ops shadow_ns_uts_ops = {
 	.owner		= THIS_MODULE,
 	.priv_alloc	= shadow_ns_uts_priv_alloc,
 	.priv_free	= shadow_ns_uts_priv_free,
-	.ioctl		= shadow_ns_uts_ioctl,
 	.real_support	= true,
 };
 
