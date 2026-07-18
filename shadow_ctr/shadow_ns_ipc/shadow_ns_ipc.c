@@ -34,7 +34,6 @@ static const struct shadow_ns_type_ops shadow_ns_ipc_ops = {
 	.owner		= THIS_MODULE,
 	.priv_alloc	= NULL,
 	.priv_free	= NULL,
-	.ioctl		= NULL,
 	.real_support	= false,
 };
 
