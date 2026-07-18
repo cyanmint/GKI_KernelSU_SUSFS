@@ -23,20 +23,31 @@
 # all of the above, exactly as it did for the QEMU boot-test workflow.
 #
 # Modules built (per KMI, in this order):
-#   shadow_ns_base            -- generic registry + hooks; built FIRST because
+#   shadow_hijack             -- shared ftrace/kprobe function-hijacking
+#                                implementation; built FIRST because
+#                                shadow_ns_base, shadow_ns_uts, shadow_sysvipc,
+#                                shadow_mqueue and shadow_cgdevices all resolve
+#                                its EXPORT_SYMBOL_GPL symbols at modpost time
+#                                via KBUILD_EXTRA_SYMBOLS=<hijack>/Module.symvers.
+#   shadow_ns_base            -- generic registry + hooks; built next because
 #                                the shadow_ns_* per-type modules resolve its
 #                                EXPORT_SYMBOL_GPL symbols at modpost time via
 #                                KBUILD_EXTRA_SYMBOLS=<base>/Module.symvers.
 #   shadow_ns_{uts,net,ipc,pid,mnt,user,cgroup}
-#                             -- per-type plugins depending on shadow_ns_base.
+#                             -- per-type plugins depending on shadow_ns_base
+#                                (and, for shadow_ns_uts, also shadow_hijack).
 #   shadow_sysvipc, shadow_mqueue, shadow_cgdevices, shadow_ctr_checker
-#                             -- fully standalone (no inter-module deps).
+#                             -- no inter-module deps, except shadow_sysvipc/
+#                                shadow_mqueue/shadow_cgdevices also depend on
+#                                shadow_hijack for their hook implementation.
 #   shadow_overlay2           -- vendored fs/overlayfs; ONLY built for
 #                                android14-6.1 (its VFS ABI is incompatible
 #                                with the other KMIs), mirroring the old
 #                                WITH_SHADOW_OVERLAY gating. See
 #                                shadow_ctr/shadow_overlay2/README.md.
-# Each resulting .ko is uploaded as its own artifact (<module>-<kmi>-arm64).
+# All resulting .ko files for a given KMI are uploaded together as a single
+# artifact (shadow_ctr-modules-<kmi>-arm64), so consumers download one bundle
+# per kernel version instead of stitching together per-module artifacts.
 #
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
@@ -128,19 +139,29 @@ jobs:
                 make -C "$KDIR" M="$ROOT/$dir" modules -j"$J" "$@"
               }
 
-              # 1) base first -- produces the Module.symvers the ns_* need.
-              build shadow_ns_base
+              # 0) shadow_hijack first -- shared hook implementation; produces
+              #    the Module.symvers that every hooking module resolves via
+              #    KBUILD_EXTRA_SYMBOLS.
+              build shadow_hijack
+              HIJACK_SYMS="$ROOT/shadow_hijack/Module.symvers"
 
-              # 2) per-type plugins, resolving base symbols at modpost time.
+              # 1) base next -- produces the Module.symvers the ns_* need, and
+              #    itself depends on shadow_hijack.
+              build shadow_ns_base KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+
+              # 2) per-type plugins, resolving base (and, for uts, hijack)
+              #    symbols at modpost time.
               BASE_SYMS="$ROOT/shadow_ns_base/Module.symvers"
-              for t in uts net ipc pid mnt user cgroup; do
+              build shadow_ns_uts KBUILD_EXTRA_SYMBOLS="$BASE_SYMS $HIJACK_SYMS"
+              for t in net ipc pid mnt user cgroup; do
                 build "shadow_ns_$t" KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
               done
 
-              # 3) standalone modules (no inter-module deps).
-              build shadow_sysvipc
-              build shadow_mqueue
-              build shadow_cgdevices
+              # 3) standalone modules (no inter-module deps, but they all
+              #    depend on shadow_hijack for their hook implementation).
+              build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_ctr_checker
 
               # 4) overlay2 only on android14-6.1.
@@ -148,86 +169,20 @@ jobs:
                 build shadow_overlay2
               fi
 
+              # collect every built .ko into one staging dir so all modules
+              # for this KMI can be uploaded together as a single artifact.
+              mkdir -p /workspace/modules-out
+              find "$ROOT" -name "*.ko" -exec cp {} /workspace/modules-out/ \;
+
               echo "=== built modules ==="
               find "$ROOT" -name "*.ko" -printf "%p\n" | sort
+              echo "=== staged modules ==="
+              ls -la /workspace/modules-out
             '
 
-      # --- per-module artifact uploads -------------------------------------
-      - name: Upload shadow_ns_base
+      # --- single artifact bundling every module built for this KMI --------
+      - name: Upload all shadow_ctr modules for ${{ matrix.kmi }}
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ns_base-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_base/shadow_ns_base.ko
-
-      - name: Upload shadow_ns_uts
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_uts-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_uts/shadow_ns_uts.ko
-
-      - name: Upload shadow_ns_net
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_net-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_net/shadow_ns_net.ko
-
-      - name: Upload shadow_ns_ipc
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_ipc-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_ipc/shadow_ns_ipc.ko
-
-      - name: Upload shadow_ns_pid
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_pid-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_pid/shadow_ns_pid.ko
-
-      - name: Upload shadow_ns_mnt
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_mnt-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_mnt/shadow_ns_mnt.ko
-
-      - name: Upload shadow_ns_user
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_user-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_user/shadow_ns_user.ko
-
-      - name: Upload shadow_ns_cgroup
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ns_cgroup-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ns_cgroup/shadow_ns_cgroup.ko
-
-      - name: Upload shadow_sysvipc
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_sysvipc-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_sysvipc/shadow_sysvipc.ko
-
-      - name: Upload shadow_mqueue
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_mqueue-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_mqueue/shadow_mqueue.ko
-
-      - name: Upload shadow_cgdevices
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_cgdevices-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_cgdevices/shadow_cgdevices.ko
-
-      - name: Upload shadow_ctr_checker
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ctr_checker-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_ctr_checker/shadow_ctr_checker.ko
-
-      - name: Upload shadow_overlay2 (android14-6.1 only)
-        if: ${{ matrix.kmi == 'android14-6.1' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_overlay2-${{ matrix.kmi }}-arm64
-          path: shadow_ctr/shadow_overlay2/shadow_overlay2.ko
+          name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
+          path: modules-out/

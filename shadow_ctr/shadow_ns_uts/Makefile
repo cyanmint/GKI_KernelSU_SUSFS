@@ -4,19 +4,24 @@
 #
 # shadow_ns_uts.ko is a per-type extension of shadow_ns_base.ko: it registers
 # the UTS namespace type (real nodename/domainname support) through the plugin
-# API in common/shadow_ns_base.h. It therefore references symbols exported by
-# shadow_ns_base.ko and must resolve them at modpost time via
-# KBUILD_EXTRA_SYMBOLS, which defaults to the sibling shadow_ns_base build's
-# Module.symvers. Build (and load) shadow_ns_base first.
+# API in common/shadow_ns_base.h, and also hooks syscalls directly via
+# shadow_hook_install()/remove() (implementation in ../shadow_hijack/). It
+# therefore references symbols exported by BOTH shadow_ns_base.ko and
+# shadow_hijack.ko and must resolve them at modpost time via
+# KBUILD_EXTRA_SYMBOLS, which defaults below to the sibling shadow_ns_base and
+# shadow_hijack builds' Module.symvers (KBUILD_EXTRA_SYMBOLS accepts a
+# space-separated list of files). Build (and load) shadow_hijack and
+# shadow_ns_base first.
 #
 # Out-of-tree build (produces shadow_ns_uts.ko):
 #   make -C /path/to/kernel/build M=$(pwd) modules           # from this dir
 #   make KDIR=/path/to/kernel/build                          # convenience wrapper
 #   make KDIR=/path/to/kernel/build \
-#        KBUILD_EXTRA_SYMBOLS=/abs/path/to/shadow_ns_base/Module.symvers
+#        KBUILD_EXTRA_SYMBOLS="/abs/path/to/shadow_ns_base/Module.symvers /abs/path/to/shadow_hijack/Module.symvers"
 #
-# The default assumes shadow_ns_base/ is a sibling directory that has already
-# been built. Override KBUILD_EXTRA_SYMBOLS to point elsewhere if needed.
+# The default assumes shadow_ns_base/ and shadow_hijack/ are sibling
+# directories that have already been built. Override KBUILD_EXTRA_SYMBOLS to
+# point elsewhere if needed.
 
 ifneq ($(KERNELRELEASE),)
 
@@ -35,7 +40,7 @@ else
 # --- command-line pass (out-of-tree convenience wrapper) ---
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD  := $(shell pwd)
-KBUILD_EXTRA_SYMBOLS ?= $(realpath $(PWD)/../shadow_ns_base/Module.symvers)
+KBUILD_EXTRA_SYMBOLS ?= $(realpath $(PWD)/../shadow_ns_base/Module.symvers) $(realpath $(PWD)/../shadow_hijack/Module.symvers)
 export KBUILD_EXTRA_SYMBOLS
 
 all:

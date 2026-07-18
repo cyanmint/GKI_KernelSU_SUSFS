@@ -30,12 +30,15 @@
 # match a real build. Using the DDK sysroot's real vmlinux/Module.symvers
 # fixes this; this was confirmed by local QEMU boot testing.
 #
-# Dependency note: the shadow_ns_* per-type modules resolve shadow_ns_base's
-# EXPORT_SYMBOL_GPL symbols, so shadow_ns_base is built (with
-# KBUILD_EXTRA_SYMBOLS wiring for the dependents) and insmod'd first.
-# shadow_ctr_checker has no build-time dependency on anything (it detects the
-# other modules at runtime via symbol_get), and is loaded last so it observes
-# all of them.
+# Dependency note: shadow_hijack.ko hosts the shared shadow_hook_install()/
+# remove() implementation that shadow_ns_base, shadow_ns_uts, shadow_sysvipc,
+# shadow_mqueue and shadow_cgdevices all resolve at modpost time via
+# KBUILD_EXTRA_SYMBOLS, so it is built (and insmod'd) first. The shadow_ns_*
+# per-type modules additionally resolve shadow_ns_base's EXPORT_SYMBOL_GPL
+# symbols, so shadow_ns_base is built (with KBUILD_EXTRA_SYMBOLS wiring for
+# the dependents) and insmod'd right after. shadow_ctr_checker has no
+# build-time dependency on anything (it detects the other modules at runtime
+# via symbol_get), and is loaded last so it observes all of them.
 
 name: Test shadow_ctr modules (QEMU)
 
@@ -93,15 +96,21 @@ jobs:
 
               build() { local dir="$1"; shift; make -C "$KDIR" M="$ROOT/$dir" modules -j"$J" "$@"; }
 
-              # base first (produces Module.symvers for the ns_* dependents)
-              build shadow_ns_base
+              # shadow_hijack first (produces Module.symvers every hooking
+              # module resolves via KBUILD_EXTRA_SYMBOLS)
+              build shadow_hijack
+              HIJACK_SYMS="$ROOT/shadow_hijack/Module.symvers"
+
+              # base next (produces Module.symvers for the ns_* dependents)
+              build shadow_ns_base KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               BASE_SYMS="$ROOT/shadow_ns_base/Module.symvers"
-              for t in uts net ipc pid mnt user cgroup; do
+              build shadow_ns_uts KBUILD_EXTRA_SYMBOLS="$BASE_SYMS $HIJACK_SYMS"
+              for t in net ipc pid mnt user cgroup; do
                 build "shadow_ns_$t" KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
               done
-              build shadow_sysvipc
-              build shadow_mqueue
-              build shadow_cgdevices
+              build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_ctr_checker
               # overlay2 is android14-6.1 compatible (this KMI), so build it too
               build shadow_overlay2
@@ -171,7 +180,10 @@ jobs:
           /system/bin/mount -t devtmpfs devtmpfs /dev
           M=/modules
           echo "=== SHADOW_CTR_QEMU_TEST: inserting modules (dependency order) ==="
-          # shadow_ns_base MUST go first (the ns_* modules depend on it).
+          # shadow_hijack MUST go first (every hooking module depends on it).
+          /system/bin/insmod $M/shadow_hijack.ko
+          echo "insmod shadow_hijack.ko -> $?"
+          # shadow_ns_base MUST go next (the ns_* modules depend on it).
           /system/bin/insmod $M/shadow_ns_base.ko
           echo "insmod shadow_ns_base.ko -> $?"
           for m in shadow_ns_uts shadow_ns_net shadow_ns_ipc shadow_ns_pid \
