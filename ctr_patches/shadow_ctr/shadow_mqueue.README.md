@@ -51,6 +51,15 @@ Key pieces:
   through `fdget()` and `file->private_data`.
 * **Legacy ioctl sessions** still exist. They use the same internal helpers as
   the hooked syscalls; there is no second message-transfer implementation.
+* A minimal `"mqueue"` pseudo filesystem type is also registered
+  (`register_filesystem()`), independent of the syscall hooks above. Container
+  runtimes such as `runc` unconditionally `mount("mqueue", "/dev/mqueue",
+  "mqueue", ...)` during container init; without a registered `"mqueue"` fs
+  type that mount fails with `-ENODEV` ("no such device") and container
+  startup aborts before the hooked `mq_*` syscalls ever run. The mounted
+  filesystem's contents are empty and irrelevant — all real queue state lives
+  in the hash table above, not on this mount — it exists purely so that
+  mount(2) call succeeds.
 
 ## What is simulated
 
@@ -75,9 +84,12 @@ Key pieces:
   are sized for runtime init-pipe traffic, not for arbitrary large general-use
   mqueue workloads.
 * Blocking waits still round nanosecond deadlines to jiffies.
-* The queue implementation is functional, but it is still a simulation: no
-  native mqueue filesystem mount, no persistence beyond module-managed state,
-  and no attempt to emulate every edge-case of in-tree `ipc/mqueue.c`.
+* The queue implementation is functional, but it is still a simulation: the
+  registered `"mqueue"` filesystem type only exists so that
+  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` (as issued unconditionally
+  by container runtimes such as `runc`) succeeds — it has no persistence
+  beyond module-managed state and does not attempt to emulate every
+  edge-case of in-tree `ipc/mqueue.c`.
 
 ## Files
 

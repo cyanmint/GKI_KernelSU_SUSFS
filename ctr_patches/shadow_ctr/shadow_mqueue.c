@@ -58,6 +58,8 @@
 #include <linux/sched/signal.h>
 #include <linux/time64.h>
 #include <linux/timekeeping.h>
+#include <linux/fs_context.h>
+#include <linux/magic.h>
 #include <uapi/linux/mqueue.h>
 #include <uapi/linux/time_types.h>
 
@@ -1219,6 +1221,59 @@ static struct miscdevice mqueue_miscdev = {
 	.mode	= 0600,
 };
 
+/*
+ * shadow_mqueue_fs_type - minimal pseudo filesystem registered under the
+ * name "mqueue".
+ *
+ * Container runtimes such as runc unconditionally attempt to
+ * `mount("mqueue", "<rootfs>/dev/mqueue", "mqueue", ...)` during container
+ * init, independent of whether the workload actually uses POSIX message
+ * queues. On a kernel built without CONFIG_POSIX_MQUEUE there is no
+ * filesystem type named "mqueue" registered at all, so that mount(2) call
+ * fails with -ENODEV ("no such device") and container start-up aborts
+ * before shadow_mqueue's hooked mq_* syscalls ever get a chance to run.
+ *
+ * The mq_* syscalls hooked above are fully self-contained (they resolve
+ * queues through the global name hash and anon-inode fds, not through any
+ * on-disk/vfs state), so this filesystem's contents are irrelevant to
+ * message-queue semantics - it only needs to exist so the mount(2) call
+ * that gates container startup succeeds. An empty, single-instance pseudo
+ * fs (mirroring the shape of tmpfs/proc's fs_context-based mount, but with
+ * no populated entries) is sufficient.
+ */
+/* Same value the real in-tree ipc/mqueue.c uses for its "mqueue" fs magic. */
+#define SHADOW_MQUEUE_FS_MAGIC 0x19800202
+
+static int shadow_mqueuefs_fill_super(struct super_block *sb, struct fs_context *fc)
+{
+	return simple_fill_super(sb, SHADOW_MQUEUE_FS_MAGIC, NULL);
+}
+
+static int shadow_mqueuefs_get_tree(struct fs_context *fc)
+{
+	return get_tree_nodev(fc, shadow_mqueuefs_fill_super);
+}
+
+static const struct fs_context_operations shadow_mqueuefs_context_ops = {
+	.get_tree	= shadow_mqueuefs_get_tree,
+};
+
+static int shadow_mqueuefs_init_fs_context(struct fs_context *fc)
+{
+	fc->ops = &shadow_mqueuefs_context_ops;
+	return 0;
+}
+
+static struct file_system_type shadow_mqueue_fs_type = {
+	.owner		= THIS_MODULE,
+	.name		= "mqueue",
+	.init_fs_context = shadow_mqueuefs_init_fs_context,
+	.kill_sb	= kill_litter_super,
+	.fs_flags	= FS_USERNS_MOUNT,
+};
+
+static bool shadow_mqueue_fs_registered;
+
 int __init shadow_mqueue_init(void)
 {
 	int ret;
@@ -1232,10 +1287,33 @@ int __init shadow_mqueue_init(void)
 	}
 	pr_info("shadow_mqueue: init: misc device registered\n");
 
+	pr_info("shadow_mqueue: init: registering \"mqueue\" filesystem type\n");
+	ret = register_filesystem(&shadow_mqueue_fs_type);
+	if (ret == 0) {
+		shadow_mqueue_fs_registered = true;
+		pr_info("shadow_mqueue: init: \"mqueue\" filesystem type registered\n");
+	} else if (ret == -EBUSY) {
+		/*
+		 * A filesystem named "mqueue" is already registered (e.g. the
+		 * kernel was actually built with CONFIG_POSIX_MQUEUE, or
+		 * another module raced us). That is not fatal: mount(2) of
+		 * "mqueue" will already succeed via that registration.
+		 */
+		pr_info("shadow_mqueue: init: \"mqueue\" filesystem type already registered, skipping\n");
+	} else {
+		pr_err("shadow_mqueue: init: register_filesystem(\"mqueue\") failed: %d\n", ret);
+		misc_deregister(&mqueue_miscdev);
+		return ret;
+	}
+
 	pr_info("shadow_mqueue: init: installing transparent mq_* hooks\n");
 	ret = shadow_hook_install_all(shadow_mqueue_hooks, "shadow_mqueue");
 	if (ret < 0) {
 		pr_err("shadow_mqueue: init: shadow_hook_install_all() failed: %d\n", ret);
+		if (shadow_mqueue_fs_registered) {
+			unregister_filesystem(&shadow_mqueue_fs_type);
+			shadow_mqueue_fs_registered = false;
+		}
 		misc_deregister(&mqueue_miscdev);
 		shadow_hook_remove_all(shadow_mqueue_hooks);
 		return ret;
@@ -1255,6 +1333,11 @@ void shadow_mqueue_exit(void)
 
 	pr_info("shadow_mqueue: exit: removing transparent mq_* hooks\n");
 	shadow_hook_remove_all(shadow_mqueue_hooks);
+	if (shadow_mqueue_fs_registered) {
+		pr_info("shadow_mqueue: exit: unregistering \"mqueue\" filesystem type\n");
+		unregister_filesystem(&shadow_mqueue_fs_type);
+		shadow_mqueue_fs_registered = false;
+	}
 	pr_info("shadow_mqueue: exit: deregistering misc device\n");
 	misc_deregister(&mqueue_miscdev);
 
