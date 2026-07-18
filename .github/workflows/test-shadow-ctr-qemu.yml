@@ -7,11 +7,13 @@
 # includes the `insmod` attempt and any resulting kernel messages) as a build
 # artifact for inspection.
 #
-# The test kernel/ramdisk pair is a standalone (system-as-root) recovery
-# image published at the v2.1.0 release specifically for this kind of
-# smoke test; it ships busybox/toybox utilities and does not require any
-# additional block devices, so it can boot directly from an initramfs under
-# QEMU's "virt" machine type.
+# The test ramdisk is a standalone (system-as-root) recovery image published
+# at the v2.1.0 release specifically for this kind of smoke test; it ships
+# busybox/toybox utilities and does not require any additional block
+# devices, so it can boot directly from an initramfs under QEMU's "virt"
+# machine type. The kernel image booted alongside it is extracted from the
+# android14-6.1 boot.img published at the v2.2.0 release, so the module is
+# tested against an actual SukiSU/SUSFS-patched GKI kernel build.
 
 name: Test shadow_ctr.ko (QEMU)
 
@@ -32,7 +34,8 @@ on:
 
 env:
   KERNEL_BRANCH: android14-6.1
-  TEST_IMAGE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
+  TEST_RAMDISK_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
+  TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.145-2025-09-boot.img
 
 jobs:
   test:
@@ -85,13 +88,26 @@ jobs:
           name: shadow_ctr-${{ env.KERNEL_BRANCH }}-arm64
           path: ctr_patches/shadow_ctr/shadow_ctr.ko
 
-      # --- 2. Fetch the test kernel + ramdisk ---
+      # --- 2. Fetch the test ramdisk and the kernel image under test ---
 
-      - name: Download test kernel and ramdisk
+      - name: Download test ramdisk
         run: |
-          curl -fL -o testkernelramdisk.zip "$TEST_IMAGE_URL"
+          curl -fL -o testkernelramdisk.zip "$TEST_RAMDISK_URL"
           mkdir -p test-image
           unzip -o testkernelramdisk.zip -d test-image
+          ls -la test-image
+
+      - name: Download test kernel boot image (v2.2.0)
+        run: |
+          curl -fL -o test-kernel-boot.img "$TEST_KERNEL_URL"
+
+      - name: Extract kernel from boot image
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/system/tools/mkbootimg \
+            -b main-kernel-build-2024 mkbootimg-tools
+          python3 mkbootimg-tools/unpack_bootimg.py \
+            --boot_img test-kernel-boot.img --out out-bootimg --format mkbootimg
+          cp out-bootimg/kernel test-image/kernel
           ls -la test-image
 
       # --- 3. Inject the freshly built shadow_ctr.ko into the ramdisk ---
@@ -149,9 +165,18 @@ jobs:
           echo "QEMU exited with status $?"
           tail -n 200 qemu-console.log
 
-      - name: Upload QEMU console log
+      - name: Assemble QEMU test artifact bundle
+        if: always()
+        run: |
+          mkdir -p qemu-test-bundle
+          cp test-image/kernel qemu-test-bundle/tested-kernel 2>/dev/null || true
+          cp test-image/ramdisk-test.cpio qemu-test-bundle/injected-ramdisk.cpio 2>/dev/null || true
+          cp qemu-console.log qemu-test-bundle/qemu-console.log 2>/dev/null || true
+          ls -la qemu-test-bundle
+
+      - name: Upload tested kernel, injected ramdisk and QEMU log
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-qemu-console-log
-          path: qemu-console.log
+          name: shadow_ctr-qemu-test-bundle
+          path: qemu-test-bundle/
