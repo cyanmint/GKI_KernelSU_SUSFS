@@ -58,12 +58,14 @@
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/sem.h>
-#include <linux/shm.h>
 #include <linux/pid.h>
 #include <linux/sched.h>
 #include <linux/sched/task.h>
+#include <uapi/linux/shm.h>
+#include <asm/ptrace.h>
 
-#include "../shadow_hook/shadow_hook.h"
+#include "shadow_hook.h"
+#include "shadow_ctr_internal.h"
 #include "include/uapi/shadow_sysvipc.h"
 
 #define SHADOW_SYSVIPC_MAX_RESOURCES	65536
@@ -164,6 +166,11 @@ static long svipc_hook_shmget(const struct pt_regs *regs);
 static long svipc_hook_shmctl(const struct pt_regs *regs);
 static long svipc_hook_shmat(const struct pt_regs *regs);
 static long svipc_hook_shmdt(const struct pt_regs *regs);
+
+static unsigned long svipc_sys_arg(const struct pt_regs *regs, unsigned int n)
+{
+	return regs_get_kernel_argument((struct pt_regs *)regs, n);
+}
 
 static const char * const msgget_names[] = { "__arm64_sys_msgget", "sys_msgget", NULL };
 static const char * const msgctl_names[] = { "__arm64_sys_msgctl", "sys_msgctl", NULL };
@@ -756,7 +763,7 @@ static const struct file_operations svipc_fops = {
 	.release	= svipc_release,
 	.unlocked_ioctl	= svipc_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= no_llseek,
+	.llseek		= noop_llseek,
 };
 
 static struct miscdevice svipc_miscdev = {
@@ -903,8 +910,8 @@ static long svipc_sys_shmctl(int shmid, int cmd, void __user *arg)
 static long svipc_hook_msgget(const struct pt_regs *regs)
 {
 	long ret;
-	s32 key = (s32)regs->regs[0];
-	int msgflg = (int)regs->regs[1];
+	s32 key = (s32)svipc_sys_arg(regs, 0);
+	int msgflg = (int)svipc_sys_arg(regs, 1);
 
 	ret = real_sys_msgget(regs);
 	if (ret != -ENOSYS)
@@ -916,9 +923,9 @@ static long svipc_hook_msgget(const struct pt_regs *regs)
 static long svipc_hook_msgctl(const struct pt_regs *regs)
 {
 	long ret;
-	int msqid = (int)regs->regs[0];
-	int cmd = (int)regs->regs[1];
-	void __user *buf = (void __user *)regs->regs[2];
+	int msqid = (int)svipc_sys_arg(regs, 0);
+	int cmd = (int)svipc_sys_arg(regs, 1);
+	void __user *buf = (void __user *)svipc_sys_arg(regs, 2);
 
 	ret = real_sys_msgctl(regs);
 	if (ret != -ENOSYS)
@@ -948,9 +955,9 @@ static long svipc_hook_msgrcv(const struct pt_regs *regs)
 static long svipc_hook_semget(const struct pt_regs *regs)
 {
 	long ret;
-	s32 key = (s32)regs->regs[0];
-	int nsems = (int)regs->regs[1];
-	int semflg = (int)regs->regs[2];
+	s32 key = (s32)svipc_sys_arg(regs, 0);
+	int nsems = (int)svipc_sys_arg(regs, 1);
+	int semflg = (int)svipc_sys_arg(regs, 2);
 
 	ret = real_sys_semget(regs);
 	if (ret != -ENOSYS)
@@ -963,10 +970,10 @@ static long svipc_hook_semget(const struct pt_regs *regs)
 static long svipc_hook_semctl(const struct pt_regs *regs)
 {
 	long ret;
-	int semid = (int)regs->regs[0];
-	int semnum = (int)regs->regs[1];
-	int cmd = (int)regs->regs[2];
-	unsigned long arg = regs->regs[3];
+	int semid = (int)svipc_sys_arg(regs, 0);
+	int semnum = (int)svipc_sys_arg(regs, 1);
+	int cmd = (int)svipc_sys_arg(regs, 2);
+	unsigned long arg = svipc_sys_arg(regs, 3);
 
 	ret = real_sys_semctl(regs);
 	if (ret != -ENOSYS)
@@ -993,9 +1000,9 @@ static long svipc_hook_semtimedop(const struct pt_regs *regs)
 static long svipc_hook_shmget(const struct pt_regs *regs)
 {
 	long ret;
-	s32 key = (s32)regs->regs[0];
-	size_t size = (size_t)regs->regs[1];
-	int shmflg = (int)regs->regs[2];
+	s32 key = (s32)svipc_sys_arg(regs, 0);
+	size_t size = (size_t)svipc_sys_arg(regs, 1);
+	int shmflg = (int)svipc_sys_arg(regs, 2);
 
 	ret = real_sys_shmget(regs);
 	if (ret != -ENOSYS)
@@ -1007,9 +1014,9 @@ static long svipc_hook_shmget(const struct pt_regs *regs)
 static long svipc_hook_shmctl(const struct pt_regs *regs)
 {
 	long ret;
-	int shmid = (int)regs->regs[0];
-	int cmd = (int)regs->regs[1];
-	void __user *buf = (void __user *)regs->regs[2];
+	int shmid = (int)svipc_sys_arg(regs, 0);
+	int cmd = (int)svipc_sys_arg(regs, 1);
+	void __user *buf = (void __user *)svipc_sys_arg(regs, 2);
 
 	ret = real_sys_shmctl(regs);
 	if (ret != -ENOSYS)
@@ -1034,7 +1041,7 @@ static long svipc_hook_shmdt(const struct pt_regs *regs)
 	return real_sys_shmdt(regs);
 }
 
-static int __init shadow_sysvipc_init(void)
+int __init shadow_sysvipc_init(void)
 {
 	int ret;
 
@@ -1056,7 +1063,7 @@ static int __init shadow_sysvipc_init(void)
 	return 0;
 }
 
-static void __exit shadow_sysvipc_exit(void)
+void shadow_sysvipc_exit(void)
 {
 	shadow_hook_remove_all(svipc_all_hooks);
 	misc_deregister(&svipc_miscdev);
@@ -1066,11 +1073,3 @@ static void __exit shadow_sysvipc_exit(void)
 
 	pr_info("shadow_sysvipc: simulated SysV IPC subsystem unloaded\n");
 }
-
-module_init(shadow_sysvipc_init);
-module_exit(shadow_sysvipc_exit);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated System V IPC bookkeeping with transparent syscall hooks");
-MODULE_VERSION("1.0");

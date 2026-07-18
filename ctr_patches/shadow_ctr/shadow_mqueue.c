@@ -3,7 +3,7 @@
  * shadow_mqueue - simulated POSIX message queue subsystem
  *
  * A standalone loadable kernel module that provides fully functional POSIX
- * message queues through ioctls on the /dev/shadow_mqueue misc device.
+ * message queues on kernels built without CONFIG_POSIX_MQUEUE.
  *
  * Motivation
  * ----------
@@ -15,18 +15,19 @@
  * container initialisation (the "init pipe").  Without CONFIG_POSIX_MQUEUE
  * that synchronisation fails and containers do not start.
  *
- * shadow_mqueue provides a drop-in replacement: a patched runc opens
- * /dev/shadow_mqueue, creates a named virtual queue, and drives SEND/RECEIVE
- * operations through ioctls exactly as it would have used mq_open/mq_send/
- * mq_receive.  Message transfer is fully functional: bytes written by a sender
- * are buffered in a kernel-side priority-ordered list and delivered to the
- * receiver, with blocking and timeout semantics mirroring the POSIX standard.
+ * shadow_mqueue provides a drop-in replacement: stock userspace can call the
+ * real mq_* syscalls and be transparently redirected into this module through
+ * ftrace hooks, while the older /dev/shadow_mqueue ioctl API remains available.
+ * Message transfer is fully functional: bytes written by a sender are buffered
+ * in a kernel-side priority-ordered list and delivered to the receiver, with
+ * blocking and timeout semantics mirroring the POSIX standard.
  *
  * Architecture
  * ------------
  * - Named queues persist in a global hash table keyed by name until unlinked.
- * - Each open("/dev/shadow_mqueue") creates a *session*; sessions allocate
- *   per-session *handles* for individual queue opens.
+ * - Transparent mq_open() returns a real anon-inode fd whose private_data is a
+ *   refcounted mq_handle_entry; ioctl open("/dev/shadow_mqueue") still creates
+ *   a per-fd session with its own handle table.
  * - Messages are stored as heap-allocated mq_msg objects in a priority list.
  * - Receivers block on a wait_queue_head_t; senders wake them on each enqueue.
  *   Senders similarly block when a queue is full and are woken on dequeue.
@@ -60,7 +61,8 @@
 #include <uapi/linux/mqueue.h>
 #include <uapi/linux/time_types.h>
 
-#include "../shadow_hook/shadow_hook.h"
+#include "shadow_hook.h"
+#include "shadow_ctr_internal.h"
 #include "include/uapi/shadow_mqueue.h"
 
 #define SHADOW_MQ_NAME_HTBITS	8	/* 256 name-hash buckets */
@@ -141,6 +143,29 @@ static long (*real_sys_mq_timedreceive)(const struct pt_regs *regs);
 static long (*real_sys_mq_notify)(const struct pt_regs *regs);
 static long (*real_sys_mq_getsetattr)(const struct pt_regs *regs);
 
+#if defined(CONFIG_ARM64)
+#define SHADOW_SYSCALL_ARG(_regs, _n) ((_regs)->regs[_n])
+#elif defined(CONFIG_X86_64)
+static __always_inline unsigned long shadow_syscall_arg(const struct pt_regs *regs,
+							unsigned int n)
+{
+	switch (n) {
+	case 0: return regs->di;
+	case 1: return regs->si;
+	case 2: return regs->dx;
+	case 3: return regs->r10;
+	case 4: return regs->r8;
+	case 5: return regs->r9;
+	default: return 0;
+	}
+}
+#define SHADOW_SYSCALL_ARG(_regs, _n) shadow_syscall_arg((_regs), (_n))
+#else
+#error "shadow_mqueue: unsupported architecture"
+#endif
+
+static void mq_enqueue_locked(struct shadow_mq *mq, struct mq_msg *m);
+
 static u32 mq_name_hash_val(const char *name)
 {
 	u32 h = 0;
@@ -211,13 +236,14 @@ static void mq_fill_shadow_attr(struct shadow_mq *mq, struct shadow_mq_attr *att
 	attr->mq_curmsgs = (s64)atomic_read(&mq->curmsgs);
 }
 
-static void mq_fill_posix_attr(struct shadow_mq *mq, struct mq_attr *attr)
+static void mq_fill_posix_attr_from_shadow(const struct shadow_mq_attr *shadow,
+					   struct mq_attr *attr)
 {
 	memset(attr, 0, sizeof(*attr));
-	attr->mq_flags   = READ_ONCE(mq->nonblock) ? O_NONBLOCK : 0;
-	attr->mq_maxmsg  = mq->mq_maxmsg;
-	attr->mq_msgsize = mq->mq_msgsize;
-	attr->mq_curmsgs = atomic_read(&mq->curmsgs);
+	attr->mq_flags   = (shadow->mq_flags & SHADOW_MQ_O_NONBLOCK) ? O_NONBLOCK : 0;
+	attr->mq_maxmsg  = shadow->mq_maxmsg;
+	attr->mq_msgsize = shadow->mq_msgsize;
+	attr->mq_curmsgs = shadow->mq_curmsgs;
 }
 
 static void mq_clamp_shadow_attr(struct shadow_mq_attr *attr)
@@ -701,7 +727,6 @@ static long mqioc_close(struct mq_session *s, void __user *arg)
 static long mqioc_unlink(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_unlink_req req;
-	struct shadow_mq *mq;
 
 	if (copy_from_user(&req, arg, sizeof(req)))
 		return -EFAULT;
@@ -774,7 +799,7 @@ static long mqioc_getattr(struct mq_session *s, void __user *arg)
 {
 	struct shadow_mq_attr_req req;
 	struct mq_handle_entry *he;
-	struct shadow_mq *mq;
+	long ret;
 
 	if (copy_from_user(&req, arg, sizeof(req)))
 		return -EFAULT;
@@ -834,6 +859,318 @@ static long mqueue_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 
+static int shadow_mq_anon_release(struct inode *inode, struct file *file)
+{
+	struct mq_handle_entry *he = file->private_data;
+
+	file->private_data = NULL;
+	mq_handle_put(he);
+	return 0;
+}
+
+static const struct file_operations shadow_mq_anon_fops = {
+	.owner		= THIS_MODULE,
+	.release	= shadow_mq_anon_release,
+	.llseek		= noop_llseek,
+};
+
+static struct mq_handle_entry *mq_get_shadow_handle_from_fd(int mqdes)
+{
+	struct mq_handle_entry *he;
+	struct fd f = fdget(mqdes);
+
+	if (fd_empty(f))
+		return ERR_PTR(-EBADF);
+	if (fd_file(f)->f_op != &shadow_mq_anon_fops) {
+		fdput(f);
+		return NULL;
+	}
+
+	he = fd_file(f)->private_data;
+	if (!mq_handle_get(he)) {
+		fdput(f);
+		return ERR_PTR(-EBADF);
+	}
+	fdput(f);
+	return he;
+}
+
+static long hook_sys_mq_open(const struct pt_regs *regs)
+{
+	const char __user *uname = (const char __user *)SHADOW_SYSCALL_ARG(regs, 0);
+	int oflag = (int)SHADOW_SYSCALL_ARG(regs, 1);
+	struct mq_attr __user *uattr =
+		(struct mq_attr __user *)SHADOW_SYSCALL_ARG(regs, 3);
+	struct shadow_mq_attr create_attr = {
+		.mq_maxmsg = SHADOW_MQ_MAXMSG_DEF,
+		.mq_msgsize = SHADOW_MQ_MSGSIZE_MAX,
+	};
+	struct mq_handle_entry *he;
+	struct mq_attr attr;
+	char name[SHADOW_MQ_NAME_MAX + 1];
+	bool created = false;
+	long ret;
+	int fd;
+
+	ret = real_sys_mq_open(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	ret = mq_copy_name_from_user(uname, name);
+	if (ret)
+		return ret;
+
+	if ((oflag & O_CREAT) && uattr) {
+		if (copy_from_user(&attr, uattr, sizeof(attr)))
+			return -EFAULT;
+		create_attr.mq_maxmsg = attr.mq_maxmsg;
+		create_attr.mq_msgsize = attr.mq_msgsize;
+	}
+
+	ret = mq_do_open(name, mq_posix_to_shadow_oflag(oflag), &create_attr, &he,
+			 NULL, &created);
+	if (ret)
+		return ret;
+
+	fd = anon_inode_getfd("shadow_mqueue", &shadow_mq_anon_fops, he,
+			      O_RDWR | (oflag & O_CLOEXEC));
+	if (fd < 0) {
+		if (created)
+			mq_do_unlink(name);
+		mq_handle_put(he);
+		return fd;
+	}
+
+	return fd;
+}
+
+static long hook_sys_mq_unlink(const struct pt_regs *regs)
+{
+	const char __user *uname = (const char __user *)SHADOW_SYSCALL_ARG(regs, 0);
+	char name[SHADOW_MQ_NAME_MAX + 1];
+	long ret;
+
+	ret = real_sys_mq_unlink(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	ret = mq_copy_name_from_user(uname, name);
+	if (ret)
+		return ret;
+
+	return mq_do_unlink(name);
+}
+
+static long hook_sys_mq_timedsend(const struct pt_regs *regs)
+{
+	mqd_t mqdes = (mqd_t)SHADOW_SYSCALL_ARG(regs, 0);
+	const char __user *umsg = (const char __user *)SHADOW_SYSCALL_ARG(regs, 1);
+	size_t msg_len = (size_t)SHADOW_SYSCALL_ARG(regs, 2);
+	unsigned int prio = (unsigned int)SHADOW_SYSCALL_ARG(regs, 3);
+	const struct __kernel_timespec __user *uabs =
+		(const struct __kernel_timespec __user *)SHADOW_SYSCALL_ARG(regs, 4);
+	struct mq_handle_entry *he;
+	struct mq_wait_spec wait;
+	u8 msg_data[SHADOW_MQ_MSGSIZE_MAX];
+	long ret;
+
+	he = mq_get_shadow_handle_from_fd(mqdes);
+	if (IS_ERR(he))
+		return PTR_ERR(he);
+	if (!he)
+		return real_sys_mq_timedsend(regs);
+
+	if (msg_len > sizeof(msg_data)) {
+		mq_handle_put(he);
+		return -EMSGSIZE;
+	}
+	if (copy_from_user(msg_data, umsg, msg_len)) {
+		mq_handle_put(he);
+		return -EFAULT;
+	}
+
+	ret = mq_wait_spec_from_abs_timeout(&wait, READ_ONCE(he->oflag), uabs);
+	if (!ret)
+		ret = mq_do_send(he, msg_data, (u32)msg_len, prio, &wait);
+	mq_handle_put(he);
+	return ret;
+}
+
+static long hook_sys_mq_timedreceive(const struct pt_regs *regs)
+{
+	mqd_t mqdes = (mqd_t)SHADOW_SYSCALL_ARG(regs, 0);
+	char __user *umsg = (char __user *)SHADOW_SYSCALL_ARG(regs, 1);
+	size_t msg_len = (size_t)SHADOW_SYSCALL_ARG(regs, 2);
+	unsigned int __user *uprio =
+		(unsigned int __user *)SHADOW_SYSCALL_ARG(regs, 3);
+	const struct __kernel_timespec __user *uabs =
+		(const struct __kernel_timespec __user *)SHADOW_SYSCALL_ARG(regs, 4);
+	struct mq_handle_entry *he;
+	struct mq_wait_spec wait;
+	u8 msg_data[SHADOW_MQ_MSGSIZE_MAX];
+	u32 len;
+	u32 prio;
+	long ret;
+
+	he = mq_get_shadow_handle_from_fd(mqdes);
+	if (IS_ERR(he))
+		return PTR_ERR(he);
+	if (!he)
+		return real_sys_mq_timedreceive(regs);
+
+	if (msg_len > sizeof(msg_data)) {
+		mq_handle_put(he);
+		return -EMSGSIZE;
+	}
+
+	ret = mq_wait_spec_from_abs_timeout(&wait, READ_ONCE(he->oflag), uabs);
+	if (ret)
+		goto out_put;
+
+	len = (u32)msg_len;
+	ret = mq_do_receive(he, msg_data, &len, &prio, &wait);
+	if (ret)
+		goto out_put;
+
+	if (copy_to_user(umsg, msg_data, len)) {
+		ret = -EFAULT;
+		goto out_put;
+	}
+	if (uprio && put_user(prio, uprio)) {
+		ret = -EFAULT;
+		goto out_put;
+	}
+
+	ret = len;
+out_put:
+	mq_handle_put(he);
+	return ret;
+}
+
+static long hook_sys_mq_notify(const struct pt_regs *regs)
+{
+	mqd_t mqdes = (mqd_t)SHADOW_SYSCALL_ARG(regs, 0);
+	struct mq_handle_entry *he;
+
+	he = mq_get_shadow_handle_from_fd(mqdes);
+	if (IS_ERR(he))
+		return PTR_ERR(he);
+	if (!he)
+		return real_sys_mq_notify(regs);
+
+	mq_handle_put(he);
+	return -ENOSYS;
+}
+
+static long hook_sys_mq_getsetattr(const struct pt_regs *regs)
+{
+	mqd_t mqdes = (mqd_t)SHADOW_SYSCALL_ARG(regs, 0);
+	const struct mq_attr __user *unew =
+		(const struct mq_attr __user *)SHADOW_SYSCALL_ARG(regs, 1);
+	struct mq_attr __user *uold =
+		(struct mq_attr __user *)SHADOW_SYSCALL_ARG(regs, 2);
+	struct mq_handle_entry *he;
+	struct shadow_mq_attr newattr;
+	struct shadow_mq_attr oldattr;
+	struct mq_attr old;
+	long ret;
+
+	he = mq_get_shadow_handle_from_fd(mqdes);
+	if (IS_ERR(he))
+		return PTR_ERR(he);
+	if (!he)
+		return real_sys_mq_getsetattr(regs);
+
+	if (unew) {
+		if (copy_from_user(&old, unew, sizeof(old))) {
+			ret = -EFAULT;
+			goto out_put;
+		}
+		memset(&newattr, 0, sizeof(newattr));
+		newattr.mq_flags = (old.mq_flags & O_NONBLOCK) ? SHADOW_MQ_O_NONBLOCK : 0;
+		ret = mq_do_setattr(he, &newattr, uold ? &oldattr : NULL);
+	} else {
+		ret = mq_do_getattr(he, &oldattr);
+	}
+	if (ret)
+		goto out_put;
+
+	if (uold) {
+		mq_fill_posix_attr_from_shadow(&oldattr, &old);
+		if (copy_to_user(uold, &old, sizeof(old))) {
+			ret = -EFAULT;
+			goto out_put;
+		}
+	}
+
+	ret = 0;
+out_put:
+	mq_handle_put(he);
+	return ret;
+}
+
+static const char * const mq_open_hook_names[] = {
+	"__arm64_sys_mq_open",
+	"sys_mq_open",
+	NULL,
+};
+
+static const char * const mq_unlink_hook_names[] = {
+	"__arm64_sys_mq_unlink",
+	"sys_mq_unlink",
+	NULL,
+};
+
+static const char * const mq_timedsend_hook_names[] = {
+	"__arm64_sys_mq_timedsend",
+	"sys_mq_timedsend",
+	NULL,
+};
+
+static const char * const mq_timedreceive_hook_names[] = {
+	"__arm64_sys_mq_timedreceive",
+	"sys_mq_timedreceive",
+	NULL,
+};
+
+static const char * const mq_notify_hook_names[] = {
+	"__arm64_sys_mq_notify",
+	"sys_mq_notify",
+	NULL,
+};
+
+static const char * const mq_getsetattr_hook_names[] = {
+	"__arm64_sys_mq_getsetattr",
+	"sys_mq_getsetattr",
+	NULL,
+};
+
+static struct shadow_hook mq_open_hook =
+	SHADOW_HOOK(mq_open_hook_names, hook_sys_mq_open, &real_sys_mq_open);
+static struct shadow_hook mq_unlink_hook =
+	SHADOW_HOOK(mq_unlink_hook_names, hook_sys_mq_unlink, &real_sys_mq_unlink);
+static struct shadow_hook mq_timedsend_hook =
+	SHADOW_HOOK(mq_timedsend_hook_names, hook_sys_mq_timedsend,
+		    &real_sys_mq_timedsend);
+static struct shadow_hook mq_timedreceive_hook =
+	SHADOW_HOOK(mq_timedreceive_hook_names, hook_sys_mq_timedreceive,
+		    &real_sys_mq_timedreceive);
+static struct shadow_hook mq_notify_hook =
+	SHADOW_HOOK(mq_notify_hook_names, hook_sys_mq_notify, &real_sys_mq_notify);
+static struct shadow_hook mq_getsetattr_hook =
+	SHADOW_HOOK(mq_getsetattr_hook_names, hook_sys_mq_getsetattr,
+		    &real_sys_mq_getsetattr);
+
+static struct shadow_hook *shadow_mqueue_hooks[] = {
+	&mq_open_hook,
+	&mq_unlink_hook,
+	&mq_timedsend_hook,
+	&mq_timedreceive_hook,
+	&mq_notify_hook,
+	&mq_getsetattr_hook,
+	NULL,
+};
+
 static int mqueue_open(struct inode *inode, struct file *file)
 {
 	struct mq_session *s;
@@ -857,8 +1194,7 @@ static int mqueue_release(struct inode *inode, struct file *file)
 		return 0;
 
 	xa_for_each(&s->handles, id, he) {
-		mq_put(he->mq);
-		kfree(he);
+		mq_handle_put(he);
 	}
 	xa_destroy(&s->handles);
 	mutex_destroy(&s->lock);
@@ -873,7 +1209,7 @@ static const struct file_operations mqueue_fops = {
 	.release	= mqueue_release,
 	.unlocked_ioctl	= mqueue_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= no_llseek,
+	.llseek		= noop_llseek,
 };
 
 static struct miscdevice mqueue_miscdev = {
@@ -883,7 +1219,7 @@ static struct miscdevice mqueue_miscdev = {
 	.mode	= 0600,
 };
 
-static int __init shadow_mqueue_init(void)
+int __init shadow_mqueue_init(void)
 {
 	int ret;
 
@@ -892,17 +1228,25 @@ static int __init shadow_mqueue_init(void)
 		pr_err("shadow_mqueue: failed to register misc device: %d\n", ret);
 		return ret;
 	}
-	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded (ABI v%d) at %s\n",
+	ret = shadow_hook_install_all(shadow_mqueue_hooks, "shadow_mqueue");
+	if (ret < 0) {
+		misc_deregister(&mqueue_miscdev);
+		shadow_hook_remove_all(shadow_mqueue_hooks);
+		return ret;
+	}
+
+	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded (ABI v%d) at %s with transparent mq_* hooks\n",
 		SHADOW_MQUEUE_ABI_VERSION, SHADOW_MQUEUE_DEVICE_PATH);
 	return 0;
 }
 
-static void __exit shadow_mqueue_exit(void)
+void shadow_mqueue_exit(void)
 {
 	struct shadow_mq *mq;
 	struct hlist_node *tmp;
 	int bkt;
 
+	shadow_hook_remove_all(shadow_mqueue_hooks);
 	misc_deregister(&mqueue_miscdev);
 
 	/*
@@ -923,11 +1267,3 @@ static void __exit shadow_mqueue_exit(void)
 
 	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem unloaded\n");
 }
-
-module_init(shadow_mqueue_init);
-module_exit(shadow_mqueue_exit);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated POSIX message queue subsystem for patched containerd");
-MODULE_VERSION("1.0");

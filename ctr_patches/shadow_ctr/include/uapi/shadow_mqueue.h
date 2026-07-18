@@ -2,14 +2,15 @@
 /*
  * shadow_mqueue - simulated POSIX message queue subsystem UAPI
  *
- * Stable ABI shared between the shadow_mqueue kernel module and userspace
- * clients (e.g. a patched containerd/runc).
+ * Stable ioctl ABI shared between the shadow_mqueue kernel module and any
+ * userspace client that intentionally talks to /dev/shadow_mqueue.
  *
  * On kernels built without CONFIG_POSIX_MQUEUE the mq_open/mq_send/mq_receive
  * family of calls are unavailable.  runc uses POSIX message queues for
  * parent↔child synchronisation during container initialisation; this module
- * provides a fully functional in-kernel replacement that a patched runtime
- * drives through ioctls on /dev/shadow_mqueue.
+ * provides a fully functional in-kernel replacement.  Modern revisions hook
+ * the real mq_* syscalls transparently for stock runtimes, while preserving
+ * this ioctl ABI as a stable secondary interface.
  *
  * Unlike the namespace simulation in shadowns (bookkeeping only), message
  * queues here are *functional*: SEND and RECEIVE actually transfer bytes

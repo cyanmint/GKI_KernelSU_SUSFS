@@ -38,7 +38,8 @@
 #include <linux/cgroup.h>
 #endif
 
-#include "../shadow_hook/shadow_hook.h"
+#include "shadow_hook.h"
+#include "shadow_ctr_internal.h"
 #include "include/uapi/shadow_cgdevices.h"
 
 #define SHADOW_CGDEV_MAX_CGROUPS	65536
@@ -628,7 +629,7 @@ static const struct file_operations cgdev_fops = {
 	.release	= cgdev_release,
 	.unlocked_ioctl	= cgdev_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= no_llseek,
+	.llseek		= noop_llseek,
 };
 
 static struct miscdevice cgdev_miscdev = {
@@ -638,7 +639,7 @@ static struct miscdevice cgdev_miscdev = {
 	.mode	= 0600,
 };
 
-static int __init shadow_cgdevices_init(void)
+int __init shadow_cgdevices_init(void)
 {
 	int hooked;
 	int ret;
@@ -662,7 +663,7 @@ static int __init shadow_cgdevices_init(void)
 	return 0;
 }
 
-static void __exit shadow_cgdevices_exit(void)
+void shadow_cgdevices_exit(void)
 {
 	struct shadow_cgroup *cg;
 	struct cgdev_binding *binding;
@@ -692,11 +693,3 @@ static void __exit shadow_cgdevices_exit(void)
 
 	pr_info("shadow_cgdevices: unloaded\n");
 }
-
-module_init(shadow_cgdevices_init);
-module_exit(shadow_cgdevices_exit);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Shadow cgroup device controller with transparent open enforcement");
-MODULE_VERSION("1.1");

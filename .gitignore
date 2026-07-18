@@ -11,7 +11,11 @@
 *.mod.c
 *.symvers
 *.order
+*.o.d
+*.o.cmd
+.*.cmd
 .tmp_versions/
+modules.order
 
 # Generated shadow_configz header (built from config.template at build time)
 ctr_patches/shadow_configz/config_gz_data.h

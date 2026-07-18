@@ -41,12 +41,33 @@
  *
  * Caveats (please read before extending this file)
  * -------------------------------------------------
- * - Only usable for functions ftrace can trace (must have an mcount/patchable
- *   call site, i.e. anything not marked notrace and built with
- *   CONFIG_FUNCTION_TRACER). All in-tree syscall wrappers qualify.
- * - IPMODIFY hooks are exclusive per-symbol: only one shadow_hook may target
- *   a given symbol at a time. This is fine for our use (each module owns a
- *   disjoint set of syscalls).
+ * - The ftrace path is only usable for functions ftrace can trace (must have
+ *   an mcount/patchable call site, i.e. anything not marked notrace and
+ *   built with CONFIG_FUNCTION_TRACER). All in-tree syscall wrappers qualify
+ *   *when that option is enabled*.
+ * - Several real-world "certified"/production Android GKI boot images ship
+ *   with CONFIG_FUNCTION_TRACER (and therefore CONFIG_DYNAMIC_FTRACE,
+ *   register_ftrace_function(), ...) compiled out entirely, e.g. to shrink
+ *   the kernel or reduce attack surface -- confirmed by inspecting the
+ *   android14-6.1 "gki-certified-boot" test image, whose embedded IKCONFIG
+ *   has `# CONFIG_FUNCTION_TRACER is not set`. A module built assuming
+ *   ftrace is present would fail to load on such a kernel with "Unknown
+ *   symbol register_ftrace_function". CONFIG_KPROBES, on the other hand, is
+ *   a hard requirement of the wider KernelSU/SUSFS ecosystem this module
+ *   ships alongside and is effectively always enabled.
+ * - Because of that, this header picks its hooking backend at *compile
+ *   time* based on what the target kernel's own Kconfig actually enables:
+ *   the ftrace ops/IPMODIFY backend when CONFIG_FUNCTION_TRACER (and
+ *   CONFIG_DYNAMIC_FTRACE) are available, otherwise a kprobe pre_handler
+ *   backend that redirects control flow by rewriting the trapped pt_regs
+ *   program counter and returning 1 (telling the kprobes core the original
+ *   instruction must not be single-stepped) -- the same generic technique
+ *   used by numerous out-of-tree hooking modules on kernels without ftrace.
+ *   Both backends expose the identical shadow_hook_install/remove API, so
+ *   none of the calling modules need to know or care which one is active.
+ * - IPMODIFY/kprobe hooks are exclusive per-symbol: only one shadow_hook may
+ *   target a given symbol at a time. This is fine for our use (each module
+ *   owns a disjoint set of syscalls).
  * - This header is intentionally include-only (all helpers are `static`) so
  *   each standalone module TU gets its own private copy; there is no shared
  *   .ko to link against, keeping every shadow_* module fully self-contained.
@@ -76,8 +97,9 @@
  *            shadow_hook_install(); call through *this* to invoke genuine
  *            kernel behaviour.
  * @address:  resolved address of the hooked symbol.
- * @ops:      ftrace_ops instance driving the hook.
- * @installed: whether register_ftrace_function() succeeded.
+ * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
+ * @kp:       kprobe instance driving the hook (kprobe backend only).
+ * @installed: whether the hook is currently active.
  */
 struct shadow_hook {
 	const char * const	*names;
@@ -85,7 +107,11 @@ struct shadow_hook {
 	void			*function;
 	void			*original;
 	unsigned long		address;
+#if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 	struct ftrace_ops	ops;
+#else
+	struct kprobe		kp;
+#endif
 	bool			installed;
 };
 
@@ -134,7 +160,11 @@ static inline void shadow_hook_redirect(struct pt_regs *regs, void *function)
 #error "shadow_hook: unsupported architecture"
 #endif
 
+#if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
+
 /*
+ * --- ftrace_ops/IPMODIFY backend --------------------------------------
+ *
  * The ftrace callback signature changed with
  * CONFIG_DYNAMIC_FTRACE_WITH_ARGS (introduced upstream for arm64/x86-64
  * around v5.19/v6.0): the fourth argument became an opaque `struct
@@ -224,6 +254,75 @@ static inline void shadow_hook_remove(struct shadow_hook *hook)
 	ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
 	hook->installed = false;
 }
+
+#else /* !(CONFIG_FUNCTION_TRACER && CONFIG_DYNAMIC_FTRACE) */
+
+/*
+ * --- kprobe pre_handler backend -----------------------------------------
+ *
+ * Used whenever the target kernel does not have CONFIG_FUNCTION_TRACER (and
+ * therefore no CONFIG_DYNAMIC_FTRACE / register_ftrace_function()) compiled
+ * in, e.g. several "certified"/production GKI boot images.
+ *
+ * A kprobe is placed at the very first instruction of the target function.
+ * When it fires, the CPU has already trapped into the kernel and @regs holds
+ * the exact register state the target function would have seen. Rewriting
+ * the saved program counter (arm64 pc / x86-64 ip) to our replacement
+ * function and returning 1 from the pre_handler tells the kprobes core that
+ * the handler has fully taken over: it must NOT single-step the original
+ * (now bypassed) instruction, it should just resume the CPU with the
+ * (modified) register state as-is. This is the standard technique used by
+ * numerous out-of-tree hooking modules on kernels without ftrace, and is
+ * fully described by the kprobes documentation's "jump/int3 based
+ * probing" and "pre_handler return value" semantics.
+ */
+static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
+{
+	struct shadow_hook *hook = container_of(p, struct shadow_hook, kp);
+
+	shadow_hook_redirect(regs, hook->function);
+	return 1;
+}
+
+static inline int shadow_hook_install(struct shadow_hook *hook)
+{
+	const char * const *name;
+	int err;
+
+	for (name = hook->names; *name; name++) {
+		hook->address = shadow_hook_resolve(*name);
+		if (hook->address) {
+			hook->resolved_name = *name;
+			break;
+		}
+	}
+	if (!hook->address)
+		return -ENOENT;
+
+	*((unsigned long *)hook->original) = hook->address;
+
+	memset(&hook->kp, 0, sizeof(hook->kp));
+	hook->kp.addr = (kprobe_opcode_t *)hook->address;
+	hook->kp.pre_handler = shadow_hook_pre_handler;
+
+	err = register_kprobe(&hook->kp);
+	if (err)
+		return err;
+
+	hook->installed = true;
+	return 0;
+}
+
+static inline void shadow_hook_remove(struct shadow_hook *hook)
+{
+	if (!hook->installed)
+		return;
+
+	unregister_kprobe(&hook->kp);
+	hook->installed = false;
+}
+
+#endif /* CONFIG_FUNCTION_TRACER && CONFIG_DYNAMIC_FTRACE */
 
 /*
  * shadow_hook_install_all()/shadow_hook_remove_all() - convenience helpers

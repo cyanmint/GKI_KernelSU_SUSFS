@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * shadow_configz - kernel config spoofing overlay for /proc/config.gz
+ * shadow_configspoof - kernel config spoofing overlay for /proc/config.gz
  *
  * A standalone loadable kernel module that overlays /proc/config.gz with a
  * pre-built, gzip-compressed configuration text advertising the CONFIG_*
@@ -21,7 +21,7 @@
  * provide (partial, honestly-documented) behaviour for the corresponding
  * subsystem via transparent syscall hijacking.
  *
- * shadow_configz closes that last gap: it makes the *self-report* the
+ * shadow_configspoof closes that last gap: it makes the *self-report* the
  * running kernel gives to userspace consistent with what the shadow modules
  * actually provide, so unconditional CONFIG_* preflight checks stop being a
  * hard blocker.
@@ -45,7 +45,7 @@
  * removes its entry. It intentionally does NOT try to restore the original
  * ikconfig proc entry on unload (that would require capturing its internal
  * ikconfig_file_ops-derived proc_dir_entry beforehand and re-registering it,
- * which is not possible from a module) - unloading shadow_configz simply
+ * which is not possible from a module) - unloading shadow_configspoof simply
  * leaves /proc/config.gz absent, matching the many GKI configs that already
  * ship CONFIG_IKCONFIG_PROC disabled.
  */
@@ -57,58 +57,57 @@
 #include <linux/uaccess.h>
 
 #include "config_gz_data.h"
+#include "shadow_ctr_internal.h"
 
-static ssize_t shadow_configz_read(struct file *file, char __user *buf,
+static ssize_t shadow_configspoof_read(struct file *file, char __user *buf,
 				    size_t count, loff_t *ppos)
 {
-	return simple_read_from_buffer(buf, count, ppos, shadow_configz_gz,
-					shadow_configz_gz_len);
+	return simple_read_from_buffer(buf, count, ppos, shadow_configspoof_gz,
+					shadow_configspoof_gz_len);
 }
 
-static const struct proc_ops shadow_configz_proc_ops = {
-	.proc_read	= shadow_configz_read,
+static const struct proc_ops shadow_configspoof_proc_ops = {
+	.proc_read	= shadow_configspoof_read,
 	.proc_lseek	= default_llseek,
 };
 
-static struct proc_dir_entry *shadow_configz_entry;
+static struct proc_dir_entry *shadow_configspoof_entry;
 
-static int __init shadow_configz_init(void)
+int __init shadow_configspoof_init(void)
 {
 	/*
-	 * Best-effort removal of a pre-existing /proc/config.gz (the in-tree
-	 * CONFIG_IKCONFIG_PROC implementation). remove_proc_entry() on a
-	 * name that does not exist just emits a harmless kernel WARN; there
-	 * is no race-free way to probe for existence first from a module, so
-	 * we accept that cosmetic warning on kernels that never had the
-	 * entry in the first place.
+	 * Try to create /proc/config.gz first. On most kernels nothing is
+	 * there yet and this just succeeds outright -- no removal needed.
+	 * proc_create() only returns NULL on a genuine name collision (e.g.
+	 * CONFIG_IKCONFIG_PROC already registered the real /proc/config.gz),
+	 * so we only fall back to remove_proc_entry() in that case, which
+	 * avoids the harmless-but-alarming WARN() splat that
+	 * remove_proc_entry() emits when asked to remove an entry that was
+	 * never there in the first place.
 	 */
-	remove_proc_entry("config.gz", NULL);
+	shadow_configspoof_entry = proc_create("config.gz", 0444, NULL,
+					    &shadow_configspoof_proc_ops);
+	if (!shadow_configspoof_entry) {
+		remove_proc_entry("config.gz", NULL);
 
-	shadow_configz_entry = proc_create("config.gz", 0444, NULL,
-					    &shadow_configz_proc_ops);
-	if (!shadow_configz_entry) {
-		pr_err("shadow_configz: failed to create /proc/config.gz\n");
+		shadow_configspoof_entry = proc_create("config.gz", 0444, NULL,
+						    &shadow_configspoof_proc_ops);
+	}
+	if (!shadow_configspoof_entry) {
+		pr_err("shadow_configspoof: failed to create /proc/config.gz\n");
 		return -ENOMEM;
 	}
 
-	pr_info("shadow_configz: /proc/config.gz overlay installed (%u bytes)\n",
-		shadow_configz_gz_len);
+	pr_info("shadow_configspoof: /proc/config.gz overlay installed (%u bytes)\n",
+		shadow_configspoof_gz_len);
 	return 0;
 }
 
-static void __exit shadow_configz_exit(void)
+void shadow_configspoof_exit(void)
 {
-	if (shadow_configz_entry) {
+	if (shadow_configspoof_entry) {
 		remove_proc_entry("config.gz", NULL);
-		shadow_configz_entry = NULL;
+		shadow_configspoof_entry = NULL;
 	}
-	pr_info("shadow_configz: /proc/config.gz overlay removed\n");
+	pr_info("shadow_configspoof: /proc/config.gz overlay removed\n");
 }
-
-module_init(shadow_configz_init);
-module_exit(shadow_configz_exit);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Kernel config spoofing overlay for /proc/config.gz");
-MODULE_VERSION("1.0");
