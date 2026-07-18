@@ -218,8 +218,11 @@ static inline int shadow_hook_install(struct shadow_hook *hook)
 		hook->address = shadow_hook_resolve(*name);
 		if (hook->address) {
 			hook->resolved_name = *name;
+			pr_debug("shadow_hook: resolved candidate \"%s\" -> %px\n",
+				 *name, (void *)hook->address);
 			break;
 		}
+		pr_debug("shadow_hook: candidate \"%s\" not found, trying next\n", *name);
 	}
 	if (!hook->address)
 		return -ENOENT;
@@ -232,11 +235,16 @@ static inline int shadow_hook_install(struct shadow_hook *hook)
 			 | FTRACE_OPS_FL_RECURSION;
 
 	err = ftrace_set_filter_ip(&hook->ops, hook->address, 0, 0);
-	if (err)
+	if (err) {
+		pr_debug("shadow_hook: ftrace_set_filter_ip(%s) failed: %d\n",
+			 hook->resolved_name, err);
 		return err;
+	}
 
 	err = register_ftrace_function(&hook->ops);
 	if (err) {
+		pr_debug("shadow_hook: register_ftrace_function(%s) failed: %d\n",
+			 hook->resolved_name, err);
 		ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
 		return err;
 	}
@@ -293,8 +301,11 @@ static inline int shadow_hook_install(struct shadow_hook *hook)
 		hook->address = shadow_hook_resolve(*name);
 		if (hook->address) {
 			hook->resolved_name = *name;
+			pr_debug("shadow_hook: resolved candidate \"%s\" -> %px\n",
+				 *name, (void *)hook->address);
 			break;
 		}
+		pr_debug("shadow_hook: candidate \"%s\" not found, trying next\n", *name);
 	}
 	if (!hook->address)
 		return -ENOENT;
@@ -306,8 +317,11 @@ static inline int shadow_hook_install(struct shadow_hook *hook)
 	hook->kp.pre_handler = shadow_hook_pre_handler;
 
 	err = register_kprobe(&hook->kp);
-	if (err)
+	if (err) {
+		pr_debug("shadow_hook: register_kprobe(%s) failed: %d\n",
+			 hook->resolved_name, err);
 		return err;
+	}
 
 	hook->installed = true;
 	return 0;
@@ -337,6 +351,7 @@ static inline int shadow_hook_install_all(struct shadow_hook **hooks, const char
 	int i, err, installed = 0;
 
 	for (i = 0; hooks[i]; i++) {
+		pr_debug("%s: attempting to install hook[%d]\n", tag, i);
 		err = shadow_hook_install(hooks[i]);
 		if (err == -ENOENT) {
 			pr_info("%s: symbol for hook[%d] not found, skipping\n", tag, i);
@@ -351,6 +366,7 @@ static inline int shadow_hook_install_all(struct shadow_hook **hooks, const char
 		installed++;
 	}
 
+	pr_debug("%s: hook install pass complete, %d installed\n", tag, installed);
 	return installed;
 }
 

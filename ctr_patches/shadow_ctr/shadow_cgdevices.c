@@ -644,19 +644,26 @@ int __init shadow_cgdevices_init(void)
 	int hooked;
 	int ret;
 
+	pr_info("shadow_cgdevices: init: registering misc device %s\n",
+		SHADOW_CGDEV_DEVICE_PATH);
 	ret = misc_register(&cgdev_miscdev);
 	if (ret) {
 		pr_err("shadow_cgdevices: failed to register misc device: %d\n",
 		       ret);
 		return ret;
 	}
+	pr_info("shadow_cgdevices: init: misc device registered\n");
 
+	pr_info("shadow_cgdevices: init: installing transparent syscall hooks\n");
 	hooked = shadow_hook_install_all(cgdev_hooks, "shadow_cgdevices");
 	if (hooked < 0) {
+		pr_err("shadow_cgdevices: init: shadow_hook_install_all() failed: %d\n",
+		       hooked);
 		shadow_hook_remove_all(cgdev_hooks);
 		misc_deregister(&cgdev_miscdev);
 		return hooked;
 	}
+	pr_info("shadow_cgdevices: init: %d hook(s) installed\n", hooked);
 
 	pr_info("shadow_cgdevices: loaded (ABI v%d) at %s; transparent hooks installed for %d symbol(s)\n",
 		SHADOW_CGDEV_ABI_VERSION, SHADOW_CGDEV_DEVICE_PATH, hooked);
@@ -671,7 +678,9 @@ void shadow_cgdevices_exit(void)
 	unsigned long id;
 	unsigned int bucket;
 
+	pr_info("shadow_cgdevices: exit: removing transparent syscall hooks\n");
 	shadow_hook_remove_all(cgdev_hooks);
+	pr_info("shadow_cgdevices: exit: deregistering misc device\n");
 	misc_deregister(&cgdev_miscdev);
 
 	mutex_lock(&cgdev_map_lock);

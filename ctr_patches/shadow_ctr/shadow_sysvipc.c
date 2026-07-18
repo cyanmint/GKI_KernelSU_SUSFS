@@ -1045,18 +1045,24 @@ int __init shadow_sysvipc_init(void)
 {
 	int ret;
 
+	pr_info("shadow_sysvipc: init: registering misc device %s\n",
+		SHADOW_SYSVIPC_DEVICE_PATH);
 	ret = misc_register(&svipc_miscdev);
 	if (ret) {
 		pr_err("shadow_sysvipc: failed to register misc device: %d\n", ret);
 		return ret;
 	}
+	pr_info("shadow_sysvipc: init: misc device registered\n");
 
+	pr_info("shadow_sysvipc: init: installing transparent syscall hooks\n");
 	ret = shadow_hook_install_all(svipc_all_hooks, "shadow_sysvipc");
 	if (ret < 0) {
+		pr_err("shadow_sysvipc: init: shadow_hook_install_all() failed: %d\n", ret);
 		shadow_hook_remove_all(svipc_all_hooks);
 		misc_deregister(&svipc_miscdev);
 		return ret;
 	}
+	pr_info("shadow_sysvipc: init: %d hook(s) installed\n", ret);
 
 	pr_info("shadow_sysvipc: simulated SysV IPC subsystem loaded (ABI v%d) at %s\n",
 		SHADOW_SYSVIPC_ABI_VERSION, SHADOW_SYSVIPC_DEVICE_PATH);
@@ -1065,10 +1071,14 @@ int __init shadow_sysvipc_init(void)
 
 void shadow_sysvipc_exit(void)
 {
+	pr_info("shadow_sysvipc: exit: removing transparent syscall hooks\n");
 	shadow_hook_remove_all(svipc_all_hooks);
+	pr_info("shadow_sysvipc: exit: deregistering misc device\n");
 	misc_deregister(&svipc_miscdev);
 
+	pr_info("shadow_sysvipc: exit: releasing per-tgid state\n");
 	svipc_tgid_release_all();
+	pr_info("shadow_sysvipc: exit: force-freeing remaining resources\n");
 	svipc_force_free_all_resources();
 
 	pr_info("shadow_sysvipc: simulated SysV IPC subsystem unloaded\n");

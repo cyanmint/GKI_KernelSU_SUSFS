@@ -1223,17 +1223,24 @@ int __init shadow_mqueue_init(void)
 {
 	int ret;
 
+	pr_info("shadow_mqueue: init: registering misc device %s\n",
+		SHADOW_MQUEUE_DEVICE_PATH);
 	ret = misc_register(&mqueue_miscdev);
 	if (ret) {
 		pr_err("shadow_mqueue: failed to register misc device: %d\n", ret);
 		return ret;
 	}
+	pr_info("shadow_mqueue: init: misc device registered\n");
+
+	pr_info("shadow_mqueue: init: installing transparent mq_* hooks\n");
 	ret = shadow_hook_install_all(shadow_mqueue_hooks, "shadow_mqueue");
 	if (ret < 0) {
+		pr_err("shadow_mqueue: init: shadow_hook_install_all() failed: %d\n", ret);
 		misc_deregister(&mqueue_miscdev);
 		shadow_hook_remove_all(shadow_mqueue_hooks);
 		return ret;
 	}
+	pr_info("shadow_mqueue: init: %d hook(s) installed\n", ret);
 
 	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded (ABI v%d) at %s with transparent mq_* hooks\n",
 		SHADOW_MQUEUE_ABI_VERSION, SHADOW_MQUEUE_DEVICE_PATH);
@@ -1246,7 +1253,9 @@ void shadow_mqueue_exit(void)
 	struct hlist_node *tmp;
 	int bkt;
 
+	pr_info("shadow_mqueue: exit: removing transparent mq_* hooks\n");
 	shadow_hook_remove_all(shadow_mqueue_hooks);
+	pr_info("shadow_mqueue: exit: deregistering misc device\n");
 	misc_deregister(&mqueue_miscdev);
 
 	/*

@@ -34,40 +34,71 @@
 
 #include "shadow_ctr_internal.h"
 
+#define SHADOW_CTR_VERSION "2.0"
+
 static int __init shadow_ctr_main_init(void)
 {
 	int ret;
 
+	/*
+	 * This is deliberately the very first thing shadow_ctr_main_init()
+	 * does. If this line is never seen in dmesg, whatever went wrong
+	 * happened before our own module code ever ran (e.g. inside the
+	 * kernel's generic module loader -- load_module()/mod_sysfs_setup()
+	 * -- while parsing/relocating the .ko itself, such as a vermagic/
+	 * module_layout mismatch between the build toolchain/kernel headers
+	 * and the running kernel). If it *is* seen, the crash is somewhere
+	 * in the init sequence below (or deeper in one of the subsystems),
+	 * and the per-subsystem "entering"/"leaving" messages below narrow
+	 * it down further.
+	 */
+	pr_info("shadow_ctr: module init starting (version %s, built %s %s)\n",
+		SHADOW_CTR_VERSION, __DATE__, __TIME__);
+
+	pr_info("shadow_ctr: entering shadow_ns_init()\n");
 	ret = shadow_ns_init();
 	if (ret)
 		goto err_ns;
+	pr_info("shadow_ctr: shadow_ns_init() succeeded\n");
 
+	pr_info("shadow_ctr: entering shadow_sysvipc_init()\n");
 	ret = shadow_sysvipc_init();
 	if (ret)
 		goto err_sysvipc;
+	pr_info("shadow_ctr: shadow_sysvipc_init() succeeded\n");
 
+	pr_info("shadow_ctr: entering shadow_mqueue_init()\n");
 	ret = shadow_mqueue_init();
 	if (ret)
 		goto err_mqueue;
+	pr_info("shadow_ctr: shadow_mqueue_init() succeeded\n");
 
+	pr_info("shadow_ctr: entering shadow_cgdevices_init()\n");
 	ret = shadow_cgdevices_init();
 	if (ret)
 		goto err_cgdevices;
+	pr_info("shadow_ctr: shadow_cgdevices_init() succeeded\n");
 
+	pr_info("shadow_ctr: entering shadow_configspoof_init()\n");
 	ret = shadow_configspoof_init();
 	if (ret)
 		goto err_configspoof;
+	pr_info("shadow_ctr: shadow_configspoof_init() succeeded\n");
 
 	pr_info("shadow_ctr: combined shadow container-support module loaded (shadow_ns + shadow_sysvipc + shadow_mqueue + shadow_cgdevices + shadow_configspoof)\n");
 	return 0;
 
 err_configspoof:
+	pr_err("shadow_ctr: shadow_configspoof_init() failed (%d), unwinding shadow_cgdevices\n", ret);
 	shadow_cgdevices_exit();
 err_cgdevices:
+	pr_err("shadow_ctr: unwinding shadow_mqueue\n");
 	shadow_mqueue_exit();
 err_mqueue:
+	pr_err("shadow_ctr: unwinding shadow_sysvipc\n");
 	shadow_sysvipc_exit();
 err_sysvipc:
+	pr_err("shadow_ctr: unwinding shadow_ns\n");
 	shadow_ns_exit();
 err_ns:
 	pr_err("shadow_ctr: failed to initialise (%d), unwound all subsystems\n", ret);
@@ -76,11 +107,18 @@ err_ns:
 
 static void __exit shadow_ctr_main_exit(void)
 {
+	pr_info("shadow_ctr: module exit starting\n");
+
 	/* Tear down in the reverse order of initialisation. */
+	pr_info("shadow_ctr: entering shadow_configspoof_exit()\n");
 	shadow_configspoof_exit();
+	pr_info("shadow_ctr: entering shadow_cgdevices_exit()\n");
 	shadow_cgdevices_exit();
+	pr_info("shadow_ctr: entering shadow_mqueue_exit()\n");
 	shadow_mqueue_exit();
+	pr_info("shadow_ctr: entering shadow_sysvipc_exit()\n");
 	shadow_sysvipc_exit();
+	pr_info("shadow_ctr: entering shadow_ns_exit()\n");
 	shadow_ns_exit();
 
 	pr_info("shadow_ctr: combined shadow container-support module unloaded\n");
@@ -92,4 +130,4 @@ module_exit(shadow_ctr_main_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
 MODULE_DESCRIPTION("Combined shadow container-support module: transparent namespace/sysvipc/mqueue/cgdevices hijacking + /proc/config.gz spoofing");
-MODULE_VERSION("2.0");
+MODULE_VERSION(SHADOW_CTR_VERSION);

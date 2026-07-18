@@ -85,9 +85,12 @@ int __init shadow_configspoof_init(void)
 	 * remove_proc_entry() emits when asked to remove an entry that was
 	 * never there in the first place.
 	 */
+	pr_info("shadow_configspoof: init: creating /proc/config.gz (%u bytes payload)\n",
+		shadow_configspoof_gz_len);
 	shadow_configspoof_entry = proc_create("config.gz", 0444, NULL,
 					    &shadow_configspoof_proc_ops);
 	if (!shadow_configspoof_entry) {
+		pr_info("shadow_configspoof: init: /proc/config.gz already exists, removing and retrying\n");
 		remove_proc_entry("config.gz", NULL);
 
 		shadow_configspoof_entry = proc_create("config.gz", 0444, NULL,
@@ -106,6 +109,7 @@ int __init shadow_configspoof_init(void)
 void shadow_configspoof_exit(void)
 {
 	if (shadow_configspoof_entry) {
+		pr_info("shadow_configspoof: exit: removing /proc/config.gz\n");
 		remove_proc_entry("config.gz", NULL);
 		shadow_configspoof_entry = NULL;
 	}

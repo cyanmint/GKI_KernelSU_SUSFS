@@ -1279,18 +1279,25 @@ int __init shadow_ns_init(void)
 	int ret;
 	int hooked;
 
+	pr_info("shadow_ns: init: registering misc device %s\n",
+		SHADOW_NS_DEVICE_PATH);
 	ret = misc_register(&shadow_ns_miscdev);
 	if (ret) {
 		pr_err("shadow_ns: failed to register misc device: %d\n", ret);
 		return ret;
 	}
+	pr_info("shadow_ns: init: misc device registered\n");
 
+	pr_info("shadow_ns: init: installing transparent syscall hooks\n");
 	hooked = shadow_hook_install_all(shadow_ns_hooks, "shadow_ns");
 	if (hooked < 0) {
 		ret = hooked;
+		pr_err("shadow_ns: init: shadow_hook_install_all() failed: %d\n", ret);
 		goto err_misc;
 	}
+	pr_info("shadow_ns: init: %d hook(s) installed\n", hooked);
 
+	pr_info("shadow_ns: init: scheduling stale-task-group reap work\n");
 	INIT_DELAYED_WORK(&shadow_ns_reap_work, shadow_ns_reap_workfn);
 	schedule_delayed_work(&shadow_ns_reap_work, SHADOW_NS_REAP_INTERVAL);
 
@@ -1299,6 +1306,7 @@ int __init shadow_ns_init(void)
 	return 0;
 
 err_misc:
+	pr_info("shadow_ns: init: unwinding, deregistering misc device\n");
 	misc_deregister(&shadow_ns_miscdev);
 	return ret;
 }
@@ -1309,8 +1317,11 @@ void shadow_ns_exit(void)
 	struct shadow_task_group *tg;
 	unsigned long id;
 
+	pr_info("shadow_ns: exit: removing transparent syscall hooks\n");
 	shadow_hook_remove_all(shadow_ns_hooks);
+	pr_info("shadow_ns: exit: cancelling reap work\n");
 	cancel_delayed_work_sync(&shadow_ns_reap_work);
+	pr_info("shadow_ns: exit: deregistering misc device\n");
 	misc_deregister(&shadow_ns_miscdev);
 
 	for (;;) {
