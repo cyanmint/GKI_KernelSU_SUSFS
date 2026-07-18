@@ -1,14 +1,14 @@
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 kernel configuration (containerd/dockerd feature probe overlay)
 #
-# This is the *spoofed* config.gz body served by shadow_configz on top of the
+# This is the *spoofed* config.gz body served by shadow_configspoof on top of the
 # real, running kernel. Its only purpose is to make container-runtime
 # preflight checks (dockerd's contrib/check-config.sh, containerd's
 # CRI feature probes, `docker info`'s WARNING banner, etc.) that parse
 # /proc/config.gz or /boot/config-$(uname -r) see the CONFIG_* symbols they
 # look for as "y", regardless of what vmlinux was actually built with. It
 # does NOT change kernel behaviour by itself; the shadow_* modules
-# (shadowns, shadow_sysvipc, shadow_mqueue, shadow_cgdevices) are what
+# (shadow_ns, shadow_sysvipc, shadow_mqueue, shadow_cgdevices) are what
 # actually provide (partial, documented) behaviour for the subsystems named
 # here when the real Kconfig option is disabled. Spoofing the config text
 # without a working shadow module behind it would just turn a clear

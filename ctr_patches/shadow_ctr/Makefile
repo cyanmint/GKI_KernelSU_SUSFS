@@ -6,11 +6,11 @@
 # separately documented — see the READMEs listed below) into a single
 # out-of-tree module:
 #
-#   shadow_ns.c          - ctr_patches/shadow_ns.README.md      (simulated namespaces)
-#   shadow_sysvipc.c      - ctr_patches/shadow_sysvipc.README.md  (simulated SysV IPC)
-#   shadow_mqueue.c        - ctr_patches/shadow_mqueue.README.md   (simulated POSIX mqueue)
-#   shadow_cgdevices.c    - ctr_patches/shadow_cgdevices.README.md (cgroup device enforcement)
-#   shadow_configspoof.c  - ctr_patches/shadow_configspoof.README.md (/proc/config.gz spoof)
+#   shadow_ns.c          - shadow_ns.README.md      (simulated namespaces)
+#   shadow_sysvipc.c      - shadow_sysvipc.README.md  (simulated SysV IPC)
+#   shadow_mqueue.c        - shadow_mqueue.README.md   (simulated POSIX mqueue)
+#   shadow_cgdevices.c    - shadow_cgdevices.README.md (cgroup device enforcement)
+#   shadow_configspoof.c  - shadow_configspoof.README.md (/proc/config.gz spoof)
 #   shadow_ctr_main.c     - module-wide metadata / combined banner only
 #
 # Out-of-tree build (produces shadow_ctr.ko):
