@@ -52,8 +52,8 @@ static int __init shadow_ctr_main_init(void)
 	 * and the per-subsystem "entering"/"leaving" messages below narrow
 	 * it down further.
 	 */
-	pr_info("shadow_ctr: module init starting (version %s, built %s %s)\n",
-		SHADOW_CTR_VERSION, __DATE__, __TIME__);
+	pr_info("shadow_ctr: module init starting (version %s)\n",
+		SHADOW_CTR_VERSION);
 
 	pr_info("shadow_ctr: entering shadow_ns_init()\n");
 	ret = shadow_ns_init();
