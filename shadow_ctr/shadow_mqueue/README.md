@@ -159,7 +159,7 @@ mount fails, `shadow_mqueue` logs it and continues relying on the reactive
 | Path                           | Purpose |
 |--------------------------------|---------|
 | `include/uapi/shadow_mqueue.h` | Shared mqueue constants and attribute layout. |
-| `shadow_mqueue.c`              | Queue engine, anon-fd bridge, and syscall hooks. |
+| `shadow_mqueue_core.c` / `shadow_mqueue_io.c` / `shadow_mqueue_hooks.c` / `shadow_mqueue_mount.c` / `shadow_mqueue_internal.h` | Split implementation: queue core, message I/O, syscall hooks, mount/init path, and shared private declarations. |
 | `Makefile`                     | Out-of-tree module build. |
 
 ## Building

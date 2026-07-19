@@ -20,6 +20,7 @@ ifneq ($(KERNELRELEASE),)
 
 # --- kbuild pass ---
 obj-$(CONFIG_SHADOW_SYSVIPC) += shadow_sysvipc.o
+shadow_sysvipc-objs := shadow_sysvipc_registry.o shadow_sysvipc_tgid.o shadow_sysvipc_hooks.o
 ifeq ($(CONFIG_SHADOW_SYSVIPC),)
 obj-m += shadow_sysvipc.o
 endif

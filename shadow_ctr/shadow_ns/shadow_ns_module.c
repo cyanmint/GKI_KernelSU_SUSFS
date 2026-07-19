@@ -1,0 +1,290 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * shadow_ns - standalone namespace subsystem
+ *
+ * A single, standalone loadable kernel module (not split into per-type
+ * submodules) that intercepts unshare(2), setns(2), clone(2)/clone3(2)/
+ * fork(2)/vfork(2) so an unmodified `containerd`/`runc`/`dockerd` gets full
+ * namespace isolation.
+ *
+ * The critical design point, discovered by reading this repository's own
+ * kernel build pipeline (.github/workflows/scripts/kernel_builder.py), is
+ * that the production kernel this module targets is built with
+ * CONFIG_UTS_NS=y, CONFIG_PID_NS=y, CONFIG_IPC_NS=y, CONFIG_USER_NS=y and
+ * CONFIG_NET_NS=y whenever containerd support is requested (the
+ * "CONTAINERD_CONFIG" fragment, applied whenever `use_containerd` is set,
+ * which defaults to true — see BuildConfig.use_containerd in config.py).
+ * Mount namespaces (CLONE_NEWNS) have no Kconfig gate at all and are always
+ * compiled in, and cgroup namespaces (CLONE_NEWCGROUP) only require
+ * CONFIG_CGROUPS=y, which every GKI defconfig sets. In other words: on the
+ * kernel this module actually loads into, *every* namespace type already has
+ * a real, fully-functional, kernel-native implementation compiled into
+ * vmlinux.
+ *
+ * The previous generation of this module family (shadow_ns_base.ko plus six
+ * thin shadow_ns_<type>.ko presence submodules) did not take this into
+ * account: it *unconditionally* stripped every CLONE_NEW* namespace flag out
+ * of the real unshare()/clone()/clone3() arguments and replaced them with a
+ * purely in-module, reference-counted bookkeeping simulation. That is exactly
+ * why an unmodified dockerd's unshare() of its container init process failed
+ * to isolate anything from the host: the real, kernel-native namespace the
+ * syscall would otherwise have created was silently discarded, and nothing
+ * outside this module's own bookkeeping tables (which the rest of the kernel
+ * — /proc, signal delivery, mount propagation, socket lookups, ... — knows
+ * nothing about) ever saw a namespace change. The container's task kept
+ * running with the host's real nsproxy in every respect that matters.
+ *
+ * shadow_ns fixes this by only ever simulating a namespace type that this
+ * kernel build genuinely lacks (checked via IS_ENABLED(CONFIG_*_NS), which
+ * reflects the actual .config this module is built against — see
+ * SHADOW_NS_BUILTIN_FLAGS below). Every namespace flag bit the kernel really
+ * supports is left completely untouched in the arguments passed to the real
+ * unshare()/setns()/clone()/clone3() syscalls, so the kernel's own real,
+ * fully-conformant namespace subsystem does the actual isolation work, with
+ * shadow_ns getting out of the way entirely (see SHADOW_NS_SHADOW_CLONE_FLAGS
+ * — on the expected production build it evaluates to 0, and every hook below
+ * degenerates into a transparent passthrough). Extracting/duplicating the
+ * real kernel/pid_namespace.c, kernel/user_namespace.c, kernel/utsname.c,
+ * ipc/namespace.c, net/core/net_namespace.c and fs/namespace.c logic into
+ * this module would be redundant (and actively dangerous: those namespace
+ * types are already compiled into vmlinux, and task_struct->nsproxy, cred,
+ * and every syscall that consults them already exist and work) whenever the
+ * real support is present, which is the expected common case here.
+ *
+ * The only place a functional simulation still makes sense is a namespace
+ * type this particular kernel build genuinely does not support natively
+ * (e.g. a KMI/config combination built without containerd support). For that
+ * fallback case shadow_ns keeps the reference-counted bookkeeping registry
+ * from the previous design, plus a real per-namespace UTS (nodename/
+ * domainname) payload — the one type where genuinely faking the syscall-
+ * visible behaviour (sethostname/setdomainname/uname) is both meaningful and
+ * safe to do from a loadable module.
+ *
+ * PID and USER namespaces get real, functional isolation too (not just
+ * bookkeeping) when this kernel build genuinely lacks CONFIG_PID_NS /
+ * CONFIG_USER_NS, modelled directly on kernel/pid_namespace.c's and
+ * kernel/user_namespace.c's own numbering schemes read from
+ * $RUNNER_TEMP/kernel-common:
+ *
+ *   - PID: kernel/pid_namespace.c allocates namespace-local pid numbers from
+ *     a per-namespace idr (struct pid_namespace.idr) and every pid_nr_ns()
+ *     call re-derives the number visible in a given namespace from
+ *     struct pid's numbers[] array. shadow_ns mirrors this with a per-shadow-
+ *     pidns pair of xarrays (virtual pid <-> real pid), assigns the first
+ *     child spawned after unshare(CLONE_NEWPID)/clone(..., CLONE_NEWPID) the
+ *     namespace-local pid 1 exactly like copy_pid_ns()'s child_reaper, and
+ *     transparently translates getpid(2)/getppid(2)/kill(2)/tgkill(2)/
+ *     tkill(2)/wait4(2)/waitid(2) so a process inside the shadow pid
+ *     namespace genuinely only ever observes/operates on namespace-local
+ *     pid numbers.
+ *   - USER: kernel/user_namespace.c maps in-namespace ids to kuid_t/kgid_t
+ *     via extents written to /proc/<pid>/{uid,gid}_map. Fully replicating
+ *     arbitrary multi-extent id-map parsing from an out-of-tree module would
+ *     require hooking every credential-bearing syscall and vfs_write() on
+ *     procfs, which is far too invasive to do safely here. shadow_ns instead
+ *     implements the single most common real-world shape (an unprivileged
+ *     "map my current id to uid/gid 0 inside the namespace" identity,
+ *     exactly the default docker/runc userns-remap mapping) and genuinely
+ *     virtualizes getuid(2)/geteuid(2)/getgid(2)/getegid(2)/getresuid(2)/
+ *     getresgid(2) so unmodified code inside the shadow user namespace
+ *     really observes uid/gid 0, not its real host id.
+ *
+ * IPC/NET/CGROUP/MNT keep reference-counted bookkeeping only when genuinely
+ * unsupported: IPC without CONFIG_IPC_NS falls back to the single global
+ * init_ipc_ns already (no meaningful extra isolation to add safely from a
+ * module), and NET namespace isolation is inseparable from the entire
+ * networking stack (net/core/net_namespace.c touches routing, sockets,
+ * netfilter, sysctls, ...); vendoring that wholesale into a loadable module
+ * would conflict with the compiled-in stack and cannot be done safely here.
+ * CGROUP is included here too: on a kernel built with CONFIG_CGROUPS=n (rare
+ * -- every GKI defconfig sets it, but not guaranteed by any other Kconfig
+ * relationship), CLONE_NEWCGROUP drops out of SHADOW_NS_BUILTIN_FLAGS and
+ * shadow_ns transparently falls back to the exact same generic, no-special-
+ * payload bookkeeping object (id/parent/refcount only, see shadow_ns_alloc())
+ * used for IPC/NET -- no separate code path is needed, since the alloc/clone/
+ * unshare/setns machinery below is already fully generic over "type".
+ *
+ * MNT (CLONE_NEWNS) is the odd one out: fs/namespace.c/kernel/nsproxy.c have
+ * no dedicated per-type Kconfig gate at all in mainline Linux (verified
+ * against $RUNNER_TEMP/kernel-common: every CLONE_NEWNS check in
+ * kernel/nsproxy.c and kernel/fork.c is unconditional, not
+ * "#ifdef CONFIG_NAMESPACES"), so there is no CONFIG_MNT_NS symbol to key
+ * off of the way UTS/IPC/USER/PID/NET each have their own. This module uses
+ * CONFIG_NAMESPACES itself (the parent menuconfig, "default !EXPERT" i.e.
+ * effectively always on) as MNT's builtin gate instead, purely as a
+ * defensive fallback: on CONFIG_NAMESPACES=n, CLONE_NEWNS drops out of
+ * SHADOW_NS_BUILTIN_FLAGS and MNT gets the exact same bookkeeping-only
+ * treatment as IPC/NET/CGROUP above. This does not disable or replace the
+ * real, always-compiled-in mount-namespace machinery in fs/namespace.c
+ * (which keeps running regardless of CONFIG_NAMESPACES); it only means
+ * shadow_ns additionally tracks a bookkeeping id/refcount entry for it, for
+ * parity with every other type when this config combination is hit.
+ *
+ * A kernel built with CONFIG_NAMESPACES=n entirely (init/Kconfig nests
+ * CONFIG_UTS_NS/IPC_NS/USER_NS/PID_NS/NET_NS inside
+ * "menuconfig NAMESPACES ... if NAMESPACES ... endif", so turning the parent
+ * off forces every one of those five children off as well) is handled by
+ * the exact same mechanism: SHADOW_NS_BUILTIN_FLAGS is computed per-type from
+ * IS_ENABLED(CONFIG_*_NS), so it automatically evaluates to "none of these
+ * five builtin" and shadow_ns transparently falls back to real PID/USER
+ * isolation plus IPC/NET bookkeeping for all of them — no separate code path
+ * needed. MNT (gated on CONFIG_NAMESPACES itself, as described above) and
+ * CGROUP (gated solely by CONFIG_CGROUPS, also outside the NAMESPACES menu)
+ * get the same bookkeeping fallback if their respective config is off.
+ * unshare(2)/setns(2)/clone(2)/clone3(2) themselves have no CONFIG_NAMESPACES
+ * guard either (always compiled in kernel/fork.c), so the syscalls are
+ * always there for this module to hook.
+ */
+#include "shadow_ns_internal.h"
+
+bool shadow_ns_type_simulated(u32 type)
+{
+	if (type >= SHADOW_NS_TYPE_MAX)
+		return false;
+	return (SHADOW_NS_SHADOW_CLONE_FLAGS & shadow_ns_type_to_clone_flag(type)) != 0;
+}
+EXPORT_SYMBOL_GPL(shadow_ns_type_simulated);
+
+bool shadow_ns_type_real(u32 type)
+{
+	if (!shadow_ns_type_simulated(type))
+		return false;
+	switch (type) {
+	case SHADOW_NS_TYPE_UTS:
+	case SHADOW_NS_TYPE_PID:
+	case SHADOW_NS_TYPE_USER:
+		return true;
+	default:
+		return false;
+	}
+}
+EXPORT_SYMBOL_GPL(shadow_ns_type_real);
+
+static int __init shadow_ns_init(void)
+{
+	int ret;
+	int hooked;
+
+	pr_info("shadow_ns: init starting (version %s)\n", SHADOW_NS_VERSION);
+	pr_info("shadow_ns: builtin namespace flags 0x%lx; simulated (fallback) flags 0x%lx\n",
+		(unsigned long)SHADOW_NS_BUILTIN_FLAGS,
+		(unsigned long)SHADOW_NS_SHADOW_CLONE_FLAGS);
+
+	hooked = shadow_hook_install_all(shadow_ns_core_hooks, "shadow_ns");
+	if (hooked < 0) {
+		ret = hooked;
+		pr_err("shadow_ns: init: shadow_hook_install_all() failed: %d\n", ret);
+		return ret;
+	}
+	pr_info("shadow_ns: init: %d core hook(s) installed\n", hooked);
+
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS) {
+		hooked = shadow_hook_install_all(shadow_ns_uts_hooks, "shadow_ns_uts");
+		if (hooked < 0) {
+			ret = hooked;
+			pr_err("shadow_ns: init: UTS shadow_hook_install_all() failed: %d\n",
+			       ret);
+			shadow_hook_remove_all(shadow_ns_core_hooks);
+			return ret;
+		}
+		pr_info("shadow_ns: init: %d UTS-simulation hook(s) installed (CONFIG_UTS_NS absent)\n",
+			hooked);
+	} else {
+		pr_info("shadow_ns: CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched\n");
+	}
+
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID) {
+		hooked = shadow_hook_install_all(shadow_ns_pid_hooks, "shadow_ns_pid");
+		if (hooked < 0) {
+			ret = hooked;
+			pr_err("shadow_ns: init: PID shadow_hook_install_all() failed: %d\n",
+			       ret);
+			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+				shadow_hook_remove_all(shadow_ns_uts_hooks);
+			shadow_hook_remove_all(shadow_ns_core_hooks);
+			return ret;
+		}
+		pr_info("shadow_ns: init: %d PID-simulation hook(s) installed (CONFIG_PID_NS absent)\n",
+			hooked);
+	} else {
+		pr_info("shadow_ns: CONFIG_PID_NS builtin; getpid/getppid/kill/wait4 left untouched\n");
+	}
+
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUSER) {
+		hooked = shadow_hook_install_all(shadow_ns_user_hooks, "shadow_ns_user");
+		if (hooked < 0) {
+			ret = hooked;
+			pr_err("shadow_ns: init: USER shadow_hook_install_all() failed: %d\n",
+			       ret);
+			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID)
+				shadow_hook_remove_all(shadow_ns_pid_hooks);
+			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+				shadow_hook_remove_all(shadow_ns_uts_hooks);
+			shadow_hook_remove_all(shadow_ns_core_hooks);
+			return ret;
+		}
+		pr_info("shadow_ns: init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)\n",
+			hooked);
+	} else {
+		pr_info("shadow_ns: CONFIG_USER_NS builtin; getuid/geteuid/getgid/getegid left untouched\n");
+	}
+
+	INIT_DELAYED_WORK(&shadow_ns_reap_work, shadow_ns_reap_workfn);
+	schedule_delayed_work(&shadow_ns_reap_work, SHADOW_NS_REAP_INTERVAL);
+
+	pr_info("shadow_ns: loaded\n");
+	return 0;
+}
+
+static void __exit shadow_ns_exit(void)
+{
+	struct shadow_ns *ns;
+	struct shadow_task_group *tg;
+	unsigned long id;
+
+	pr_info("shadow_ns: exit: removing syscall hooks\n");
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUSER)
+		shadow_hook_remove_all(shadow_ns_user_hooks);
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID)
+		shadow_hook_remove_all(shadow_ns_pid_hooks);
+	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+		shadow_hook_remove_all(shadow_ns_uts_hooks);
+	shadow_hook_remove_all(shadow_ns_core_hooks);
+
+	pr_info("shadow_ns: exit: cancelling reap work\n");
+	cancel_delayed_work_sync(&shadow_ns_reap_work);
+
+	for (;;) {
+		id = 0;
+		mutex_lock(&shadow_ns_tgid_lock);
+		tg = xa_find(&shadow_ns_tgid_map, &id, ULONG_MAX, XA_PRESENT);
+		if (tg)
+			xa_erase(&shadow_ns_tgid_map, id);
+		mutex_unlock(&shadow_ns_tgid_lock);
+		if (!tg)
+			break;
+		shadow_ns_task_group_free(tg);
+	}
+	xa_destroy(&shadow_ns_tgid_map);
+
+	mutex_lock(&shadow_ns_map_lock);
+	xa_for_each(&shadow_ns_map, id, ns) {
+		xa_erase(&shadow_ns_map, id);
+		shadow_ns_uts_priv_free(ns->uts);
+		shadow_ns_pidns_priv_free(ns->pid);
+		shadow_ns_userns_priv_free(ns->user);
+		kfree(ns);
+	}
+	mutex_unlock(&shadow_ns_map_lock);
+	xa_destroy(&shadow_ns_map);
+
+	pr_info("shadow_ns: unloaded\n");
+}
+
+module_init(shadow_ns_init);
+module_exit(shadow_ns_exit);
+
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
+MODULE_DESCRIPTION("Standalone namespace subsystem: passes real unshare/setns/clone/clone3/fork/vfork through untouched for every namespace type this kernel build genuinely supports, and only falls back to reference-counted (real, for UTS) simulation for types the build genuinely lacks");
+MODULE_VERSION(SHADOW_NS_VERSION);

@@ -37,6 +37,7 @@ obj-$(CONFIG_SHADOW_NS) += shadow_ns.o
 ifeq ($(CONFIG_SHADOW_NS),)
 obj-m += shadow_ns.o
 endif
+shadow_ns-objs := shadow_ns_base.o shadow_ns_task.o shadow_ns_core.o shadow_ns_uts.o shadow_ns_pid.o shadow_ns_user.o shadow_ns_module.o
 
 # shadow_hook.h (used to hook unshare/setns/clone/clone3/fork/vfork) lives
 # in ../common, same as every other shadow_ctr hooking module.

@@ -127,7 +127,7 @@ with real `CONFIG_SYSVIPC=y`.
 | Path | Purpose |
 |---|---|
 | `include/uapi/shadow_sysvipc.h` | Shared shadow SysV IPC constants + metadata structs. |
-| `shadow_sysvipc.c` | Module implementation: resource registry and syscall hooks. |
+| `shadow_sysvipc_registry.c` / `shadow_sysvipc_tgid.c` / `shadow_sysvipc_hooks.c` / `shadow_sysvipc_internal.h` | Split implementation: resource registry, TGID ownership tracking, syscall hooks, and shared private declarations. |
 | `Makefile` | Out-of-tree build (`make KDIR=...`). |
 
 ## Building

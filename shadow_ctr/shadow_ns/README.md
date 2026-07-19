@@ -28,7 +28,7 @@ real, native namespace support for every type. Mount namespaces
 all and are always compiled in; cgroup namespaces only need
 `CONFIG_CGROUPS=y` (always set).
 
-`shadow_ns.c` computes, per namespace type, whether this specific kernel
+`shadow_ns` computes, per namespace type, whether this specific kernel
 build has genuine support via `IS_ENABLED(CONFIG_UTS_NS)` /
 `IS_ENABLED(CONFIG_IPC_NS)` / `IS_ENABLED(CONFIG_USER_NS)` /
 `IS_ENABLED(CONFIG_PID_NS)` / `IS_ENABLED(CONFIG_NET_NS)` /

@@ -20,6 +20,7 @@ ifneq ($(KERNELRELEASE),)
 
 # --- kbuild pass ---
 obj-$(CONFIG_SHADOW_MQUEUE) += shadow_mqueue.o
+shadow_mqueue-objs := shadow_mqueue_core.o shadow_mqueue_io.o shadow_mqueue_hooks.o shadow_mqueue_mount.o
 ifeq ($(CONFIG_SHADOW_MQUEUE),)
 obj-m += shadow_mqueue.o
 endif
