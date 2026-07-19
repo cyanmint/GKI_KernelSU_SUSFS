@@ -951,6 +951,9 @@ static long mq_do_mount_fallback(const struct pt_regs *regs)
 	if (IS_ERR_VALUE(scratch))
 		return (long)scratch;
 
+	/* sizeof("tmpfs") is 6 and deliberately includes the trailing NUL, so
+	 * the string real_sys_mount() reads back out of userspace below is
+	 * itself NUL-terminated. */
 	if (copy_to_user((void __user *)scratch, "tmpfs", sizeof("tmpfs"))) {
 		vm_munmap(scratch, PAGE_SIZE);
 		return -EFAULT;
@@ -983,9 +986,18 @@ static long hook_sys_mount(const struct pt_regs *regs)
 	copied = strncpy_from_user(type, utype, sizeof(type));
 	if (copied < 0 || copied >= sizeof(type))
 		return ret;
-	/* Belt-and-braces: strncpy_from_user() already NUL-terminates on the
-	 * success path above, but make it explicit so strcmp() below can
-	 * never run past the buffer regardless of kernel version quirks. */
+	/*
+	 * strncpy_from_user()'s @count includes room for the trailing NUL: on
+	 * success (string shorter than @count) it returns the string length
+	 * and has already written the NUL at type[copied]; if the source
+	 * string didn't fit, it returns exactly sizeof(type) with no NUL
+	 * written at all (see include/linux/uaccess.h / lib/strncpy_from_user.c
+	 * docs: "If @count is smaller than the length of the string, copies
+	 * @count bytes and returns @count"), which the ">= sizeof(type)" check
+	 * above already rejects. The explicit NUL-termination here is
+	 * therefore belt-and-braces, not a correctness fix, but keeps
+	 * strcmp() provably safe regardless of kernel version quirks.
+	 */
 	type[copied] = '\0';
 	if (strcmp(type, "mqueue"))
 		return ret;
