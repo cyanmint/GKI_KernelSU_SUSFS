@@ -39,6 +39,20 @@
  * relative to a dfd whose superblock is procfs -- the shape a detached
  * fsopen("proc")+fsmount() dirfd takes). Any other -ENOENT is returned
  * untouched.
+ *
+ * The fabricated descriptor must also survive being "reopened": several
+ * hardened procfs helpers (e.g. runc/containerd's securejoin/pathrs-lite
+ * ReopenFd()) always re-open a just-opened procfs fd a second time through
+ * the "/proc/thread-self/fd/<n>" magic link, as a defensive check against
+ * symlink races -- independent of whether the original open used O_PATH.
+ * A descriptor created via the simpler anon_inode_getfd() API fails that
+ * reopen with -ENXIO ("no such device or address"): its backing inode is
+ * the single, shared anon_inode_inode, whose ->i_fop is never touched by
+ * anon_inode_getfd() and so remains fs/inode.c's default no_open_fops
+ * (->open() == no_open(), unconditionally -ENXIO). shadow_ns_procfs.c
+ * therefore uses anon_inode_getfile_secure() instead, which allocates a
+ * *private* inode per fd, and explicitly points that inode's ->i_fop at
+ * shadow_setgroups_fops so the magic-link reopen succeeds.
  */
 #include "shadow_ns_internal.h"
 
@@ -49,15 +63,22 @@
 #include <linux/fs.h>
 #include <linux/magic.h>
 
-struct shadow_setgroups_file {
-	bool deny;
-};
-
+/*
+ * The allow/deny latch lives on the *inode*, not in a per-file heap
+ * allocation: runc/containerd's "reopen through /proc/thread-self/fd/<n>"
+ * safety check (see below) ends up creating a second struct file that backs
+ * onto the very same inode, and both files need to observe the same latch
+ * state. Storing it in file->private_data instead would require either
+ * sharing/refcounting that allocation across files (extra complexity for no
+ * benefit) or risking a double free from two independent release() calls.
+ * i_private needs no allocation at all: NULL means "allow", non-NULL means
+ * "deny" -- exactly the one-way latch semantics of real setgroups(7).
+ */
 static ssize_t shadow_setgroups_read(struct file *file, char __user *ubuf,
 				      size_t count, loff_t *ppos)
 {
-	struct shadow_setgroups_file *sf = file->private_data;
-	const char *str = sf->deny ? "deny\n" : "allow\n";
+	bool deny = !!file_inode(file)->i_private;
+	const char *str = deny ? "deny\n" : "allow\n";
 
 	return simple_read_from_buffer(ubuf, count, ppos, str, strlen(str));
 }
@@ -66,7 +87,7 @@ static ssize_t shadow_setgroups_write(struct file *file,
 				       const char __user *ubuf, size_t count,
 				       loff_t *ppos)
 {
-	struct shadow_setgroups_file *sf = file->private_data;
+	struct inode *inode = file_inode(file);
 	char kbuf[8];
 	size_t n = min(count, sizeof(kbuf) - 1);
 
@@ -79,11 +100,11 @@ static ssize_t shadow_setgroups_write(struct file *file,
 	/*
 	 * Real setgroups(7): "allow" is only a no-op re-affirmation of the
 	 * default, "deny" latches permanently (a later "allow" is rejected
-	 * once denied). No other value is accepted.
+	 * once denied).  No other value is accepted.
 	 */
 	if (!strcmp(kbuf, "deny")) {
-		sf->deny = true;
-	} else if (strcmp(kbuf, "allow") || sf->deny) {
+		inode->i_private = (void *)1UL;
+	} else if (strcmp(kbuf, "allow") || inode->i_private) {
 		return -EINVAL;
 	}
 
@@ -91,33 +112,66 @@ static ssize_t shadow_setgroups_write(struct file *file,
 	return count;
 }
 
-static int shadow_setgroups_release(struct inode *inode, struct file *file)
+/*
+ * Only ever invoked when this inode is opened a *second* time, through the
+ * "/proc/thread-self/fd/<n>" magic-link reopen every modern
+ * runc/containerd performs on a freshly-opened procfs fd (see
+ * securejoin/pathrs-lite's ReopenFd()) -- see shadow_ns_setgroups_create_fd()
+ * for why this callback needs to exist at all. Nothing to set up: the latch
+ * state already lives on the inode, and reads/writes reach it directly via
+ * file_inode(), independent of file->private_data.
+ */
+static int shadow_setgroups_open(struct inode *inode, struct file *file)
 {
-	kfree(file->private_data);
 	return 0;
 }
 
 static const struct file_operations shadow_setgroups_fops = {
 	.owner		= THIS_MODULE,
+	.open		= shadow_setgroups_open,
 	.read		= shadow_setgroups_read,
 	.write		= shadow_setgroups_write,
-	.release	= shadow_setgroups_release,
 	.llseek		= default_llseek,
 };
 
 static long shadow_ns_setgroups_create_fd(void)
 {
-	struct shadow_setgroups_file *sf;
+	struct file *file;
 	int fd;
 
-	sf = kzalloc(sizeof(*sf), GFP_KERNEL);
-	if (!sf)
-		return -ENOMEM;
-
-	fd = anon_inode_getfd("[shadow_setgroups]", &shadow_setgroups_fops,
-			      sf, O_RDWR | O_CLOEXEC);
+	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0)
-		kfree(sf);
+		return fd;
+
+	/*
+	 * anon_inode_getfd()'s shared, singleton anon_inode_inode cannot be
+	 * used here: its default file_operations (fs/inode.c's
+	 * no_open_fops, installed by inode_init_always() and never
+	 * overridden by alloc_anon_inode()) has ->open() == no_open(),
+	 * which unconditionally returns -ENXIO. That default is invisible
+	 * for a "normal" anon_inode fd (nothing ever opens it a second
+	 * time), but modern runc/containerd always "reopen" a just-opened
+	 * procfs fd through the "/proc/thread-self/fd/<n>" magic link as a
+	 * defensive safety check (see pathrs-lite's ReopenFd()) -- and that
+	 * reopen is a genuine VFS open() that goes through the inode's own
+	 * ->i_fop, not the fabricated file's ->f_op. Against the shared
+	 * singleton inode this reopen would fail every caller in the kernel
+	 * with "no such device or address", so anon_inode_getfile_secure()
+	 * is used instead to get a private, per-fd inode whose ->i_fop can
+	 * safely be pointed at shadow_setgroups_fops without affecting any
+	 * other anon-inode-backed fd on the system.
+	 */
+	file = anon_inode_getfile_secure("[shadow_setgroups]",
+					  &shadow_setgroups_fops, NULL,
+					  O_RDWR | O_CLOEXEC, NULL);
+	if (IS_ERR(file)) {
+		put_unused_fd(fd);
+		return PTR_ERR(file);
+	}
+
+	file_inode(file)->i_fop = &shadow_setgroups_fops;
+
+	fd_install(fd, file);
 	return fd;
 }
 

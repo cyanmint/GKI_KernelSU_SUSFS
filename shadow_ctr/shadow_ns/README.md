@@ -118,16 +118,36 @@ state to fake convincingly: real `setgroups(7)` semantics are just a
 one-way "allow" → "deny" latch. `shadow_ns_procfs.c` hooks the raw
 `open()`/`openat()`/`openat2()` syscalls the same way every other
 `shadow_ns` hook does — call through to the real syscall first, and only
-fabricate an anonymous, `anon_inode_getfd()`-backed file (implementing that
-same read/write latch) when the real open genuinely failed with `-ENOENT`
-*and* the path unambiguously names a `setgroups` leaf under a procfs-rooted
-pid directory (`.../<pid|self|thread-self>/setgroups`, or a bare
-`"setgroups"` opened relative to a dfd whose superblock is procfs — the
-shape a detached `fsmount()` dirfd takes). Any other `-ENOENT` passes
-through untouched. This only installs when `CLONE_NEWUSER` is already being
-simulated (i.e. `CONFIG_USER_NS` is genuinely absent); on a kernel with real
+fabricate an anonymous file (implementing that same read/write latch) when
+the real open genuinely failed with `-ENOENT` *and* the path unambiguously
+names a `setgroups` leaf under a procfs-rooted pid directory
+(`.../<pid|self|thread-self>/setgroups`, or a bare `"setgroups"` opened
+relative to a dfd whose superblock is procfs — the shape a detached
+`fsmount()` dirfd takes). Any other `-ENOENT` passes through untouched.
+This only installs when `CLONE_NEWUSER` is already being simulated (i.e.
+`CONFIG_USER_NS` is genuinely absent); on a kernel with real
 `CONFIG_USER_NS` the file already exists natively and these hooks are
 never installed.
+
+The fabricated fd is created via `anon_inode_getfile_secure()` (a
+*private*, per-fd inode) rather than the simpler `anon_inode_getfd()`
+(whose backing inode is a single instance shared by every anon-inode fd on
+the system), and that private inode's `->i_fop` is explicitly pointed at
+the module's own `file_operations`. This matters because modern
+runc/containerd (via `securejoin`/`pathrs-lite`'s `ReopenFd()`) always
+"reopen" a just-opened procfs fd a second time through the
+`/proc/thread-self/fd/<n>` magic link, as a defensive check against
+symlink races — and that reopen is a genuine VFS `open()` that goes through
+the inode's `->i_fop`, not the already-open file's `->f_op`.
+`anon_inode_getfd()`'s shared singleton inode never has its `->i_fop`
+touched, so it keeps `fs/inode.c`'s default `no_open_fops`
+(`->open() == no_open()`, unconditionally `-ENXIO`) — surfaced by
+runc/containerd as `unable to setup user: reopen
+fsmount:fscontext:proc/self/setgroups: reopen fd N: no such device or
+address`. The allow/deny latch state itself lives on that private inode's
+`i_private` (not a separate heap allocation in `file->private_data`), so
+both the original and the reopened `struct file` — which share the same
+inode — observe the same state.
 
 ## Build
 
