@@ -1,0 +1,1256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>Català</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">Sistema</string>
+		<string name="system_image">Imatge del sistema</string>
+		<string name="vendor">Fabricant</string>
+		<string name="vendor_image">Imatge del fabricant</string>
+		<string name="boot">Arrencada</string>
+		<string name="recovery">Recuperació</string>
+		<string name="cache">Memòria cau</string>
+		<string name="data">Dades</string>
+		<string name="sdcard">Targeta SD</string>
+		<string name="internal">Emmagatzematge intern</string>
+		<string name="microsd">Targeta micro SD</string>
+		<string name="usb_storage">Emmagatzematge USB</string>
+		<string name="android_secure">Android Secure</string>
+		<string name="dalvik">Memòria cau Dalvik/ART</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">SD externa</string>
+		<string name="adopted_data">Dades adoptades</string>
+		<string name="adopted_storage">Emmagatzematge adoptat</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">OrangeFox %fox_actual_build%</string>
+		<string name="cpu_temp">CPU: %tw_cpu_temp%&#xB0;C</string>
+		<string name="sort_by_name_asc">Nom</string>
+		<string name="sort_by_date_asc">Data</string>
+		<string name="sort_by_size_asc">Mida</string>
+		<string name="sort_by_name_desc">Nom</string>
+		<string name="sort_by_date_desc">Data</string>
+		<string name="sort_by_size_desc">Mida</string>
+		<string name="install_btn">Instal·la</string>
+		<string name="wipe_btn">Esborra</string>
+		<string name="backup_btn">Còpies de seguretat</string>
+		<string name="restore_btn">Restaura</string>
+		<string name="mount_btn">Munta</string>
+		<string name="file_manager_btn">Arxius</string>
+		<string name="advanced_btn">Avançat</string>
+		<string name="reboot_btn">Reinicia</string>
+		<string name="copy_log_btn">Copia el registre a la targeta SD</string>
+		<string name="install_zip_hdr">Instal·la un ZIP</string>
+		<string name="install_zip_btn">Instal·la un ZIP</string>
+		<string name="install_image_hdr">Instal·la una imatge</string>
+		<string name="install_image_btn">Instal·la una imatge</string>
+		<string name="install_select_file_hdr">Selecciona un fitxer</string>
+		<string name="install_select_file_btn">Selecciona un fitxer</string>
+		<string name="adb_sideload_btn">ADB &amp; Càrrega lateral</string>
+		<string name="select_storage_hdr">Selecciona l'emmagatzematge</string>
+		<string name="select_storage_btn">Selecciona l'emmagatzematge</string>
+		<string name="queue_hdr">Cua</string>
+		<string name="raised_clearqueue_btn">Esborrar la cua</string>
+		<string name="raised_viewqueue_btn">Veure la cua</string>
+		<string name="zip_queue_count">%tw_zip_queue_count% d'un màxim de 10 fitxers en cua</string>
+		<string name="folder">Carpeta</string>
+		<string name="file">Fitxer</string>
+		<string name="zip_sig_chk">Verificació de la signatura del ZIP</string>
+		<string name="inject_twrp_chk">Injecta l'OrangeFox després de la instal·lació</string>
+		<string name="install_reboot_chk">Reinicia un cop la instal·lació es completi</string>
+		<string name="options_hdr">Opcions</string>
+		<string name="zip_queue">Cua</string>
+		<string name="install_zip_count_hdr">Instal·la el fitxer %tw_zip_index% de %tw_zip_queue_count%</string>
+		<string name="working">Processant...</string>
+		<string name="failed">Erroni</string>
+		<string name="successful">Correcte</string>
+		<string name="wipe_cache_btn">Buida la memòria cau</string>
+		<string name="reboot_system_btn">Reinicia el sistema</string>
+		<string name="reboot_recovery_btn">Reinicia a recuperació</string>
+		<string name="install_sel_target">Selecciona la partició</string>
+		<string name="flash_image_select">Partició</string>
+		<string name="flashing_image">Escrivint imatge...</string>
+		<string name="image_flashed">Imatge escrita</string>
+		<string name="wipe_cache_dalvik_confirm">Esborrar memòria cau &amp; Dalvik</string>
+		<string name="wipe_dalvik_confirm">Esborrar Dalvik</string>
+		<string name="wiping_cache_dalvik">Esborrant memòria cau &amp; Dalvik...</string>
+		<string name="wipe_cache_dalvik_complete">Memòria cau &amp; Dalvik esborrades</string>
+		<string name="cache_dalvik_done">Memòria cau &amp; Dalvik esborrades</string>
+		<string name="swipe_wipe">Llisca per a esborrar</string>
+		<string name="rebooting">Reiniciant...</string>
+		<string name="swipe_reboot">Llisca per a reiniciar</string>
+		<string name="confirm_action">Confirma l'acció</string>
+		<string name="cancel_btn">Cancel·la</string>
+		<string name="wipe_hdr">Esborra</string>
+		<string name="factory_reset_hdr">Restabliment de fàbrica</string>
+		<string name="factory_reset1">Esborra les dades, la memòria cau i la Dalvik</string>
+		<string name="factory_reset2">(no incloent-hi l'emmagatzematge intern)</string>
+		<string name="factory_reset3">La majoria de les vegades</string>
+		<string name="factory_reset4">és l'únic esborrat necessari.</string>
+		<string name="factory_reset5">(no inclou usuaris/pantalla de bloqueig)</string>
+		<string name="factory_resetting">Restabliment de fàbrica...</string>
+		<string name="advanced_wipe_hdr">Esborrat avançat</string>
+		<string name="advanced_wipe_btn">Esborrat avançat</string>
+		<string name="wipe_enc_confirm">Esborrar el xifrat de les Dades</string>
+		<string name="formatting_data">Esborrant les Dades...</string>
+		<string name="swipe_format_data">Llisca per a esborrar les Dades</string>
+		<string name="factory_reset_complete">Restabliment de fàbrica complet</string>
+		<string name="sel_part_hdr">Selecciona les particions</string>
+		<string name="wipe_sel_confirm">Esborrar les particions seleccionades</string>
+		<string name="wiping_part">Esborrant les particions...</string>
+		<string name="wipe_complete">Esborrat complert</string>
+		<string name="format_data_hdr">Esborra les Dades</string>
+		<string name="format_data_btn">Esborra les Dades</string>
+		<string name="format_data_ptr1">Esborrar les Dades esborrarà totes les teves aplicacions,</string>
+		<string name="format_data_ptr2">còpies de seguretat, fotografies, vídeos, mitjans, i</string>
+		<string name="format_data_ptr3">elimina el xifrat de la memòria interna.</string>
+		<string name="format_data_adopted">Incloent-hi l'emmagatzematge adoptat</string>
+		<string name="format_data_undo">Aquesta operació no es pot desfer.</string>
+		<string name="format_data_complete">Dades esborrades</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">Escriu "yes" per a confirmar.</string>
+		<string name="part_opt_hdr">Informació de la partició</string>
+		<string name="file_sys_opt">Opcions de la partició</string>
+		<string name="part_mount_point">Punt de muntatge</string>
+		<string name="part_curr_fs">Sistema de fitxers</string>
+		<string name="part_present">Present</string>
+		<string name="part_removable">Extraïble</string>
+		<string name="part_yes">Sí</string>
+		<string name="part_no">No</string>
+		<string name="part_size">Mida</string>
+		<string name="part_used">Utilitzat</string>
+		<string name="part_free">Lliure</string>
+		<string name="part_backup_size">Mida de la còpia de seguretat</string>
+		<string name="resize_btn">Redimensionar el sistema de fitxers</string>
+		<string name="resize_confirm">Redimensionar la partició</string>
+		<string name="resizing">Redimensionant...</string>
+		<string name="resize_complete">Redimensionament complert</string>
+		<string name="swipe_resize">Llisca per a redimensionar</string>
+		<string name="repair_btn">Repara el sistema de fitxers</string>
+		<string name="repair_confirm">Repara la partició</string>
+		<string name="repairing">S'està reparant...</string>
+		<string name="repair_complete">Reparació complerta</string>
+		<string name="swipe_repair">Llisca per a reparar</string>
+		<string name="change_fs_btn">Canviar sistema de fitxers</string>
+		<string name="change_fs_warn1">Alguns sistemes o nuclis poden no ser compatibles</string>
+		<string name="change_fs_warn2">amb certs sistemes de fitxers. Procedeix amb precaució!</string>
+		<string name="change_fs_confirm">Canviar el sistema de fitxers a</string>
+		<string name="formatting">Esborrant...</string>
+		<string name="format_complete">Acabat</string>
+		<string name="swipe_change_fs">Llisca per a modificar</string>
+		<string name="back_btn">Enrere</string>
+		<string name="wipe_enc_btn">Esborra el xifrat</string>
+		<string name="swipe_factory_reset">Llisca per restablir de fàbrica</string>
+		<string name="backup_hdr">Còpia de seguretat</string>
+		<string name="encryption_hdr">Activar xifratge</string>
+		<string name="name">Nom</string>
+		<string name="enable_backup_comp_chk">Habilita la compressió</string>
+		<string name="skip_md5_backup_chk">Omet la generació d'un MD5 durant la còpia de seguretat</string>
+		<string name="disable_backup_space_chk">Desactiva la comprovació d'espai lliure abans de fer la còpia de seguretat</string>
+		<string name="swipe_backup">Llisca per a fer la còpia de seguretat</string>
+		<string name="backup_name_exists">Ja existeix una còpia de seguretat amb aquest nom!</string>
+		<string name="pass_not_match">Les contrasenyes no coincideixen!</string>
+		<string name="partitions">Particions</string>
+		<string name="progress">Progrés</string>
+		<string name="backup_complete">Còpia de seguretat finalitzada</string>
+		<string name="restore_hdr">Còpies de seguretat</string>
+		<string name="restore_backup_hdr">Restaura la còpia de seguretat</string>
+		<string name="sel_backup_hdr">Selecciona la còpia de seguretat</string>
+		<string name="restore_dec_fail">Contrasenya incorrecte, torna a provar-ho!</string>
+		<string name="del_backup_confirm">Esborrar la còpia de seguretat</string>
+		<string name="del_backup_confirm2">Aquesta operació no es pot desfer!</string>
+		<string name="deleting_backup">Esborrant la còpia de seguretat...</string>
+		<string name="backup_deleted">Còpia de seguretat esborrada</string>
+		<string name="swipe_delete">Llisca per a esborrar</string>
+		<string name="restore_backup_date">Data de la còpia de seguretat</string>
+		<string name="restore_md5_chk">Comprova l'MD5 dels arxius de la còpia de seguretat</string>
+		<string name="restore_enable_md5_chk">Habilita la verificació MD5 dels fitxers de la còpia de seguretat</string>
+		<string name="restore_complete">Restauració completada</string>
+		<string name="swipe_restore">Llisca per a restaurar</string>
+		<string name="rename_backup_hdr">Canvia el nom de la còpia de seguretat</string>
+		<string name="rename_backup_confirm">Canvia el nom de la còpia de seguretat</string>
+		<string name="rename_backup_confirm2">Aquesta operació no es pot desfer!</string>
+		<string name="renaming_backup">Canviant el nom de la còpia de seguretat...</string>
+		<string name="rename_backup_complete">Nom de la còpia de seguretat canviat</string>
+		<string name="swipe_to_rename">Llisca per a canviar el nom</string>
+		<string name="mount_hdr">Munta</string>
+		<string name="mount_sys_ro_chk">Munta les particions del sistema només de lectura</string>
+		<string name="erofs_is_ro_fs">EROFS és un sistema de fitxers de només lectura i no es pot muntar en mode lectura/escriptura!</string>
+		<string name="decrypt_data_btn">Desxifra les Dades</string>
+		<string name="disable_mtp_btn">Deshabilita l'MTP</string>
+		<string name="enable_mtp_btn">Habilita l'MTP</string>
+		<string name="usb_storage_hdr">Emmagatzematge USB</string>
+		<string name="usb_storage_btn">Emmagatzematge USB</string>
+		<string name="usb_stor_mnt1">Emmagatzematge USB muntat</string>
+		<string name="usb_stor_mnt2">Assegura't d'extreure el dispositiu de manera segura</string>
+		<string name="usb_stor_mnt3">des del teu ordinador abans de desmuntar!</string>
+		<string name="unmount_btn">Desmunta</string>
+		<string name="rb_system_btn">Sistema</string>
+		<string name="rb_poweroff_btn">Apaga</string>
+		<string name="rb_recovery_btn">Recuperació</string>
+		<string name="rb_bootloader_btn">Gestor d'arrencada</string>
+		<string name="rb_theme">Tema</string>
+		<string name="rb_download_btn">Descarrega</string>
+		<string name="rb_edl_btn">Edl</string>
+		<string name="turning_off">Apagant...</string>
+		<string name="swipe_power_off">Llisca per a apagar</string>
+		<string name="sys_ro">Partició de sistema</string>
+		<string name="sys_ro_hdr">Partició de sistema no modificada</string>
+		<string name="sys_rop1">L'OrangeFox pot deixar</string>
+		<string name="sys_rop2">la teva partició de sistema intacta per fer-te més fàcil</string>
+		<string name="sys_rop2a">instal·lar actualitzacions oficials.</string>
+		<string name="sys_rop3">L'OrangeFox no podrà evitar</string>
+		<string name="sys_rop4">que la ROM del fabricant substitueixi l'OrangeFox.</string>
+		<string name="sys_rop5">Instal·lacions ZIP o operacions ADB</string>
+		<string name="sys_rop6">encara podran modificar la partició de sistema.</string>
+		<string name="sys_ro_never_show_chk">No tornis a mostrar aquest missatge</string>
+		<string name="sys_ro_keep_ro_btn">Mantenir només de lectura</string>
+		<string name="swipe_allow_mod">Llisca per a permetre modificacions</string>
+		<string name="settings_hdr">Preferències</string>
+		<string name="settings_cptn">General</string>
+		<string name="use_rmrf_chk">Utilitza rm -rf en comptes de l'esborrat</string>
+		<string name="use24clock_chk">Utilitza un rellotge de 24 hores</string>
+		<string name="rev_navbar_chk">Barra de navegació revertida</string>
+		<string name="simact_chk">Simula accions per a provar temes</string>
+		<string name="simfail_chk">Simula el fracàs de les accions</string>
+		<string name="sel_tz_list">Zona horària</string>
+		<string name="dialog_reset_theme_hdr">Tornar als valors per defecte</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(UTC -11) Samoa, illa de Midway</string>
+		<string name="utcm10">(UTC -10) Hawaii</string>
+		<string name="utcm9">(UTC -9) Alaska</string>
+		<string name="utcm8">(UTC -8) Hora del Pacífic</string>
+		<string name="utcm7">(UTC -7) Temps de muntanya</string>
+		<string name="utcm6">(UTC -6) Horari central</string>
+		<string name="utcm5">(UTC -5) Hora oriental</string>
+		<string name="utcm4">(UTC -4) Temps de l'Atlàntic</string>
+		<string name="utcm3">(UTC -3) Brasil, Buenos Aires</string>
+		<string name="utcm2">(UTC -2) Atlàntic central</string>
+		<string name="utcm1">(UTC -1) Illes Açores, Cap Verd</string>
+		<string name="utc0">(UTC 0) Londres, Dublín, Lisboa</string>
+		<string name="utcp1">(UTC + 1) Berlín, Brussel·les, París</string>
+		<string name="utcp2">(UTC + 2) Atenes, Istanbul, Sud-àfrica</string>
+		<string name="utcp3">(UTC + 3) Moscou, Bagdad</string>
+		<string name="utcp4">(UTC + 4) Abu Dhabi, Tbilisi, Muscat</string>
+		<string name="utcp5">(UTC + 5) Iekaterinburg, Islamabad</string>
+		<string name="utcp6">(UTC + 6) Almaty, Dhaka, Colombo</string>
+		<string name="utcp7">(UTC + 7) Bangkok, Hanoi, Jakarta</string>
+		<string name="utcp8">(UTC + 8) Beijing, Singapur, Hong Kong</string>
+		<string name="utcp9">(UTC + 9) Tòquio, Seül, Yakutsk</string>
+		<string name="utcp10">(UTC + 10) Est d'Austràlia, Guam</string>
+		<string name="utcp11">(UTC + 11) Vladivostok, Illes Salomó</string>
+		<string name="utcp12">(UTC + 12) Auckland, Wellington, Fiji</string>
+		<string name="tz_offset_hdr">Desfasament de temps</string>	
+		<string name="tz_offset">Desfasament</string>
+		<string name="sel_tz_offset">Selecciona el desfassament (generalment 0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">Utilitza el temps d'estalvi de llum de dia (DST)</string>
+		<string name="curr_tz">Fus horari actual: %tw_time_zone%</string>
+		<string name="curr_tz_s">Fus horari actual:</string>
+		<string name="set_tz_btn">Estableix el fus horari</string>
+		<string name="settings_screen_cptn">Configuració de pantalla</string>
+		<string name="settings_screen_timeout_cptn">El temps d'espera està desactivat</string>
+		<string name="settings_screen_timeout_cptn2">Temps d'espera:</string>
+		<string name="timeout_unit">segons</string>
+		<string name="enable_timeout_chk">Habilita el temps d'espera de la pantalla</string>
+		<string name="screen_to_na">Configuració del temps d'espera de la pantalla no disponible</string>
+		<string name="rotation_chk">Rotació</string>
+		<string name="screen_bright_slider">Brillantor: %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">Configuració de brillantor no disponible</string>
+		<string name="vibration_hdr">Vibració</string>
+		<string name="button_vibration_hdr">La vibració dels botons està apagada</string>
+		<string name="kb_vibration_hdr">La vibració de les tecles està apagada</string>
+		<string name="act_vibration_hdr">La vibració d'accions està apagada</string>
+		<string name="button_vibration">Vibració de botons:</string>
+		<string name="kb_vibration">Vibració de teclat:</string>
+		<string name="act_vibration">Vibració d'accions:</string>
+		<string name="advanced_hdr">Avançat</string>
+		<string name="copy_log_confirm">Copiar registre a la targeta SD</string>
+		<string name="copying_log">Copiant registre a la targeta SD...</string>
+		<string name="copy_log_complete">Registre copiat</string>
+		<string name="terminal_btn">Terminal</string>
+		<string name="inject_twrp_btn">Instal·la OrangeFox</string>
+		<string name="inject_twrp_confirm">Reinstal·lar OrangeFox</string>
+		<string name="injecting_twrp">Reinstal·lant OrangeFox...</string>
+		<string name="inject_twrp_complete">Instal·lació d'OrangeFox complerta</string>
+		<string name="swipe_to_confirm">Llisca per a confirmar</string>
+		<string name="part_sd_hdr">Partició SD</string>
+		<string name="rem_sd">Emmagatzematge extraïble</string>
+		<string name="rem_sd_sel">Selecciona un dispositiu extraïble!</string>
+		<string name="invalid_partsd_sel">Has de seleccionar un dispositiu extraïble</string>
+		<string name="part_sd_lose">Perdràs tots els arxius de la targeta SD!</string>
+		<string name="part_sdcard_sel_note_1">Particionar esborrarà tots els arxius</string>
+		<string name="part_sdcard_sel_note_2">de la teva targeta SD!</string>
+		<string name="part_sd_undo">Aquesta acció no es pot desfer!</string>
+		<string name="part_sd_ext_sz">Mida EXT:</string>
+		<string name="btn_flat_ext4">EXT4</string>
+		<string name="btn_flat_ext3">EXT3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">Mida de l'intercanvi:</string>
+		<string name="file_system">Sistema de fitxers:</string>
+		<string name="swipe_part_sd">Llisca per a particionar</string>
+		<string name="partitioning_sd">Particionant targeta SD...</string>
+		<string name="partitioning_sd2">Això trigarà uns minuts.</string>
+		<string name="part_sd_complete">Particionament complert</string>
+		<string name="swipe_to_unlock">Lliscar per desbloquejar</string>
+		<string name="fm_actions">Accions</string>
+		<string name="fm_hdr">Arxius</string>
+		<string name="fm_sel_file">Selecciona un fitxer o carpeta</string>
+		<string name="fm_type_folder">Carpeta</string>
+		<string name="fm_type_file">Fitxer</string>
+		<string name="fm_copy_btn">Copiar</string>
+		<string name="fm_copying">Copiant</string>
+		<string name="fm_move_btn">Moure</string>
+		<string name="fm_moving">Mouent</string>
+		<string name="fm_chmod755_btn">Establir 755</string>
+		<string name="fm_chmod755ing">Establir 755</string>
+		<string name="fm_chmod644_btn">Establir 644</string>
+		<string name="fm_chmod644ing">Establir 644</string>
+		<string name="fm_chmod_btn">Establir permisos</string>
+		<string name="fm_delete_btn">Eliminar</string>
+		<string name="fm_deleting">Eliminant</string>
+		<string name="fm_rename_btn">Canviar el nom</string>
+		<string name="fm_renaming">Canviant el nom</string>
+		<string name="fm_sel_dest">Carpeta de destinació</string>
+		<string name="fm_rename_hdr">Canviar el nom</string>
+		<string name="fm_set_perms_hdr">Establir permisos</string>
+		<string name="fm_perms">Permisos</string>
+		<string name="fm_complete">Operació de fitxer completada</string>
+		<string name="decrypt">Desxifrar</string>
+		<string name="data_part">Partició de dades</string>
+		<string name="encrypt_data_part">La partició de dades està xifrada</string>
+		<string name="sel_encrypt_backup">Has seleccionat una còpia de seguretat xifrada.</string>
+		<string name="decrypt_data_enter_note1">Si us plau, introdueix la contrasenya o</string>
+		<string name="decrypt_data_enter_note1a">Si us plau, introdueix el patró o</string>
+		<string name="decrypt_data_enter_note2">prem el botó d'enrere per cancel·lar.</string>
+		<string name="decrypt_data_enter_pass">Introdueix la contrasenya</string>
+		<string name="decrypt_data_failed_pattern">El patró ha fallat!</string>
+		<string name="decrypt_try_again">Si us plau, torna a intentar-ho.</string>
+		<string name="decrypt_data_enter_pattern">Introdueix el patró.</string>
+		<string name="decrypt_data_trying">Intentant desxifrar</string>
+		<string name="term_s_hdr">Terminal</string>
+		<string name="adb_sideload_hdr">Carrega per ADB</string>
+		<string name="sideload_wipe_dalvik_chk">Buida la memòria cau Dalvik</string>
+		<string name="sideload_wipe_cache_chk">Buida la memòria cau</string>
+		<string name="swipe_to_sideload">Llisca per a iniciar la càrrega per ADB</string>
+		<string name="sideload_confirm">Carrega per ADB</string>
+		<string name="sideload_usage">Ús: ADB SideLoad arxiu.ZIP</string>
+		<string name="sideload_complete">Carrega per ADB Completada</string>
+		<string name="fix_contexts_hdr">Arreglar els contextos</string>
+		<string name="fix_contexts_confirm">Arreglar els contextos SELinux</string>
+		<string name="fix_contexts_note1">Nota: Arreglar els contextos rarament és necessari.</string>
+		<string name="fix_contexts_note2">Arreglar els contextos SELinux pot causar</string>
+		<string name="fix_contexts_note3">que el dispositiu no s'iniciï correctament.</string>
+		<string name="swipe_to_fix_contexts">Llisca per a arreglar els contextos</string>
+		<string name="fixing_contexts">Arreglant els contextos...</string>
+		<string name="fix_contexts_complete">S'han arreglat els contextos</string>
+		<string name="reboot_hdr">Reinicia</string>
+		<string name="sel_storage_list">Selecciona l'emmagatzematge</string>
+		<string name="ok_btn">D'acord</string>
+		<string name="install_twrp_ramdisk">Instal·lar Ramdisk de recuperació</string>
+		<string name="install_kernel">Instal·lar nucli</string>
+		<string name="repack_backup_first">Fes una còpia de seguretat de la imatge existent primer</string>
+		<string name="installing">Instal·lant...</string>
+		<string name="install_complete">Instal·lació completada</string>
+		<string name="decrypt_users">Desxifrar usuaris</string>
+		<string name="backup_storage_undecrypt_warning">La còpia de seguretat no inclou alguns fitxers de l'usuari {1}, perquè l'usuari no està desxifrat.</string>
+		<string name="decrypting_user_fbe">Intentant desxifrar FBE per a l'usuari {1}...</string>
+		<string name="decrypt_user_success_fbe">Usuari {1} desxifrat correctament</string>
+		<string name="decrypt_user_fail_fbe">No s'ha pogut desxifrar l'usuari {1}</string>
+		<string name="decrypt_data_user">Usuari seleccionat</string>
+		<string name="data_users">Usuaris</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">El nucli no té suport per llegir contexts SELinux.</string>
+		<string name="full_selinux">Hi ha suport complet per a SELinux.</string>
+		<string name="no_selinux">No hi ha suport per a SELinux (no hi ha libselinux).</string>
+		<string name="mtp_enabled">MTP està habilitat</string>
+		<string name="mtp_disabled">MTP està deshabilitat</string>
+		<string name="mtp_crash">MTP s'ha estavellat, no s'inicia MTP en arrencar.</string>
+		<string name="decrypt_success">Desxifrat correctament amb la contrasenya per defecte.</string>
+		<string name="unable_to_decrypt">No s'ha pogut desxifrar amb la contrasenya per defecte. Potser necessites fer un Format Data.</string>
+		<string name="generating_md51">Generant MD5</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * Generant md5...</string>
+		<string name="md5_created"> * MD5 creat.</string>
+		<string name="md5_error"> * Error MD5!</string>
+		<string name="md5_compute_error"> * Error en calcular MD5.</string>
+		<string name="current_date">(Data actual)</string>
+		<string name="auto_generate">(Generar automàticament)</string>
+		<string name="unable_to_locate_partition">No s'ha pogut localitzar la partició '{1}' per als càlculs de còpia de seguretat.</string>
+		<string name="no_partition_selected">No s'han seleccionat particions per a la còpia de seguretat.</string>
+		<string name="total_partitions_backup"> * Nombre total de particions per fer còpia de seguretat: {1}</string>
+		<string name="total_backup_size"> * Mida total de totes les dades: {1}MB</string>
+		<string name="available_space"> * Espai disponible: {1}MB</string>
+		<string name="unable_locate_storage">No s'ha pogut localitzar el dispositiu d'emmagatzematge.</string>
+		<string name="no_space">No hi ha prou espai lliure a l'emmagatzematge.</string>
+		<string name="backup_started">[CÒPIA DE SEGURETAT INICIADA]</string>
+		<string name="backup_folder"> * Carpeta de còpia de seguretat: {1}</string>
+		<string name="fail_backup_folder">No s'ha pogut crear la carpeta de còpia de seguretat.</string>
+		<string name="avg_backup_fs">Velocitat mitjana de còpia de seguretat per a sistemes de fitxers: {1} MB/seg</string>
+		<string name="avg_backup_img">Velocitat mitjana de còpia de seguretat per a unitats imatges: {1} MB/seg</string>
+		<string name="total_backed_size">[{1} MB TOTAL COPIAT]</string>
+		<string name="backup_completed">[CÒPIA DE SEGURETAT COMPLETADA EN {1} SEGONS]</string>
+		<string name="restore_started">[RESTAURACIÓ INICIADA]</string>
+		<string name="restore_folder">Carpeta de restauració: '{1}'</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} fet ({2} segons)]</string>
+		<string name="verifying_md5">Verificant MD5</string>
+		<string name="skip_md5">Ometent la comprovació MD5 segons la configuració de l'usuari.</string>
+		<string name="calc_restore">Calculant detalls de la restauració...</string>
+		<string name="restore_read_only">No es pot restaurar {1} -- muntat només de lectura.</string>
+		<string name="restore_unable_locate">No s'ha pogut localitzar la partició '{1}' per a la restauració.</string>
+		<string name="no_part_restore">No s'han seleccionat particions per a la restauració.</string>
+		<string name="restore_part_count">Restaurant {1} particions...</string>
+		<string name="total_restore_size">La mida total de la restauració és {1}MB</string>
+		<string name="updating_system_details">Actualitzant detalls del sistema</string>
+		<string name="restore_completed">[RESTAURACIÓ COMPLETADA EN {1} SEGONS]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">Error en obrir: '{1}' ({2})</string>
+		<string name="unable_locate_part_backup_name">No s'ha pogut localitzar la partició pel nom de còpia de seguretat: '{1}'</string>
+		<string name="unable_find_part_path">No s'ha pogut trobar la partició per al camí '{1}'</string>
+		<string name="update_part_details">Actualitzant detalls de la partició...</string>
+		<string name="update_part_details_done">...fet</string>
+		<string name="wiping_dalvik">Esborrant directoris Dalvik...</string>
+		<string name="cleaned">Netejat: {1}...</string>
+		<string name="dalvik_done">Esborrat de directoris Dalvik Cache completat!</string>
+		<string name="no_andsec">No s'han trobat particions android secure.</string>
+		<string name="unable_to_locate">No s'ha pogut localitzar {1}.</string>
+		<string name="wiping_datamedia">Esborrant emmagatzematge intern -- /data/media...</string>
+		<string name="unable_to_mount">No s'ha pogut muntar {1}</string>
+		<string name="unable_to_mount_internal">No s'ha pogut muntar internal_storage</string>
+		<string name="unable_to_mount_storage">No s'ha pogut muntar l'emmagatzematge</string>
+		<string name="fail_decrypt">No s'ha pogut desxifrar les dades.</string>
+		<string name="no_crypto_support">No s'ha compilat cap suport per a crypto en aquesta versió.</string>
+		<string name="decrypt_success_dev">Dades desxifrades correctament, nou dispositiu de bloc: '{1}'</string>
+		<string name="done">Fet</string>
+		<string name="start_partition_sd">Particionant targeta SD...</string>
+		<string name="partition_sd_locate">No s'ha pogut localitzar el dispositiu per a particionar.</string>
+		<string name="ext_swap_size">La mida d'EXT + Swap és més gran que la mida de la targeta sd.</string>
+		<string name="remove_part_table">Eliminant la taula de particions...</string>
+		<string name="unable_rm_part">No s'ha pogut eliminar la taula de particions.</string>
+		<string name="create_part">Creant partició {1}...</string>
+		<string name="unable_to_create_part">No s'ha pogut crear la partició {1}.</string>
+		<string name="format_sdext_as">Formatejant sd-ext com a {1}...</string>
+		<string name="part_complete">Particionament complert.</string>
+		<string name="unable_to_open">No s'ha pogut obrir '{1}'.</string>
+		<string name="mtp_already_enabled">MTP ja està habilitat</string>
+		<string name="mtp_fail">No s'ha pogut habilitar MTP</string>
+		<string name="no_mtp">El suport per a MTP no està inclòs</string>
+		<string name="mtp_base_path_missing">No s'ha trobat l'emmagatzematge de mitjans. No s'ha pogut habilitar MTP.</string>
+		<string name="image_flash_start">[FLASH DE IMATGE INICIAT]</string>
+		<string name="img_to_flash">Imatge per a flashejar: '{1}'</string>
+		<string name="flash_unable_locate">No s'ha pogut localitzar la partició '{1}' per a flashejar.</string>
+		<string name="no_part_flash">No s'han seleccionat particions per a flashejar.</string>
+		<string name="too_many_flash">S'han seleccionat massa particions per a la flaixada.</string>
+		<string name="invalid_flash">Partició de flaixada no vàlida especificada.</string>
+		<string name="flash_done">[IMAGE FLASH COMPLETED]</string>
+		<string name="wiping">Esborrant {1}</string>
+		<string name="repair_not_exist">{1} no existeix! No es pot reparar!</string>
+		<string name="repairing_using">Reparant {1} utilitzant {2}...</string>
+		<string name="unable_repair">No es pot reparar {1}.</string>
+		<string name="mount_data_footer">No s'ha pogut muntar /data i no es pot trobar el peu de criptografia.</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">No es pot crear la carpeta '{1}' ({2}).</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">Error en muntar '{1}' ({2})</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">Error en desmuntar '{1}' ({2})</string>
+		<string name="cannot_resize">No es pot redimensionar {1}.</string>
+		<string name="repair_resize">Reparant {1} abans de redimensionar.</string>
+		<string name="unable_resize">No es pot redimensionar {1}.</string>
+		<string name="no_md5_found">No s'ha trobat cap fitxer md5 per a '{1}'. Si us plau, desmarqueu Habilitar verificació MD5 per restaurar.</string>
+		<string name="md5_fail_match">La verificació MD5 no ha coincidit per a '{1}'.</string>
+		<string name="fail_decrypt_tar">No s'ha pogut desxifrar el fitxer tar '{1}'</string>
+		<string name="format_data_msg">Potser heu de reiniciar la recuperació per poder utilitzat /data de nou.</string>
+		<string name="format_data_err">No es pot formatar per eliminar el xifratge.</string>
+		<string name="formatting_using">Formatant {1} utilitzant {2}...</string>
+		<string name="unable_to_wipe">No es pot esborrar {1}.</string>
+		<string name="cannot_wipe">La partició {1} no es pot esborrar.</string>
+		<string name="remove_all">Eliminant tots els fitxers sota '{1}'</string>
+		<string name="wiping_data">Esborrant dades sense esborrar /data/media ...</string>
+		<string name="backing_up">Fent còpia de seguretat de {1}...</string>
+		<string name="backing">Fent còpia de seguretat</string>
+		<string name="backup_size">La mida del fitxer de còpia de seguretat per a '{1}' és de 0 bytes.</string>
+		<string name="datamedia_fs_restore">AVÍS: Aquesta còpia de seguretat de /data es va fer amb el sistema de fitxers {1}! La còpia de seguretat pot no arrancar llevat que torneu a canviar a {1}.</string>
+		<string name="restoring">Restaurant {1}...</string>
+		<string name="restoring_hdr">Restaurant...</string>
+		<string name="recreate_folder_err">No es pot recrear la carpeta {1}.</string>
+		<string name="img_size_err">La mida de la imatge és més gran que el dispositiu de destí</string>
+		<string name="flashing">Flaixant {1}...</string>
+		<string name="backup_folder_set">Carpeta de còpia de seguretat establerta a '{1}'</string>
+		<string name="locate_backup_err">No es pot localitzar la còpia de seguretat '{1}'</string>
+		<string name="set_restore_opt">Establint opcions de restauració: '{1}':</string>
+		<string name="md5_check_skip">S'ha activat l'omissió de la verificació MD5</string>
+		<string name="ors_encrypt_restore_err">No es pot utilitzar OpenRecoveryScript per restaurar una còpia de seguretat xifrada.</string>
+		<string name="mounting">Muntant</string>
+		<string name="unmounting">Desmuntant</string>
+		<string name="mounted">Muntat '{1}'</string>
+		<string name="unmounted">Desmuntat '{1}'</string>
+		<string name="setting">Establint '{1}' a '{2}'</string>
+		<string name="setting_empty">Establint '{1}' a buit</string>
+		<string name="making_dir1">Creant directori</string>
+		<string name="making_dir2">Creant directori: '{1}'</string>
+		<string name="running_command">Executant comandament</string>
+		<string name="sideload">Càrrega per ADB</string>
+		<string name="start_sideload">Iniciant la funció de càrrega lateral ADB...</string>
+		<string name="need_new_adb">Necessiteu adb 1.0.32 o posterior per carregar lateralment en aquest dispositiu.</string>
+		<string name="no_pwd">No s'ha proporcionat cap contrasenya.</string>
+		<string name="done_ors">S'ha completat el processament del fitxer de script</string>
+		<string name="injecttwrp">Injecció d'OrangeFox a la imatge d'arrencada...</string>
+		<string name="zip_err">Error en instal·lar el fitxer ZIP '{1}'</string>
+		<string name="installing_zip">Installant el fitxer ZIP '{1}'</string>
+		<string name="select_backup_opt">Establint opcions de còpia de seguretat:</string>
+		<string name="compression_on">La compressió està activada</string>
+		<string name="md5_off">La generació MD5 està desactivada</string>
+		<string name="backup_fail">Error en la còpia de seguretat</string>
+		<string name="backup_clean">Error en la còpia de seguretat. Netejant la carpeta de còpia de seguretat.</string>
+		<string name="running_recovery_commands">Executant comandaments de recuperació</string>
+		<string name="recovery_commands_complete">S'han completat els comandaments de recuperació</string>
+		<string name="running_ors">Executant OpenRecoveryScript</string>
+		<string name="ors_complete">S'ha completat OpenRecoveryScript</string>
+		<string name="no_updater_binary">No s'ha pogut trobar '{1}' al fitxer ZIP.</string>
+		<string name="check_for_md5">Comprovant el fitxer MD5...</string>
+		<string name="fail_sysmap">Error en mapear el fitxer '{1}'</string>
+		<string name="verify_zip_sig">Verificant la signatura del ZIP...</string>
+		<string name="verify_zip_fail">La verificació de la signatura del ZIP ha fallat!</string>
+		<string name="verify_zip_done">La signatura del ZIP s'ha verificat correctament.</string>
+		<string name="zip_corrupt">El fitxer ZIP està corrupte!</string>
+		<string name="no_md5">Ometent la comprovació MD5: no s'ha trobat cap fitxer MD5</string>
+		<string name="md5_fail">El MD5 no coincideix</string>
+		<string name="md5_match">El MD5 coincideix</string>
+		<string name="pid_signal">El procés {1} va finalitzar amb el senyal: {2}</string>
+		<string name="pid_error">El procés {1} va finalitzar amb ERROR: {2}</string>
+		<string name="run_script">Executant el script {1}...</string>
+		<string name="split_backup">Dividint el fitxer de còpia de seguretat en múltiples arxius...</string>
+		<string name="backup_error">Error en crear la còpia de seguretat.</string>
+		<string name="restore_error">Error durant el procés de restauració.</string>
+		<string name="split_thread">Dividint l'ID de fil {1} en arxiu {2}</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu de %llu fitxers, %i%%</string>
+		<string name="size_progress">%lluMB de %lluMB, %i%%</string>
+		<string name="decrypt_cmd">Intentant desxifrar la partició de dades mitjançant la línia de comandaments.</string>
+		<string name="base_pkg_err">Error en carregar els paquets base.</string>
+		<string name="simulating">SIMULANT ACCIONS</string>
+		<string name="backup_cancel">Còpia de seguretat cancel·lada</string>
+		<string name="config_twrp">Configurant OrangeFox...</string>
+		<string name="config_twrp_err">No es pot configurar OrangeFox amb aquest kernel.</string>
+		<string name="copy_log">S'ha copiat el registre de recuperació a {1}.</string>
+		<string name="max_queue">S'ha assolit la cua màxima de ZIP!</string>
+		<string name="min_queue">S'ha assolit la cua mínima de ZIP!</string>
+		<string name="screenshot_saved">La captura de pantalla s'ha desat a {1}</string>
+		<string name="screenshot_err">No s'ha pogut fer una captura de pantalla!</string>
+		<string name="zip_wipe_cache">Un o més ZIP han sol·licitat un esborrat de la memòria cau -- Esborrant la memòria cau ara.</string>
+		<string name="and_sec_wipe_err">No es pot esborrar l'emmagatzematge segur d'Android</string>
+		<string name="dalvik_wipe_err">Error en esborrar dalvik</string>
+		<string name="auto_gen">(Generar automàticament)</string>
+		<string name="curr_date">(Data actual)</string>
+		<string name="backup_name_len">El nom de la còpia de seguretat és massa llarg.</string>
+		<string name="backup_name_invalid">El nom de la còpia de seguretat '{1}' conté un caràcter no vàlid: '{1}'</string>
+		<string name="no_real_sdcard">Aquest dispositiu no té una targeta SD real! S'està avortant!</string>
+		<string name="cancel_sideload">Cancel·lant la càrrega lateral ADB...</string>
+		<string name="change_fs_err">Error en canviar el sistema de fitxers.</string>
+		<string name="change_fs_hdr">Canviar el sistema de fitxers</string>
+		<string name="theme_ver_err">La versió del tema personalitzat no coincideix amb la versió d'OrangeFox. Utilitzant el tema predeterminat.</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">Seleccionar color</string>
+		<string name="s_color">Color</string>
+		<string name="current_color">Sistema de fitxers:</string>
+		<string name="show_cpu_temp_bar">Mostrar temperatura de la CPU</string>
+		<string name="ts_inform">Informació</string>
+		<string name="sel_splash_png">Seleccionar PNG de splash</string>
+		<string name="swipe_to_install">Lliscar per instal·lar</string>
+		<string name="swipe_to_install_img">Lliscar per instal·lar imatge</string>
+		<string name="sel_image_type">Seleccionar tipus d'imatge!</string>
+		<string name="zip_add_queue">Afegir a la cua</string>
+		<string name="part_fs_error_1">Les opcions de partició no estan</string>
+		<string name="part_fs_error_2">disponibles per a aquesta partició!</string>
+		<string name="new_file_system">Nou sistema de fitxers</string>
+		<string name="adb_sideload_opt">Opcions de càrrega lateral</string>
+		<string name="about_hdr">Quant a</string>
+		<string name="author">Autor</string>
+		<string name="credits">Crèdits</string>
+		<string name="version">Versió</string>
+		<string name="set_password">Establir contrasenya</string>
+		<string name="verifying_pas">Verificar contrasenya</string>
+		<string name="dialog_offset_note">Seleccioneu el vostre valor d'offset</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">Opcions</string>
+		<string name="flash_img_confirm">Fitxer d'imatge Flash</string>
+		<string name="also_wipes">També esborra</string>
+		<string name="confirm_wipe_cptn">Confirmar esborrat</string>
+		<string name="storage_cptn">Emmagatzematge</string>
+		<string name="enter_password_restore">Contrasenya</string>
+		<string name="enter_password_cptn">Seguretat</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">Iniciant Sideload...</string>
+		<string name="fordowns_to">a</string>
+		<string name="dbg">Depuració</string>
+		<string name="dbg_active">Menú de depuració activat!</string>
+		<string name="dbg_act">Acció</string>
+		<string name="dbg_func">Funció</string>
+		<string name="dbg_set">Establir</string>
+		<string name="dbg_page">Pàgina</string>
+		<string name="dbg_overlay">Superposició</string>
+		<string name="fm_none">Cap</string>
+		
+		<string name="cust_navbar_noug">Nougat</string>
+		<string name="cust_navbar_cls">Clàssic</string>
+		<string name="cust_navbar_accent">Accent</string>
+		<string name="cust_navbar_black">Negre</string>
+		<string name="cust_navbar_white">Utilitzar botons blancs</string>
+		<string name="cust_navbar_gray">Utilitzar botons grisos</string>
+		
+		<string name="fm_open">Obrir com...</string>
+		<string name="fm_open_text">Fitxer de text</string>
+		<string name="fm_open_ZIP">ZIP flasheable</string>
+		
+		<string name="fm_open_backup">Còpia de seguretat</string>
+		<string name="fm_open_makezip">Comprimir</string>
+		<string name="fm_open_unpackzip">Desempaquetar arxiu</string>
+		<string name="fm_open_image">Imatge flasheable</string>
+		<string name="arc_type">Tipus d'arxiu</string>
+		<string name="arc_lvl">Nivell de compressió:</string>
+		<string name="arc_lvl_title">Compressió</string>
+		
+		<string name="bkp_date">Afegir data</string>
+		<string name="bkp_gen">Generar nom de còpia de seguretat</string>
+		<string name="bkp_gen_whilebkp">Generar nom de còpia de seguretat mentre es realitza la còpia de seguretat</string>
+		<string name="bkp_quick">Còpia de seguretat ràpida</string>
+		<string name="bkp_clear">Netejar</string>
+		
+		<string name="language_cptn">Idioma</string>
+		<string name="cust_oth">Altres</string>
+		
+		<string name="settings_general">General</string>
+		<string name="settings_ui">Personalització</string>
+		<string name="settings_screen">Pantalla</string>
+		<string name="settings_time">Regional</string>
+		
+		<string name="lang_wait">Si us plau, espereu...</string>
+		
+		<string name="settings_ui_status">Barra d'estat</string>
+		<string name="settings_ui_battery">Mostrar icona de bateria</string>
+		<string name="settings_ui_style">Estil de la barra de navegació</string>
+		<string name="settings_ui_color">Fons de la barra de navegació</string>
+		
+		<string name="settings_backup_qbkp_custom">Particions de còpia de seguretat ràpida</string>
+		
+		<string name="settings_backup_name">Nom de la còpia de seguretat</string>
+		<string name="settings_backup_name_user">No canviïs</string>
+		<string name="settings_backup_name_auto">Definit automàticament</string>
+		<string name="settings_backup_name_auto_hide">Mentre es realitza la còpia de seguretat</string>
+		
+		<string name="update_btn">Actualitzar</string>
+		<string name="include_kernel_log">Incloure registre del nucli</string>
+		<string name="include_logcat">Incloure Logcat</string>
+		
+		<string name="fm_books">Carpetes favorites</string>
+		<string name="fm_books_desc">Pressiona llarg per editar aquesta llista</string>
+		<string name="fm_books_edit">Editar aquesta llista...</string>
+		<string name="fm_books_desc_edit">Pressiona llarg per eliminar l'element</string>
+		<string name="fm_books_empty">(Buit)</string>
+		
+		<string name="fm_mkdir">Crear carpeta</string>
+		<string name="fm_mkdir_folder">Nom de la carpeta</string>
+		
+		<string name="fm_path">Introduir camí</string>
+		<string name="fm_path2">Camí</string>
+		
+		<string name="no_os_title">Estàs segur?</string>
+		<string name="no_os_subtitle">La partició del sistema està buida</string>
+		
+		<string name="no_os1">No hi ha cap SO instal·lat! Estàs segur que</string>
+		<string name="no_osrb">voleu reiniciar?</string>
+		<string name="no_ospo">voleu apagar?</string>
+		<string name="no_osrb_recovery">voleu reiniciar a la recuperació?</string>
+		<string name="no_osrb_boot">voleu reiniciar al carregador d'arrencada?</string>
+		<string name="no_osrb_down">voleu reiniciar al mode de descàrrega?</string>
+		<string name="no_osrb_edl">voleu reiniciar al mode EDL?</string>
+		
+		<string name="areb_confirm">Diàleg de confirmació de reinici</string>
+		<string name="areb_noos">Quan no hi ha cap SO instal·lat</string>
+		<string name="opt_always">Sempre</string>
+		<string name="otp_never">Mai</string>
+		
+		<string name="areb_off">Apagat</string>
+		
+		<string name="restoredialog_readonly">No mostrar mai el diàleg de muntar el sistema només de lectura</string>
+		
+		<string name="offset_wrong">Offset incorrecte!</string>
+
+		<string name="new_key">Utilitzar nou estil per al teclat</string>
+		
+		<string name="bkp_nametitle">Nom de la còpia de seguretat</string>
+		<string name="bkp_namesub">Escriviu o genereu el nom de la còpia de seguretat</string>
+		
+		<string name="goto_storage">Emmagatzematge</string>
+		
+		<string name="theme_apply">Actualitzant el tema...</string>
+		<string name="theme_fonts">Fonts</string>
+		<string name="theme_style">Estil</string>
+		<string name="theme_accent">Accent</string>
+		<string name="theme_font_sel">Font principal</string>
+		<string name="theme_sec_font_sel">Font secundaria</string>
+		
+		<string name="of">de</string>
+		
+		<string name="sph_sph">Splash</string>
+		
+		<string name="real">real</string>
+		<string name="info">Informació</string>
+		<string name="time_m">Modificar</string>
+		<string name="time_c">Canviar</string>
+		<string name="access">Accés</string>
+		<string name="fm_sums">Checksum</string>
+		
+		<string name="use_fixed_font">Font monoespaçiada al terminal</string>
+
+		<string name="adb_backup_pc1">Aquesta còpia de seguretat es</string>
+		<string name="adb_backup_pc2">desarà al vostre PC</string>
+		
+		<string name="starting_aroma">Iniciant AromaFM...</string>
+		<string name="lang_set_wait">Canviant idioma...</string>
+		<string name="installing_theme">Instal·lant tema...</string>
+		
+		<string name="menu_btn">Menú</string>
+		
+		<string name="data_backup">Dades</string>
+		<string name="autostorage">Emmagatzematge</string>
+		<string name="install_reboot">Reiniciant en %tw_sleep% segons</string>
+		<string name="cancel_reboot_btn">Cancel·lar reinici</string>
+		<string name="skip_digest_backup_chk" version="2">Ometre la generació de Digest durant la còpia de seguretat</string>
+		<string name="restore_digest_chk" version="2">Habilitar la verificació de Digest de les còpies de seguretat</string>
+		<string name="restore_enable_digest_chk" version="2">Habilitar la verificació de Digest de les còpies de seguretat</string>
+		<string name="decrypt_data_vold_os_missing">Falten fitxers necessaris per a la desxifratge de vold: {1}</string>
+		<string name="generating_digest1" version="2">Generant Digest</string>
+		<string name="generating_digest2" version="2"> * Generant Digest...</string>
+		<string name="digest_created" version="2"> * Digest creat.</string>
+		<string name="digest_error" version="2"> * Error de Digest!</string>
+		<string name="digest_compute_error" version="2"> * Error en calcular el Digest.</string>
+		<string name="verifying_digest" version="2">Verificant Digest</string>
+		<string name="skip_digest" version="2">Ometent la comprovació de Digest segons la configuració de l'usuari.</string>
+		<string name="decrypt_success_nodev">Les dades s'han desxifrat correctament</string>
+		<string name="no_digest_found" version="2">No s'ha trobat cap fitxer Digest per a '{1}'. Si us plau, desmarqueu l'opció Habilitar verificació de Digest per restaurar.</string>
+		<string name="digest_fail_match" version="2">El Digest no coincideix amb '{1}'.</string>
+		<string name="digest_matched" version="2">El Digest coincideix amb '{1}'.</string>
+		<string name="digest_check_skip" version="2">L'omissió de la comprovació de Digest està activada</string>
+		<string name="digest_off" version="2">La generació de Digest està desactivada</string>
+		<string name="invalid_zip_format">Format de fitxer zip no vàlid!</string>
+		<string name="check_for_digest" version="2">Comprovant fitxer Digest...</string>
+		<string name="no_digest" version="2">Ometent la comprovació de Digest: no s'ha trobat cap fitxer Digest</string>
+		<string name="digest_fail" version="2">El Digest no coincideix</string>
+		<string name="digest_match" version="2">El Digest coincideix</string>
+		<string name="password">Contrasenya</string>
+		<string name="boot_slot">Ranura d'arrencada</string>
+		<string name="boot_slot_a">RANURA A</string>
+		<string name="boot_slot_use_a">CANVIAR A RANURA A</string>
+		<string name="boot_slot_b">RANURA B</string>
+		<string name="boot_slot_use_b">CANVIAR A RANURA B</string>
+		<string name="changing_boot_slot">Canviant ranura d'arrencada</string>
+		<string name="changing_boot_slot_complete">Canvi d'ranura d'arrencada completat</string>
+		<string name="unable_set_boot_slot">Error en canviar l'ranura d'arrencada del cargador d'arrencada a {1}</string>
+		<string name="flash_ab_inactive">Flashing A/B zip a l'ranura inactiva: {1}</string>
+		<string name="flash_ab_reboot">Per flashejar zips addicionals, si us plau reinicia la recuperació per canviar a l'ranura actualitzada.</string>
+		<string name="flash_ab_both_slots">Flashes a ambdues ranures</string>
+		<string name="ozip_decrypt_decryption">Iniciant Desxifratge Ozip...</string>
+		<string name="ozip_decrypt_finish">Desxifratge Ozip Finalitzat!</string>
+		<string name="backup_storage_warning">Les còpies de seguretat de {1} no inclouen cap fitxer a l'emmagatzematge intern com ara fotos o descàrregues.</string>
+		<string name="sha2_chk">Utilitza SHA2 per a hash</string>
+		<string name="disabled">Deshabilitat</string>
+		<string name="enabled">Habilitat</string>
+		<string name="keep_storage_data">Ometre esborrat en restaurar Emmagatzematge</string>
+		<string name="zip_compatible_err">Error de compatibilitat de Treble del zip!</string>
+
+		<string name="unmount_sys_install">Desmuntar Sistema abans d'instalar un ZIP</string>
+		<string name="unmount_system">Desmuntant Sistema...</string>
+		<string name="unmount_system_err">Error en desmuntar Sistema</string>		
+
+		<string name="unmount_vendor_install">Desmuntar Venedor abans d'instalar un ZIP</string>
+		<string name="unmount_vendor">Desmuntant Venedor...</string>
+		<string name="unmount_vendor_err">Error en desmuntar Venedor</string>	
+			
+		<string name="fbe_wipe_msg">AVÍS: {1} esborrat. El dispositiu FBE hauria d'arrencar a Android i no a Recovery per establir la política inicial FBE després de l'esborrat.</string>		
+		<string name="fastboot_button">Fastboot</string>
+		<string name="enable_adb">Habilitar ADB</string>
+		<string name="enable_fastboot">Habilitar Fastboot</string>
+		<string name="fastboot_console_msg">S'ha entrat al mode Fastboot...</string>
+		<string name="data_media_fbe_msg">OrangeFox no recrearà /data/media en un dispositiu FBE. Si us plau reinicia al teu rom per crear /data/media</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">Verificant Signatura del Paquet Incremental...</string>
+		<string name="fox_incremental_ota_compatibility_false">El paquet incremental no és compatible amb aquesta ROM!</string>
+		<string name="fox_incremental_ota_compatibility_true">El paquet incremental és compatible</string>
+		<string name="fox_incremental_ota_status_enabled">Suport de l'estat del paquet incremental: Habilitat</string>
+		<string name="fox_incremental_ota_status_disabled">Suport de l'estat del paquet incremental: Deshabilitat</string>
+		<string name="fox_incremental_package_detected">Paquet incremental detectat '{1}'</string>
+		<string name="fox_survival_does_not_exist">La supervivència OTA no existeix! Si us plau flasheja una ROM completa primer!</string>
+		<string name="fox_install_detecting">Detecció del Paquet Actual</string>
+		<string name="fox_install_standard_detected">- Paquet Estàndard Detectat</string>
+		<string name="fox_install_miui_detected">- Paquet d'Actualització MIUI Detectat</string>
+		<string name="fox_zip_have_bootloader">Advertència: S'ha detectat la reinstal·lació del cargador d'arrencada que va ser cridat per '{1}'.</string>
+		<string name="fox_no_space_ota_survival">No hi ha prou espai lliure a l'emmagatzematge intern per crear la supervivència OTA.</string>
+		<string name="fox_incremental_ota_res">OTA_RES -- fet!</string>
+		<string name="fox_incremental_ota_res_run">Executant el procés OTA_RES...</string>
+		<string name="fox_incremental_ota_bak_run">Executant el procés OTA_BAK...</string>
+		<string name="fox_incremental_ota_bak">OTA_BAK -- fet!</string>
+		<string name="fox_internal_fatal_i1">OrangeFox: ERROR FATAL! No podeu fer una còpia de seguretat de l'emmagatzematge intern sobre si mateix!</string>
+		<string name="fox_internal_fatal_i2">Heu de canviar la destinació de la còpia de seguretat a MicroSD/USB-OTG.</string>
+		<string name="fox_internal_q1">OrangeFox - Emmagatzematge Intern - tingues cura!</string>
+
+		<string name="copy_kernel_log">S'ha copiat el registre del nucli a {1}</string>
+		<string name="copy_logcat">S'ha copiat el logcat a {1}</string>
+
+		<string name="of_run_process">Iniciant el procés '{1}'</string>
+		<string name="of_run_process_fail">No s'ha pogut finalitzar el procés '{1}'</string>
+		<string name="of_run_process_done">Procés '{1}' finalitzat</string>
+		<string name="of_dm_verity">DM-Verity aplicat amb èxit</string>
+		<string name="of_dm_verity_off">DM-Verity no està habilitat</string>
+		<string name="of_encryption">Xifratge forçat aplicat amb èxit</string>
+		<string name="of_encryption_off">El xifratge forçat no està habilitat</string>
+		<string name="of_fstab">Fstab detectat: '{1}'</string>
+
+		<string name="install_remlatest">Eliminar l'Últim</string>
+		
+		<string name="backups_remove_all">Totes les còpies de seguretat</string>
+		<string name="backups_remove">Eliminar</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">Desempaquetar</string>
+		<string name="repack">Reempaquetar</string>
+
+		<string name="fox_save_load_aromafm_config_chk">Guardar/carregar configuracions d'AromaFM</string>
+		<string name="search_help">Cercar fitxers i carpetes...</string>
+		
+		<string name="reboot_to_take_effect">Reinicia perquè els canvis tinguin efecte</string>
+		<string name="fox_modules_hdr">Complements de Fox</string>
+		<string name="fox_modules_inst">Instal·lar complement</string>
+		<string name="backup_short_hdr">Nova Còpia de Seguretat</string>
+		<string name="backups_wat">On són les còpies de seguretat?</string>
+		
+		<string name="module_install">Instal·la</string>
+		<string name="module_uninstall">Desinstal·lar</string>
+		<string name="remove_of_files">Eliminar fitxers d'OrangeFox</string>
+		<string name="module_initd">Habilitar suport per a init.d</string>
+		<string name="module_of_set">Fer còpia de seguretat de la Configuració d'OrangeFox</string>
+		<string name="module_cam">Habilitar Camera2API</string>
+		<string name="module_pass">Eliminar contrasenya</string>
+		<string name="module_remove_survival">Eliminar tots els scripts de supervivència</string>
+		<string name="fox_files_not_exist_1">El fitxer no existeix!</string>
+		<string name="fox_files_not_exist_2">Si us plau, torna a flashejar la recuperació</string>
+		<string name="fox_files_not_exist_3">utilitzant el zip d'instal·lació.</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">Mostrar menys detalls mentre s'executen actualitzacions OTA</string>
+		<string name="fm_icons_simple">Fer les icones de fitxers més grans</string>
+		<string name="theme_engine_update">Aplicar canvis i recarregar?</string>
+		<string name="theme_engine_reset">Restablir tema i recarregar?</string>
+		<string name="apply_btn">Aplicar</string>
+		<string name="theme_hdr">Tema</string>
+		
+		<string name="font_small">Petit</string>
+		<string name="font_norm">Normal</string>
+		<string name="font_big">Gran</string>
+		<string name="font_size">Mida de la lletra</string>
+		<string name="cust_autoapply">Aplicar tema sense confirmació</string>
+		<string name="cust_expand_list">Expandeix llistes automàticament</string>
+		
+		<string name="status_battery_style">Estil de la bateria</string>
+		<string name="status_battery_circle">Cercle</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">Posició del rellotge</string>
+		<string name="status_clock_left">Esquerra</string>
+		<string name="status_clock_center">Centre</string>
+		<string name="status_clock_right">Dreta</string>
+		<string name="dark_title">Fer el títol més fosc</string>
+		<string name="separate_status">Fer la barra d'estat més fosca</string>
+		<string name="noshadow_title">Mostrar ombra de la barra d'estat</string>
+		<string name="hide_notch">Amagar la muesca</string>
+		<!-- NavBar -->
+		<string name="navbar_title">Barra de Navegació</string>
+		<string name="navbar_onscreen">Habilitar Barra de Navegació</string>
+		<string name="show_slideout">Mostrar botó de consola</string>
+		<string name="dark_nav">Fosc</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">Teclat</string>
+		<string name="keyboard_newstyle">Estil actualitzat</string>
+		<string name="keyboard_nums">Fila de números</string>
+		<string name="key_swipe">Lliscar al teclat per esborrar tot</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">Desbloquejar</string>
+		<string name="lockscreen_title">Pantalla de bloqueig</string>
+		<string name="lockscreen_style">Estil de la pantalla de bloqueig</string>
+		<string name="lockscreen_clock">Rellotge</string>
+		<string name="lockscreen_icon">Icona</string>
+		<string name="lockscreen_btn">Reemplaçar el control lliscant amb un botó</string>
+		<string name="lockscreen_info">Mostrar informació de la bateria i la CPU</string>
+		<string name="lockscreen_quicklock">Tocar la icona de bloqueig bloqueja la pantalla</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">Installant OTA...</string>
+		<string name="ota_simple_title">Actualitzant...</string>
+		<string name="ota_simple_log_btn">Registre</string>
+
+		<string name="battery">Bateria</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">Clau de gest</string>
+		<string name="pass_classic">Contrasenya de text</string>
+		<string name="pass_dis">Deshabilitar contrasenya</string>
+		<string name="pass_pin">Codi PIN</string>
+		
+		<string name="locked_info_1">La recuperació està protegida contra</string>
+		<string name="locked_info_2">accés no autoritzat.</string>
+		<string name="locked_info_3">Per utilitzar les funcions principals de la recuperació</string>
+		<string name="locked_info_4">primer heu d'introduir la vostra contrasenya.</string>
+		<string name="locked_info_4_gk">primer heu de dibuixar la vostra clau de gest.</string>
+		
+		<string name="new_pass_info_1">Introduïu una nova contrasenya per a</string>
+		<string name="new_pass_info_1_gk">Dibuixa una nova clau de gest per protegir</string>
+		<string name="new_pass_info_2">OrangeFox contra accés no autoritzat</string>
+		<string name="new_pass_info_3">accés.</string>
+		<string name="new_pass_info_4">Heu d'introduir la vostra contrasenya dues vegades.</string>
+		<string name="new_pass_info_4_gk">Has de dibuixar la clau de gest dues vegades.</string>
+		<string name="new_pass_info_4_2">Introduueix la teva contrasenya de nou.</string>
+		<string name="new_pass_info_4_2_gk">Dibuixa la clau de gest de nou.</string>
+		
+		<string name="pass_page_block">Mètode de bloqueig actual</string>
+		<string name="pass_page_block_inf1">Pots dormir millor sabent</string>
+		<string name="pass_page_block_inf2">que estàs protegit.</string>
+		<string name="pass_page_select">Selecciona el tipus de contrasenya</string>
+		
+		<!-- Utilities -->
+		<string name="more">Més...</string>
+		<string name="hide">Amaga</string>
+		<string name="part_menu_hdr">Gestiona les particions</string>
+		<string name="run_adb_startup">Executa ADB a l'inici</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">Actiu</string>
+		<string name="mm_module_mount">Omet el muntatge</string>
+		<string name="mm_modules">Mòduls</string>
+		<string name="mm_ver">Versió de Magisk</string>
+		<string name="mm_mod_ver">Versió del mòdul</string>
+		<string name="mm_remove">Elimina el mòdul al proper inici</string>
+		<string name="mm_remove_hint">Reinicia perquè els canvis tinguin efecte</string>
+		<string name="mm_remove_reboot">Reinicia</string>
+		<string name="magisk_not_found">No s'ha trobat Magisk!</string>
+		<string name="magisk_not_found_1">Vols anar als Addons de Fox</string>
+		<string name="magisk_not_found_2">i instal·lar Magisk precompilat?</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">Mòduls d'APatch</string>
+		<string name="ap_ver">Versió d'APatch</string>
+		<string name="ksu_modules">Mòduls de KernelSU</string>
+		<string name="ksu_ver">Versió de KernelSU</string>
+
+		<string name="modules_not_found">No s'han trobat mòduls!</string>
+		<string name="modules_not_found_1">Els mòduls o no estan instal·lats o no es poden muntar!</string>
+		<string name="modules_not_found_2">Els mòduls o no estan instal·lats o no es poden muntar!</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">Configuració d'OTA</string>
+		<string name="fox_miui_ota_on">Habilita OTA</string>
+		<string name="fox_ota_on">Habilita OTA</string>
+		<string name="fox_patch_rom">Corregeix ROM</string>
+		<string name="fox_ota_lite">OTA &amp; ROM</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">Mantenidor</string>
+		<string name="abt_fd">Creador i dissenyador de temes</string>
+		<string name="abt_bork">CEO, Lloc web i UI</string>
+		<string name="abt_dj">Mantenidor del sistema de compilació i llegenda</string>
+		<string name="abt_front">Desenvolupador frontend</string>
+		<string name="abt_back">Desenvolupador backend</string>
+		<string name="abt_device">Dispositiu</string>
+		<string name="version_twrp">Versió d'OrangeFox</string>
+		<string name="build_type">Tipus de compilació</string>
+		<string name="abt_credits">Crèdits</string>
+		<string name="abt_trans">Traductors</string>
+		<string name="abt_changes">Registre de canvis</string>
+		<string name="abt_main_shrt">Mantenidor</string>
+		<string name="welcome_msg">Benvingut a OrangeFox!</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">Benvingut a OrangeFox Recovery!</string>
+		<string name="fox_release">[Versió]   : {1}</string>
+		<string name="fox_variant">[Variant]   : {1}</string>
+		<string name="fox_codebase">[Base de codi]  : {1}, {2}</string>
+		<string name="fox_settings">[Configuració]  : {1}</string>
+		<string name="fox_misc">[Miscel·lània]      : {1}</string>
+		<string name="fox_build_date">[Data de compilació]: {1}</string>
+		<string name="fox_build_type_unofficial">[Tipus de compilació]: No oficial. No hi ha suport oficial per a compilacions no oficials</string>
+		<string name="fox_build_type">[Tipus de compilació]: {1}</string>
+		<string name="fox_support">[Suport]   : {1}</string>
+		<string name="fox_nosupport">[Suport]   : No hi ha suport oficial per a compilacions desconegudes</string>
+		<string name="fox_websites">Lloc web d'OrangeFox:</string>
+		<string name="fox_downloads">[Descàrregues] : {1}</string>
+		<string name="fox_faq">[Guies/Preguntes freqüents]: {1}</string>
+		<string name="fox_encrypted">* L'emmagatzematge està xifrat</string>
+		<string name="fox_unencrypted">* L'emmagatzematge no està xifrat</string>
+		<string name="fox_display">* Pantalla:    {1}</string>
+		<string name="fox_device">* Dispositiu:     {1} ({2})</string>
+		<string name="fox_platform">* Plataforma:   {1}</string>
+		<string name="fox_dynamic_yes">* Dinàmic:    sí</string>
+		<string name="fox_dynamic_no">* Dinàmic:    no</string>
+		<string name="fox_boot_slot">* Ranura d'arrencada:  {1}</string>
+		<string name="fox_vab_yes">* Virtual_AB: sí</string>
+		<string name="fox_vab_no">* Virtual_AB: no</string>
+		<string name="fox_kernel">* Nucleu:     {1}</string>
+		<string name="fox_miui_rom">* ROM MIUI (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* ROM personalitzada (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* Empremta digital: {1}</string>
+		<string name="fox_no_rom">* No hi ha ROM.</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">Enllaç a la carpeta</string>
+		<string name="symlink_file_name">Enllaç al fitxer</string>
+		<string name="symlink_broken_name">Enllaç trencat</string>
+		<string name="symlink_folder">Obre la carpeta real</string>
+		<string name="symlink_file">Obre el fitxer real</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">Mostra els fitxers ocults</string>
+		<string name="files_auto_open">Detecta automàticament el tipus de fitxer</string>
+		<string name="file_read">Llegint el fitxer: {1}</string>
+		<string name="file_read_error">No es pot obrir el fitxer!</string>
+		<string name="file_read_error_size">El fitxer és més gran que 1.5MB!</string>
+		<string name="file_read_error_bin">No es pot llegir el fitxer binari!</string>
+		<string name="subs_wipe">Esborra les superposicions de Substratum</string>
+		<string name="sort_ex_all">Tots els fitxers</string>
+		<string name="sort_ex_img">Fitxers IMG</string>
+		<string name="sort_ex_zip">Fitxers ZIP</string>
+		<string name="aroma_help">Torna a prémer per a iniciar AromaFM...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">Emmagatzematge muntat</string>
+		<string name="backups_rw_error_2">només de lectura!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">Aplicacions</string>
+		<string name="appmgr_title">Gestor d'aplicacions</string>
+
+		<!-- performance -->
+		<string name="perf_title">Rendiment</string>
+		<string name="perf_conf_mode">Mode de rendiment de recuperació</string>
+		<string name="perf_conf_balance">Equilibrat</string>
+		<string name="perf_conf_high">Alt rendiment</string>
+		<string name="perf_conf_batt">Estalvi d'energia</string>
+
+		<string name="fox_led_title">Configuració LED</string>
+		<string name="fox_use_green_led">Fer servir el color de led verd</string>
+		<string name="fox_boot_fastcharge">Forçar càrrega ràpida</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">Estàs llest per a rebre actualitzacions!</string>
+		<string name="fox_ota_msg_custom">Activat el mode ROM personalitzada</string>
+		<string name="fox_ota_msg_reflash">Si us plau, flasheja la ROM completa!</string>
+		<string name="fox_advanced_stock_recovery">Desactivació de la recuperació de fàbrica agressiva</string>
+		<string name="fox_support_miui_ota_chk">Suport OTA</string>
+		<string name="fox_include_system_survival_chk">Inclou el sistema a la supervivència a les OTA</string>
+		<string name="fox_verify_incremental_ota_signature_chk">Verificació de signatura de l'OTA incremental</string>
+		<string name="fox_dmverity_chk">Desactiva DM-Verity</string>
+		<string name="fox_forced_encryption_chk">Desactiva el xifrat forçós</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">Evita el reinici automàtic després d'instal·lar OTA</string>
+		<string name="of_ota_reboot_disabled">Actualització OTA completada. Has desactivat el reinici automàtic. Retornant-te el control.</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">Nota: Formata Dades mogut a</string>
+		<string name="wipe_format_moved_info2">Pàgina de Gestió de Particions.</string>
+
+		<!-- R11 -->
+		<string name="gst_title">Navegació per gestos</string>
+		<string name="gst_enable_all">Habilita gestos</string>
+		<string name="gst_back">Gest de retorn</string>
+		<string name="gst_back_left">Des de l'esquerra</string>
+		<string name="gst_back_right">Des de la dreta</string>
+		<string name="gst_console_enable">Lliscar des de la barra d'estat per obrir la consola</string>
+		<string name="gst_navbar_error">Algunes configuracions estan amagades.</string>
+		<string name="gst_navbar_error_2">Desactiva els gestos per mostrar.</string>
+
+		<string name="in">a</string>
+		<string name="con_digest_start">[INICI DE LA CREACIÓ DEL DIGEST]</string>
+		<string name="con_digest_error">La llista de particions està buida!</string>
+		<string name="con_digest_cancel">Cancel·lant...</string>
+		<string name="con_digest_complete">[CREACIÓ DEL DIGEST COMPLETADA EN {1} SEGONS]</string>
+		<string name="digest_btn">Crea Digest</string>
+		<string name="digest_creating">Creant Digest...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu fitxers,</string>
+		<string name="size_progress_v2">%llu/%llu MB (%i%%)</string>
+
+		<string name="navpan_new_design">Nou disseny del panell de navegació</string>
+		<string name="full_partition_list">Mostra particions addicionals per fer còpies de seguretat</string>
+
+		<string name="data_decrypted_reload">Desxifrat amb èxit!</string>
+
+		<string name="install_queue_magisk_btn">Afegeix Magisk</string>
+		<string name="hint_ffiles_missing">Has perdut alguna cosa?</string>
+		<string name="hint_ffiles_missing1">Addons de Fox no disponibles</string>
+		<string name="hint_ffiles_missing2">OrangeFox no pot accedir als seus fitxers.</string>
+		<string name="hint_ffiles_missing3">Prova de muntar /data o reinstal·lar</string>
+		<string name="hint_ffiles_missing4">OrangeFox si /data va ser esborrat.</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">Amaga la pista</string>
+
+		<string name="info_dir_empty">La carpeta està buida</string>
+		<string name="info_dir_empty_hidden">Alguns fitxers estan amagats</string>
+
+		<string name="navbar_style_line">Línia</string>
+		<string name="accent_in_titles">Color del text d'accent al títol</string>
+
+		<string name="backup_quick_info1">Aquestes particions es seleccionaran</string>
+		<string name="backup_quick_info2">després de prémer el botó "Còpia de seguretat ràpida"</string>
+		<string name="mbyte">MB</string>
+		<string name="mbytesec">MB/s</string>
+		<string name="backup_av_files">Fitxer</string>
+		<string name="backup_av_img">Imatge</string>
+		<string name="backup_exp_size">Mida esperada</string>
+		<string name="time_minute">min.</string>
+		<string name="backup_av">Temps mitjà</string>
+		<string name="backup_av1">Vols restablir els valors de velocitat</string>
+		<string name="backup_av2">als valors per defecte? Temps mitjà</string>
+		<string name="backup_av3">les prediccions seran menys precises.</string>
+
+		<string name="cust_line_white">Utilitza la línia blanca</string>
+		<string name="cust_line_gray">Utilitza la línia grisa</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">Canvia d'ranures</string>
+		<string name="slot_switch_a">Canvia a l'ranura A</string>
+		<string name="slot_switch_b">Canvia a l'ranura B</string>
+		<string name="slot_active_a">L'ranura A està activa</string>
+		<string name="slot_active_b">L'ranura B està activa</string>
+
+		<string name="theme_font_primary_tab">Primari</string>
+		<string name="theme_font_secondary_tab">Secundari</string>
+		<string name="theme_font_size_tab">Mida</string>
+		<string name="theme_font_select">Selecciona la font</string>
+
+		<string name="theme_fweight">Pes de la font</string>
+		<string name="theme_fweight_norm">Per defecte</string>
+		<string name="theme_fweight_reg">Regular</string>
+		<string name="theme_fweight_med">Mitjà</string>
+
+		<string name="swipe_up_to_unlock">Lliscar cap amunt des de la part inferior de la pantalla per desbloquejar</string>
+
+		<string name="spl_background">Color de fons</string>
+		<string name="spl_logo">Logotip</string>
+		<string name="spl_white">Blanc</string>
+		<string name="spl_black">Negre</string>
+		<string name="spl_night">Nit</string>
+		<string name="spl_orange">Taronja</string>
+		<string name="spl_accent">Accent</string>
+		<string name="spl_image">Imatge de fons</string>
+		<string name="spl_del_img">Elimina la imatge</string>
+		<string name="hidden">Amagat</string>
+		<string name="spl_ofr">Etiqueta "OrangeFox Recovery"</string>
+
+		<string name="batch_selected">{0} seleccionat</string>
+		<string name="batch_title">Accions per lots</string>
+		<string name="batch_files_folders">Fitxers i carpetes</string>
+
+		<string name="fm_action_folder">Accions en aquesta carpeta</string>
+
+		<string name="tap_to_generate">Toca aquí per calcular</string>
+		<string name="calc_checksum">Calculant...</string>
+		<string name="cant_access_data">No es pot accedir a les dades. Munta la partició de dades manualment.</string>
+
+		<string name="backup_pass_wait">Canviant la contrasenya...</string>
+		<string name="pass_encrypt_error1">No pots canviar la contrasenya</string>
+		<string name="pass_encrypt_error2">quan les dades estan xifrades!</string>
+
+		<string name="backup_encrypt_data_info">Només la partició de dades es xifrarà</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">Instal·lar Ramdisk</string>
+		<string name="img_type">Tipus d'imatge</string>
+		<string name="img_select_type">Selecciona el tipus d'imatge</string>
+		<string name="repack_overwrite_warning">Si el dispositiu estava prèviament arrelat, llavors l'arrel s'ha sobreescrit i haurà de ser reinstal·lat.</string>		
+
+		<string name="repack_backup_first">Fes una còpia de seguretat de la imatge existent primer</string>
+
+		<string name="unpack_error">Error en descomprimir la imatge.</string>
+		<string name="repack_error">Error en recomprimir la imatge.</string>
+		<string name="unpacking_image">Descomprimint {1}...</string>
+		<string name="repacking_image">Recomprimint {1}...</string>
+		
+		<string name="fix_recovery_loop">Corregeix el bucle d'arrencada de la recuperació</string>
+		<string name="fixing_recovery_loop">Corregint el bucle d'arrencada de la recuperació...</string>
+		<string name="fix_recovery_loop_complete">Correcció del bucle d'arrencada de la recuperació completada</string>
+		<string name="fixing_recovery_loop_patch">Aplicant parxes al nucli...</string>
+		<string name="fix_recovery_loop_patch_error">Error en aplicar parxes al nucli.</string>
+		<string name="try_app">Prova la nostra aplicació!</string>
+		<string name="try_app_2">Comprova les actualitzacions de la recuperació mitjançant la nostra</string>
+		<string name="try_app_3">nova aplicació! </string>
+		<string name="try_app_4">Enllaç de descàrrega:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">Edita el fitxer en nano</string>
+		<string name="fm_open_terminal_btn">Obre el terminal aquí</string>
+		<string name="batch_progress">Progrés</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">Configuració personalitzada per a %fox_compatibility_fox_device%</string>
+		<string name="custom_settings_title">Configuració personalitzada</string>
+		<string name="tap_to_show">Toca per mostrar</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">Disparador del Partit de Rescat d'Android! Possibles solucions? O bé:</string>
+		<string name="rescue_party1"> 1. Esborra les memòries càixe, i/o</string>
+		<string name="rescue_party2"> 2. Formata les dades, i/o</string>
+		<string name="rescue_party3"> 3. Fes una instal·lació neta del teu ROM.</string>
+		<string name="rescue_party4">El problema reportat és:</string>
+
+		<string name="restore_system_context">No es pot obtenir el context per defecte per a {1} -- Android podria no arrencar.</string>
+		
+		<string name="batch_progress">Progrés</string>
+		<string name="recovery_busy">La recuperació està ocupada</string>
+		<string name="status_delimeter">Delimitador de la barra d'estat</string>
+		<string name="status_delimeter_shadow">Ombra</string>
+
+		<string name="mount_vab_partitions">Els dispositius en super podrien no muntar-se fins després de reiniciar la recuperació.</string>
+		<string name="merges_snapshots">Fusiona les instantànies</string>
+		<string name="merging_snapshots">Fusionant les instantànies...</string>
+		<string name="merging_snapshots_complete">Instantànies fusionades</string>
+		
+		<string name="unmap_super_devices">Desmuntar dispositius Super</string>
+		<string name="unmapping_super_devices">Desmuntant dispositius Super...</string>
+		<string name="unmap_super_devices_complete">Tots els dispositius Super desmuntats</string>
+
+		<string name="auto_reflashtwrp_chk">Torna a flashejar OrangeFox després de flashejar un ROM</string>
+		<string name="modified_ramdisk_error">els fitxers de ramdisk han estat modificats, no es pot crear un ramdisk per flashejar. fastboot boot OrangeFox i prova aquesta opció de nou o torna a Fitxers i instala el fitxer img com a Ramdisk de Recuperació utilitzant el botó Instal·lar Ramdisk.</string>
+		<string name="create_ramdisk_error">no s'ha pogut crear un ramdisk per flashejar.</string>
+		<string name="reflash_twrp">Flashejar OrangeFox actual</string>
+		<string name="reflashing_twrp">Flashejant OrangeFox...</string>
+		<string name="reflash_twrp_complete">S'ha completat el flasheig d'OrangeFox</string>
+
+		<string name="auto_disable_avb2">Desactiva vbmeta AVB2.0 després de flashejar el ROM</string>
+		<string name="disable_avb2">Desactiva vbmeta AVB2.0</string>
+		<string name="disable_avb2_confirm">Desactivar vbmeta AVB2.0?</string>
+		<string name="disabling_AVB2">Desactivant vbmeta AVB2.0...</string>
+		<string name="disabling_AVB2_complete">vbmeta AVB2.0 està desactivat!</string>
+		<string name="disable_avb2_success_msg">Desactiva vbmeta AVB2.0: processant '{1}' amb èxit.</string>
+		<string name="disable_avb2_fail_msg">Desactiva vbmeta AVB2.0: el procés '{1}' ha fallat!</string>
+
+		<string name="enable_hw_control">Control de la GUI de maquinari</string>
+		<string name="enable_hw_control_1">Això permetrà la navegació a través de</string>
+		<string name="enable_hw_control_2">la interfície utilitzant els botons de volum i d'encesa del maquinari.</string>
+		<string name="enable_hw_control_3">Els gestos es desactivaran.</string>
+		<string name="enable_hw_control_4">Continuar? Continuar?</string>
+	</resources>
+</language>

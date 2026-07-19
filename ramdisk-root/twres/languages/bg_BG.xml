@@ -1,0 +1,1256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>Aнглийски</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">System</string>
+		<string name="system_image">Системен образ</string>
+		<string name="vendor">Vendor</string>
+		<string name="vendor_image">Вендор</string>
+		<string name="boot">Boot</string>
+		<string name="recovery">Recovery</string>
+		<string name="cache">Cache</string>
+		<string name="data">Памет на устр.</string>
+		<string name="sdcard">SD карта</string>
+		<string name="internal">Вътрешна памет</string>
+		<string name="microsd">Micro SD карта</string>
+		<string name="usb_storage">USB-Storage</string>
+		<string name="android_secure">Ниво на сигурност на Андроид</string>
+		<string name="dalvik">Dalvik / ART кеш</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">SD-EXT</string>
+		<string name="adopted_data">Присъединени данни</string>
+		<string name="adopted_storage">Присъединено хранилище</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">OrangeFox %fox_actual_build%</string>
+		<string name="cpu_temp">Процесор: %tw_cpu_temp% &#xB0;С</string>
+		<string name="sort_by_name_asc">Име</string>
+		<string name="sort_by_date_asc">Дата</string>
+		<string name="sort_by_size_asc">Размер</string>
+		<string name="sort_by_name_desc">Име</string>
+		<string name="sort_by_date_desc">Дата</string>
+		<string name="sort_by_size_desc">Размер</string>
+		<string name="install_btn">Инсталиране</string>
+		<string name="wipe_btn">Изтриване</string>
+		<string name="backup_btn">Резервни копия</string>
+		<string name="restore_btn">Възстановяване</string>
+		<string name="mount_btn">Монтиране</string>
+		<string name="file_manager_btn">Файлове</string>
+		<string name="advanced_btn">Разширени</string>
+		<string name="reboot_btn">Рестарт</string>
+		<string name="copy_log_btn">Копирай лог файловете към SD</string>
+		<string name="install_zip_hdr">Инсталиране на ZIP</string>
+		<string name="install_zip_btn">Инсталиране на ZIP</string>
+		<string name="install_image_hdr">Инсталиране на изображение</string>
+		<string name="install_image_btn">Инсталиране на изображение</string>
+		<string name="install_select_file_hdr">Изберете файл</string>
+		<string name="install_select_file_btn">Изберете файл</string>
+		<string name="adb_sideload_btn">ADB &amp; Sideload</string>
+		<string name="select_storage_hdr">Избери място за съхранение</string>
+		<string name="select_storage_btn">Избери място за съхранение</string>
+		<string name="queue_hdr">Чакащи за инсталиране</string>
+		<string name="raised_clearqueue_btn">Изчисти опашката</string>
+		<string name="raised_viewqueue_btn">Преглед на опашката</string>
+		<string name="zip_queue_count">%tw_zip_queue_count% от максимум 10 файла, чакащи за инсталиране</string>
+		<string name="folder">Директория</string>
+		<string name="file">Файл</string>
+		<string name="zip_sig_chk">Проверка на ZIP подпис</string>
+		<string name="inject_twrp_chk">Инжектирай OrangeFox след инсталация</string>
+		<string name="install_reboot_chk">Рестартирай след завършването на инсталацията</string>
+		<string name="options_hdr">Настройки</string>
+		<string name="zip_queue">Чакащи за инсталиране</string>
+		<string name="install_zip_count_hdr">Инсталиране на файл %tw_zip_index% от %tw_zip_queue_count%</string>
+		<string name="working">Обработка...</string>
+		<string name="failed">Грешка</string>
+		<string name="successful">Успешно</string>
+		<string name="wipe_cache_btn">Изчисти кеша</string>
+		<string name="reboot_system_btn">Рестартирай към системата</string>
+		<string name="reboot_recovery_btn">Рестартирай към recovery</string>
+		<string name="install_sel_target">Изберете целеви дял</string>
+		<string name="flash_image_select">Дял</string>
+		<string name="flashing_image">Записване на изображение...</string>
+		<string name="image_flashed">Изображението е записано</string>
+		<string name="wipe_cache_dalvik_confirm">Изтриване на Cache &amp; Dalvik</string>
+		<string name="wipe_dalvik_confirm">Изчисти Dalvik</string>
+		<string name="wiping_cache_dalvik">Изтриване на Cache &amp; Dalvik...</string>
+		<string name="wipe_cache_dalvik_complete">Изтриването на Cache &amp; Dalvik приключи</string>
+		<string name="cache_dalvik_done">Изтриването на Cache &amp; Dalvik приключи</string>
+		<string name="swipe_wipe">Прекарайте пръст, за изтриване</string>
+		<string name="rebooting">Рестартиране...</string>
+		<string name="swipe_reboot">Прекарайте пръст, за да рестартирате</string>
+		<string name="confirm_action">Потвърдете действието</string>
+		<string name="cancel_btn">Отказ</string>
+		<string name="wipe_hdr">Изтриване</string>
+		<string name="factory_reset_hdr">Възстановяване на фабричните настройки</string>
+		<string name="factory_reset1">Изтриване на Data, Cache, и Dalvik</string>
+		<string name="factory_reset2">(без вътрешното хранилище)</string>
+		<string name="factory_reset3">В повечето случаи това е</string>
+		<string name="factory_reset4">всичко което е необходимо да изтриете.</string>
+		<string name="factory_reset5">(без включване на потребители/екран за заключване)</string>
+		<string name="factory_resetting">Фабрично нулиране...</string>
+		<string name="advanced_wipe_hdr">Разширено изтриване</string>
+		<string name="advanced_wipe_btn">Разширено изтриване</string>
+		<string name="wipe_enc_confirm">Премахване на криптирането от Data</string>
+		<string name="formatting_data">Форматиране на Data...</string>
+		<string name="swipe_format_data">Плъзнете пръст, за да форматирате Data</string>
+		<string name="factory_reset_complete">Възстановяването на фабричните настройки е завършено</string>
+		<string name="sel_part_hdr">Изберете Дялове</string>
+		<string name="wipe_sel_confirm">Изтриване на избраните дялове</string>
+		<string name="wiping_part">Изтриване на дяловете...</string>
+		<string name="wipe_complete">Изтриването завърши</string>
+		<string name="format_data_hdr">Форматиране на Data</string>
+		<string name="format_data_btn">Форматиране на Data</string>
+		<string name="format_data_ptr1">Форматирането на дяла Data ще премахне всички Ваши приложения,</string>
+		<string name="format_data_ptr2">резервни копия, снимки, видеоклипове, медии и</string>
+		<string name="format_data_ptr3">ще премахне криптирането на вътрешното хранилище.</string>
+		<string name="format_data_adopted">Включително и присъединеното хранилище</string>
+		<string name="format_data_undo">Това действие е необратимо.</string>
+		<string name="format_data_complete">Форматирането на Data приключи</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">Въведете "yes", за да потвърдите.</string>
+		<string name="part_opt_hdr">Информация за дяла</string>
+		<string name="file_sys_opt">Опции за дял</string>
+		<string name="part_mount_point">Точка на монтиране</string>
+		<string name="part_curr_fs">Файлова система</string>
+		<string name="part_present">Присъства</string>
+		<string name="part_removable">Сменяем</string>
+		<string name="part_yes">Да</string>
+		<string name="part_no">Не</string>
+		<string name="part_size">Размер</string>
+		<string name="part_used">Използвани</string>
+		<string name="part_free">Свободно</string>
+		<string name="part_backup_size">Размер на резервното копие</string>
+		<string name="resize_btn">Преоразмери FS</string>
+		<string name="resize_confirm">Преоразмери дяла</string>
+		<string name="resizing">Преоразмеряване...</string>
+		<string name="resize_complete">Преоразмеряването е завършено</string>
+		<string name="swipe_resize">Плъзнете пръст, за преоразмеряване</string>
+		<string name="repair_btn">Поправи FS</string>
+		<string name="repair_confirm">Поправи дяла</string>
+		<string name="repairing">Поправяне...</string>
+		<string name="repair_complete">Поправянето завърши</string>
+		<string name="swipe_repair">Плъзнете за поправяне</string>
+		<string name="change_fs_btn">Смени FS</string>
+		<string name="change_fs_warn1">Възможно е някои ROMs или ядра да не поддържат</string>
+		<string name="change_fs_warn2">някои файлови системи. Продължете с повишено внимание!</string>
+		<string name="change_fs_confirm">Смени FS към</string>
+		<string name="formatting">Форматиране...</string>
+		<string name="format_complete">Форматирането приключи</string>
+		<string name="swipe_change_fs">Плъзнете пръст, за да приложитеж промените</string>
+		<string name="back_btn">Назад</string>
+		<string name="wipe_enc_btn">Изтрий криптирането</string>
+		<string name="swipe_factory_reset">Плъзнете пръст за възстановяване на фабричните настройки</string>
+		<string name="backup_hdr">Резервно копие</string>
+		<string name="encryption_hdr">Активирай криптирането</string>
+		<string name="name">Име</string>
+		<string name="enable_backup_comp_chk">Активиране на компресиране</string>
+		<string name="skip_md5_backup_chk">Пропусни генерирането на MD5 при копията</string>
+		<string name="disable_backup_space_chk">Деактивирай проверката на свободно пространство преди копиране</string>
+		<string name="swipe_backup">Плъзнете пръст, за да създадете резервно копие</string>
+		<string name="backup_name_exists">Съществува резервно копие с това име!</string>
+		<string name="pass_not_match">Паролите не съвпадат!</string>
+		<string name="partitions">Дялове</string>
+		<string name="progress">Прогрес</string>
+		<string name="backup_complete">Архивирането завърши</string>
+		<string name="restore_hdr">Резервни копия</string>
+		<string name="restore_backup_hdr">Възстановяване на резервно копие</string>
+		<string name="sel_backup_hdr">Изберете резервно копие</string>
+		<string name="restore_dec_fail">Грешна парола, моля опитайте отново!</string>
+		<string name="del_backup_confirm">Изтриване на резервното копие</string>
+		<string name="del_backup_confirm2">Това действие е необратимо!</string>
+		<string name="deleting_backup">Изтриването на резервно копие...</string>
+		<string name="backup_deleted">Резервното копие е изтрито</string>
+		<string name="swipe_delete">Плъзнете пръст, за да изтриете</string>
+		<string name="restore_backup_date">Дата на резервно копие</string>
+		<string name="restore_md5_chk">Проверете MD5 на резервните файлове</string>
+		<string name="restore_enable_md5_chk">Проверявай MD5 на резервните копия</string>
+		<string name="restore_complete">Възстановяването завърши</string>
+		<string name="swipe_restore">Плъзнете пръст, за Възстановяване</string>
+		<string name="rename_backup_hdr">Преименуване на резервно копие</string>
+		<string name="rename_backup_confirm">Преименуване на резервно копие</string>
+		<string name="rename_backup_confirm2">Това действие е необратимо!</string>
+		<string name="renaming_backup">Преименуване на резервно копие...</string>
+		<string name="rename_backup_complete">Преименуването на резервното копие приключи</string>
+		<string name="swipe_to_rename">Плъзнете пръст, за да преименувате</string>
+		<string name="mount_hdr">Монтиране</string>
+		<string name="mount_sys_ro_chk">Монтиране на системни разделы само за четене</string>
+		<string name="erofs_is_ro_fs">EROFS е файлова система само за четене и не може да бъде монтирана в режим за четене/писане!</string>
+		<string name="decrypt_data_btn">Дешифрирай Data</string>
+		<string name="disable_mtp_btn">Деактивиране на MTP</string>
+		<string name="enable_mtp_btn">Активиране на MTP</string>
+		<string name="usb_storage_hdr">USB хранилище</string>
+		<string name="usb_storage_btn">USB хранилище</string>
+		<string name="usb_stor_mnt1">USB хранилището е монтирано</string>
+		<string name="usb_stor_mnt2">Не забравяйте да премахнете устройството си</string>
+		<string name="usb_stor_mnt3">от вашия компютър, преди да демонтирате!</string>
+		<string name="unmount_btn">Демонтиране</string>
+		<string name="rb_system_btn">System</string>
+		<string name="rb_poweroff_btn">Изключване</string>
+		<string name="rb_recovery_btn">Recovery</string>
+		<string name="rb_bootloader_btn">Bootloader</string>
+		<string name="rb_theme">Тема</string>
+		<string name="rb_download_btn">Изтегли</string>
+		<string name="rb_edl_btn">Edl</string>
+		<string name="turning_off">Изключване...</string>
+		<string name="swipe_power_off">Плъзнете пръст за изключване</string>
+		<string name="sys_ro">Системен дял</string>
+		<string name="sys_ro_hdr">Немодифициран системен дял</string>
+		<string name="sys_rop1">OrangeFox може да остави системния Ви дял</string>
+		<string name="sys_rop2">непроменен за да улесни</string>
+		<string name="sys_rop2a">получаването на официални обновления.</string>
+		<string name="sys_rop3">OrangeFox няма да може да предотврати</string>
+		<string name="sys_rop4">заменянето на OrangeFox от stock ROM.</string>
+		<string name="sys_rop5">ZIP инсталации или ADB операции</string>
+		<string name="sys_rop6">все още могат да променят системния дял.</string>
+		<string name="sys_ro_never_show_chk">Никога не показвай това съобщение повече</string>
+		<string name="sys_ro_keep_ro_btn">Остави Read-Only</string>
+		<string name="swipe_allow_mod">Плъзнете пръст за да разрешите модифициране</string>
+		<string name="settings_hdr">Настройки</string>
+		<string name="settings_cptn">Основни</string>
+		<string name="use_rmrf_chk">Използвайте rm -rf вместо форматиране</string>
+		<string name="use24clock_chk">Използвайте 24 часов часовник</string>
+		<string name="rev_navbar_chk">Обърнато навигационно оформление</string>
+		<string name="simact_chk">Симулирай действия за тестване на темата</string>
+		<string name="simfail_chk">Симулиране на грешка за действия</string>
+		<string name="sel_tz_list">Часова зона</string>
+		<string name="dialog_reset_theme_hdr">Възстанови по подразбиране</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(UTC -11) Самоа, остров Мидуей</string>
+		<string name="utcm10">(UTC -10) Хавай</string>
+		<string name="utcm9">(UTC -9) Аляска</string>
+		<string name="utcm8">(UTC-8) Тихоокеанско време</string>
+		<string name="utcm7">(UTC-7) Планинско време</string>
+		<string name="utcm6">(UTC -6) Централно време</string>
+		<string name="utcm5">(UTC -5) Източно време</string>
+		<string name="utcm4">(UTC -4) Атлантическо време</string>
+		<string name="utcm3">(UTC -3) Бразилия, Буенос Айрес</string>
+		<string name="utcm2">(UTC -2) Среден Атлантически океан</string>
+		<string name="utcm1">(UTC -1) Азорски острови, Кабо Верде</string>
+		<string name="utc0">(UTC 0) Лондон, Дъблин, Лисабон</string>
+		<string name="utcp1">(UTC +1) Берлин, Брюксел, Париж</string>
+		<string name="utcp2">(UTC +2) Атина, Истанбул, Южна Африка</string>
+		<string name="utcp3">(UTC +3) Москва, Багдад</string>
+		<string name="utcp4">(UTC +4) Абу Даби, Тбилиси, Мускат</string>
+		<string name="utcp5">(UTC +5) Екатеринбург, Исламабад</string>
+		<string name="utcp6">(UTC +6) Алмати, Дака, Коломбо</string>
+		<string name="utcp7">(UTC +7) Банкок, Ханой, Джакарта</string>
+		<string name="utcp8">(UTC +8) Пекин, Сингапур, Хонг Конг</string>
+		<string name="utcp9">(UTC +9) Токио, Сеул, Якутск</string>
+		<string name="utcp10">(UTC +10) Източна Австралия, Гуам</string>
+		<string name="utcp11">(UTC +11) Владивосток, Соломоновите острови</string>
+		<string name="utcp12">(UTC +12) Оукланд, Уелингтън, Фиджи</string>
+		<string name="tz_offset_hdr">Времево Отместване</string>	
+		<string name="tz_offset">Отместване</string>
+		<string name="sel_tz_offset">Избери отместване (обикновено 0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">Използвайте лятното часово време (DST)</string>
+		<string name="curr_tz">Текуща часова зона: %tw_time_zone%</string>
+		<string name="curr_tz_s">Текуща часова зона:</string>
+		<string name="set_tz_btn">Задайте часова зона</string>
+		<string name="settings_screen_cptn">Настройки на екрана</string>
+		<string name="settings_screen_timeout_cptn">Изчакването е изключено</string>
+		<string name="settings_screen_timeout_cptn2">Изчакване:</string>
+		<string name="timeout_unit">секунди</string>
+		<string name="enable_timeout_chk">Активиране на изчакване на екрана</string>
+		<string name="screen_to_na">Настройката за изчакване на екрана не е достъпна</string>
+		<string name="rotation_chk">Завъртане</string>
+		<string name="screen_bright_slider">Яркост: %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">Не са налични настройки за яркостта</string>
+		<string name="vibration_hdr">Вибрация</string>
+		<string name="button_vibration_hdr">Вибрацията на бутоните е изключена</string>
+		<string name="kb_vibration_hdr">Вибрацията на клавиатурата е изключена</string>
+		<string name="act_vibration_hdr">Вibration на действие е изключен</string>
+		<string name="button_vibration">Вибрация на бутоните:</string>
+		<string name="kb_vibration">Вибрация на клавиатурата:</string>
+		<string name="act_vibration">Вibration на действие:</string>
+		<string name="advanced_hdr">Разширени</string>
+		<string name="copy_log_confirm">Копиране на лог файловете на SD картата</string>
+		<string name="copying_log">Копиране на лог файловете на SD картата...</string>
+		<string name="copy_log_complete">Лог файловете са копирани</string>
+		<string name="terminal_btn">Терминал</string>
+		<string name="inject_twrp_btn">Инжектиране на OrangeFox</string>
+		<string name="inject_twrp_confirm">Повторно инжектиране на OrangeFox</string>
+		<string name="injecting_twrp">Повторно инжектиране на OrangeFox...</string>
+		<string name="inject_twrp_complete">Инжектирането на OrangeFox приключи</string>
+		<string name="swipe_to_confirm">Плъзнете пръст, за да потвърдите</string>
+		<string name="part_sd_hdr">Разделяне на SD</string>
+		<string name="rem_sd">Премахваем хранилище</string>
+		<string name="rem_sd_sel">Изберете премахваемо устройство!</string>
+		<string name="invalid_partsd_sel">Трябва да изберете премахваемо устройство</string>
+		<string name="part_sd_lose">Ще загубите всички файлове на вашата SD карта!</string>
+		<string name="part_sdcard_sel_note_1">Разделянето ще изтрие всички файлове</string>
+		<string name="part_sdcard_sel_note_2">на вашата SD карта!</string>
+		<string name="part_sd_undo">Това действие е необратимо!</string>
+		<string name="part_sd_ext_sz">EXT Размер:</string>
+		<string name="btn_flat_ext4">EXT4</string>
+		<string name="btn_flat_ext3">EXT3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">Размер на Swap:</string>
+		<string name="file_system">Файлова система:</string>
+		<string name="swipe_part_sd">Плъзнете за разделяне</string>
+		<string name="partitioning_sd">Разделяне на SD карта...</string>
+		<string name="partitioning_sd2">Това ще отнеме няколко минути.</string>
+		<string name="part_sd_complete">Разделянето приключи</string>
+		<string name="swipe_to_unlock">Плъзнете пръст, за да отключите</string>
+		<string name="fm_actions">Действия</string>
+		<string name="fm_hdr">Файлове</string>
+		<string name="fm_sel_file">Изберете файл или папка</string>
+		<string name="fm_type_folder">Директория</string>
+		<string name="fm_type_file">Файл</string>
+		<string name="fm_copy_btn">Копирай</string>
+		<string name="fm_copying">Копиране</string>
+		<string name="fm_move_btn">Премести</string>
+		<string name="fm_moving">Преместване</string>
+		<string name="fm_chmod755_btn">Задай 755</string>
+		<string name="fm_chmod755ing">Задай 755</string>
+		<string name="fm_chmod644_btn">Задай 644</string>
+		<string name="fm_chmod644ing">Задай 644</string>
+		<string name="fm_chmod_btn">Задаване на права</string>
+		<string name="fm_delete_btn">Изтрий</string>
+		<string name="fm_deleting">Изтриване</string>
+		<string name="fm_rename_btn">Преименувай</string>
+		<string name="fm_renaming">Преименуване</string>
+		<string name="fm_sel_dest">Целева папка</string>
+		<string name="fm_rename_hdr">Преименувай</string>
+		<string name="fm_set_perms_hdr">Задаване на права</string>
+		<string name="fm_perms">Права</string>
+		<string name="fm_complete">Операцията е завършена</string>
+		<string name="decrypt">Декриптиране</string>
+		<string name="data_part">Data дял</string>
+		<string name="encrypt_data_part">Дялът Data е криптиран</string>
+		<string name="sel_encrypt_backup">Избрахте криптирано резервно копие.</string>
+		<string name="decrypt_data_enter_note1">Моля, въведете паролата или</string>
+		<string name="decrypt_data_enter_note1a">Моля, въведете фигурата или</string>
+		<string name="decrypt_data_enter_note2">натиснете бутона назад, за да отмените.</string>
+		<string name="decrypt_data_enter_pass">Въведете парола</string>
+		<string name="decrypt_data_failed_pattern">Грешна фигура!</string>
+		<string name="decrypt_try_again">Моля опитайте отново.</string>
+		<string name="decrypt_data_enter_pattern">Въведете фигура.</string>
+		<string name="decrypt_data_trying">Опитвам дешифриране</string>
+		<string name="term_s_hdr">Терминал</string>
+		<string name="adb_sideload_hdr">ADB Sideload</string>
+		<string name="sideload_wipe_dalvik_chk">Изтриване на Dalvik Cache</string>
+		<string name="sideload_wipe_cache_chk">Изчистване на Cache</string>
+		<string name="swipe_to_sideload">Плъзнете, за да започне Sideload</string>
+		<string name="sideload_confirm">ADB Sideload</string>
+		<string name="sideload_usage">Използване: adb sideload filename.zip</string>
+		<string name="sideload_complete">ADB Sideload завърши</string>
+		<string name="fix_contexts_hdr">Поправи контексти</string>
+		<string name="fix_contexts_confirm">Поправи SELinux контексти</string>
+		<string name="fix_contexts_note1">Забележка: Поправянето на контексти е рядко нужно.</string>
+		<string name="fix_contexts_note2">Поправянето на SELinux контексти може да накара</string>
+		<string name="fix_contexts_note3">устройството ви да не се стартира правилно.</string>
+		<string name="swipe_to_fix_contexts">Плъзнете за поправяне на контекстите</string>
+		<string name="fixing_contexts">Поправяне на контексти...</string>
+		<string name="fix_contexts_complete">Поправянето на контекстите завърши</string>
+		<string name="reboot_hdr">Рестарт</string>
+		<string name="sel_storage_list">Избери място за съхранение</string>
+		<string name="ok_btn">ОК</string>
+		<string name="install_twrp_ramdisk">Инсталиране на Recovery Ramdisk</string>
+		<string name="install_kernel">Инсталиране на ядрото</string>
+		<string name="repack_backup_first">Първо запазете съществуващия образ</string>
+		<string name="installing">Инсталиране...</string>
+		<string name="install_complete">Инсталацията приключи</string>
+		<string name="decrypt_users">Дешифриране на потребители</string>
+		<string name="backup_storage_undecrypt_warning">Резервното копие не включва някои файлове на потребител {1}, защото потребителят не е дешифриран.</string>
+		<string name="decrypting_user_fbe">Опит за дешифриране на FBE за потребител {1}...</string>
+		<string name="decrypt_user_success_fbe">Потребител {1} дешифриран успешно</string>
+		<string name="decrypt_user_fail_fbe">Неуспешно дешифриране на потребител {1}</string>
+		<string name="decrypt_data_user">Избран потребител</string>
+		<string name="data_users">Потребители</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">Ядрото не поддържа четенето на SELinux контексти.</string>
+		<string name="full_selinux">Налице е пълна поддръжка на SELinux.</string>
+		<string name="no_selinux">Няма поддръжка за SELinux (без libselinux).</string>
+		<string name="mtp_enabled">MTP е активиран</string>
+		<string name="mtp_disabled">MTP е деактивиран</string>
+		<string name="mtp_crash">MTP спря, MTP не се стартира при зареждаене.</string>
+		<string name="decrypt_success">Успешно декриптиране с парола по подразбиране.</string>
+		<string name="unable_to_decrypt">Не може да се декриптира с парола по подразбиране. Може да се наложи да извършите формат на дял Data.</string>
+		<string name="generating_md51">Генериране на MD5</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * Генериране на Md5...</string>
+		<string name="md5_created"> *MD5 е създаден.</string>
+		<string name="md5_error"> * MD5 грешка!</string>
+		<string name="md5_compute_error"> * Грешка при изчисляването на MD5.</string>
+		<string name="current_date">(Текуща дата)</string>
+		<string name="auto_generate">(Автоматично генериране)</string>
+		<string name="unable_to_locate_partition">Не може да се намери раздел '{1}' за изчисления на резервно копие.</string>
+		<string name="no_partition_selected">Няма избрани дялове за създаване на резервно копие.</string>
+		<string name="total_partitions_backup"> * Общ брой на дяловете за архивиране: {1}</string>
+		<string name="total_backup_size"> * Общ размер на данните: {1}MB</string>
+		<string name="available_space"> * Налично свободно пространство: {1}MB</string>
+		<string name="unable_locate_storage">Устройството за съхранение не може да бъде намерено.</string>
+		<string name="no_space">Няма достатъчно свободно пространство.</string>
+		<string name="backup_started">[СЪЗДАВАНЕ НА РЕЗЕРВНО КОПИЕ СТАРТИРАНО]</string>
+		<string name="backup_folder"> * Папка за резервно копие: {1}</string>
+		<string name="fail_backup_folder">Неуспешно създаване на папка за резервно копие.</string>
+		<string name="avg_backup_fs">Средна скорост на резервно копие за файлови системи: {1} MB/сек</string>
+		<string name="avg_backup_img">Средна скорост на резервно копие за образни дискове: {1} MB/сек</string>
+		<string name="total_backed_size">[{1} МБ ОБЩО АРХИВИРАНИ]</string>
+		<string name="backup_completed">[СЪЗДАВАНЕТО НА РЕЗЕРВНО КОПИЕ ПРИКЛЮЧИ ЗА {1} СЕКУНДИ]</string>
+		<string name="restore_started">[ВЪЗСТАНОВЯВАНЕТО Е СТАРТИРАНО]</string>
+		<string name="restore_folder">Папка за възстановяване: "{1}"</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} готово ({2} секунди)]</string>
+		<string name="verifying_md5">Проверка на MD5</string>
+		<string name="skip_md5">Пропускане на проверката на MD5 въз основа на настройките на потребителя.</string>
+		<string name="calc_restore">Изчисляване на детайли за възстановяване...</string>
+		<string name="restore_read_only">Не може да се възстанови {1} -- монтиран само за четене.</string>
+		<string name="restore_unable_locate">Не може да се локализира дял "{1}" за възстановяване.</string>
+		<string name="no_part_restore">Няма избрани дялове за възстановяване.</string>
+		<string name="restore_part_count">Възстановяване на {1} дяла...</string>
+		<string name="total_restore_size">Общият размер на възстановяване е {1}MB</string>
+		<string name="updating_system_details">Актуализиране на системните детайли</string>
+		<string name="restore_completed">[ВЪЗСТАНОВЯВАНЕТО ПРИКЛЮЧИ ЗА {1} СЕКУНДИ]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">Грешка при отваряне: "{1}" ({2})</string>
+		<string name="unable_locate_part_backup_name">Не може да се намери раздел по името на резервно копие: '{1}'</string>
+		<string name="unable_find_part_path">Не може да се намери раздел за път '{1}'</string>
+		<string name="update_part_details">Актуализиране на детайлите за дяла...</string>
+		<string name="update_part_details_done">...готово</string>
+		<string name="wiping_dalvik">Изтриване на директориите на Dalvik...</string>
+		<string name="cleaned">Изчистени: {1}...</string>
+		<string name="dalvik_done">Изтриването на Dalvik Cache директориите приключи!</string>
+		<string name="no_andsec">Не са намерени android сигурни раздели.</string>
+		<string name="unable_to_locate">Не може да се локализира {1}.</string>
+		<string name="wiping_datamedia">Изтриване на вътрешната памет -- /data/media...</string>
+		<string name="unable_to_mount">Не може да се монтира {1}</string>
+		<string name="unable_to_mount_internal">Не може да се монтира internal_storage</string>
+		<string name="unable_to_mount_storage">Не може да се монтира хранилище</string>
+		<string name="fail_decrypt">Неуспешно дешифриране на данни.</string>
+		<string name="no_crypto_support">Няма поддържана криптография в тази сборка.</string>
+		<string name="decrypt_success_dev">Данните бяха дешифрирани успешно, ново блоково устройство: '{1}'</string>
+		<string name="done">Готово</string>
+		<string name="start_partition_sd">Разделяне на SD карта...</string>
+		<string name="partition_sd_locate">Не може да се намери устройство за разделяне.</string>
+		<string name="ext_swap_size">Размерът на EXT + Swap е по-голям от размера на SD картата.</string>
+		<string name="remove_part_table">Отстраняване на таблицата на дяловете...</string>
+		<string name="unable_rm_part">Не може да се премахне таблицата с разделение.</string>
+		<string name="create_part">Създаване на {1} дял...</string>
+		<string name="unable_to_create_part">Дял {1} не може да бъде създаден.</string>
+		<string name="format_sdext_as">Форматиране на sd-ext като {1}...</string>
+		<string name="part_complete">Разделянето приключи.</string>
+		<string name="unable_to_open">'{1}' не може да бъде отворен.</string>
+		<string name="mtp_already_enabled">MTP вече е активиран</string>
+		<string name="mtp_fail">Неуспешно активиране на MTP</string>
+		<string name="no_mtp">Поддръжката на MTP не е включена</string>
+		<string name="mtp_base_path_missing">Не е намерено съхранилище на медиа. Не може да се активира MTP.</string>
+		<string name="image_flash_start">[ЗАПИСВАНЕТО НА ИЗОБРАЖЕНИЕТО ЗАПОЧНА]</string>
+		<string name="img_to_flash">Изображение за записване:{1}</string>
+		<string name="flash_unable_locate">Не може да се локализира дял "{1}" за записване.</string>
+		<string name="no_part_flash">Няма избрани дялове за записване.</string>
+		<string name="too_many_flash">Избрани са прекалено много дялове за записване.</string>
+		<string name="invalid_flash">Зададен е невалиден дял за записване.</string>
+		<string name="flash_done">[ЗАПИСВАНЕТО НА ИЗОБРАЖЕНИЕТО ПРИКЛЮЧИ]</string>
+		<string name="wiping">Изтриване на {1}</string>
+		<string name="repair_not_exist">{1} не съществува! Не може да се поправи!</string>
+		<string name="repairing_using">Поправяне на {1} използвайки {2}...</string>
+		<string name="unable_repair">Не може да се поправи {1}.</string>
+		<string name="mount_data_footer">Не може да се монтира /data и не може да се намери криптован крак.</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">Не може да се създаде папката '{1}' ({2}).</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">Неуспешно монтиране на "{1}" ({2})</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">Неуспешно размонтиране на "{1}" ({2})</string>
+		<string name="cannot_resize">Не може да се преоразмери {1}.</string>
+		<string name="repair_resize">Поравяне на {1} преди преоразмеряване.</string>
+		<string name="unable_resize">Не може да се промени размера на {1}.</string>
+		<string name="no_md5_found">Няма намерен md5файл за "{1}". Моля, деактивирайте проверката на MD5 за възстановяване.</string>
+		<string name="md5_fail_match">MD5 не съвпадна за '{1}'.</string>
+		<string name="fail_decrypt_tar">Неуспешно декриптиране на tar файл '{1}'</string>
+		<string name="format_data_msg">Може да се наложи да рестартирате режим възстановяване за да използвате /data отново.</string>
+		<string name="format_data_err">Не може да се форматира за премахване на шифрирането.</string>
+		<string name="formatting_using">Форматиране на {1} използвайки {2}...</string>
+		<string name="unable_to_wipe">{1} не може да бъде изтрита.</string>
+		<string name="cannot_wipe">Дял {1} не може да бъде изтрит.</string>
+		<string name="remove_all">Премахване на всички файлове под "{1}"</string>
+		<string name="wiping_data">Изтриване на data без изтриване на /data/media ...</string>
+		<string name="backing_up">Създаване на резервно копие {1}...</string>
+		<string name="backing">Създаване на резервно копие</string>
+		<string name="backup_size">Размерът на резервното копие на {1} е 0 байта.</string>
+		<string name="datamedia_fs_restore">ПРЕДУПРЕЖДЕНИЕ: Това резервно копие на /data бе направено с {1} файлова система! Резервното копие може да не се зареди, ако не се върнете към {1}.</string>
+		<string name="restoring">Възстановяване на {1}...</string>
+		<string name="restoring_hdr">Възстановяване...</string>
+		<string name="recreate_folder_err">Не може да се възсъздаде папката {1}.</string>
+		<string name="img_size_err">Размерът на образа е по-голям от целовото устройство</string>
+		<string name="flashing">Записване {1}...</string>
+		<string name="backup_folder_set">Папката за резервно копие е зададена на '{1}'</string>
+		<string name="locate_backup_err">Не може да се намери резервно копие '{1}'</string>
+		<string name="set_restore_opt">Настройване на опциите за възстановяване: '{1}':</string>
+		<string name="md5_check_skip">Пропускането на MD5 проверката е активирано</string>
+		<string name="ors_encrypt_restore_err">Не може да се използва OpenRecoveryScript за възстановяване на шифрирано резервно копие.</string>
+		<string name="mounting">Монтиране</string>
+		<string name="unmounting">Демонтиране</string>
+		<string name="mounted">Монтиран "{1}"</string>
+		<string name="unmounted">Демонтиран '{1}'</string>
+		<string name="setting">Задаване на '{1}' на '{2}'</string>
+		<string name="setting_empty">Задаване на '{1}' на празно</string>
+		<string name="making_dir1">Създаване на директория</string>
+		<string name="making_dir2">Създаване на директория: '{1}'</string>
+		<string name="running_command">Изпълнение на команда</string>
+		<string name="sideload">ADB Sideload</string>
+		<string name="start_sideload">Стартиране на ADB sideload функция...</string>
+		<string name="need_new_adb">Нуждаете се от adb 1.0.32 или по-нова версия, за да използвате sideload на това устройство.</string>
+		<string name="no_pwd">Не е предоставена парола.</string>
+		<string name="done_ors">Готово с обработка на скрипт файла</string>
+		<string name="injecttwrp">Инжектиране на OrangeFox в boot образ...</string>
+		<string name="zip_err">Грешка при инсталиране на ZIP файл '{1}'</string>
+		<string name="installing_zip">Инсталиране на ZIP файл '{1}'</string>
+		<string name="select_backup_opt">Задаване на опции за резервно копие:</string>
+		<string name="compression_on">Компресията е включена</string>
+		<string name="md5_off">Генерирането на MD5 е изключено</string>
+		<string name="backup_fail">Създаването на резервно копие е неуспешно</string>
+		<string name="backup_clean">Създаването на резервно копие е неуспешно. Почистване на папка за резервни копия.</string>
+		<string name="running_recovery_commands">Изпълнение на команди за възстановяване</string>
+		<string name="recovery_commands_complete">Изпълнението на команди за възстановяване приключи</string>
+		<string name="running_ors">Изпълнение на OpenRecoveryScript</string>
+		<string name="ors_complete">OpenRecoveryScript приключи</string>
+		<string name="no_updater_binary">Не може да се намери '{1}' в ZIP файла.</string>
+		<string name="check_for_md5">Проверка за MD5 файл...</string>
+		<string name="fail_sysmap">Неуспешно картиране на файл '{1}'</string>
+		<string name="verify_zip_sig">Проверка на сигнатурата на ZIP...</string>
+		<string name="verify_zip_fail">Проверката на сигнатурата на ZIP се провали!</string>
+		<string name="verify_zip_done">Сignaтурата на ZIP бе проверена успешно.</string>
+		<string name="zip_corrupt">ZIP файлът е поврежден!</string>
+		<string name="no_md5">Пропускане на MD5 проверката: не е намерен MD5 файл</string>
+		<string name="md5_fail">MD5 не съвпада</string>
+		<string name="md5_match">MD5 съвпада</string>
+		<string name="pid_signal">{1} процес приключи със сигнал: {2}</string>
+		<string name="pid_error">{1} приключи с ГРЕШКА: {2}</string>
+		<string name="run_script">Изпълнение на {1} скрипт...</string>
+		<string name="split_backup">Разделяне на резервното копие на няколко архива...</string>
+		<string name="backup_error">Грешка при създаването на резервно копие.</string>
+		<string name="restore_error">Грешка по време на процеса на възстановяване.</string>
+		<string name="split_thread">Разделяне на ID на нишка {1} в архив {2}</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu от %llu файла, %i%%</string>
+		<string name="size_progress">%lluМБ от %lluМБ, %i%%</string>
+		<string name="decrypt_cmd">Опит за дешифриране на раздела с данни чрез команден ред.</string>
+		<string name="base_pkg_err">Неуспешно зареждане на основни пакети.</string>
+		<string name="simulating">СИМУЛИРАНЕ НА ДЕЙСТВИЯ</string>
+		<string name="backup_cancel">Създаването на резервно копие е отменено</string>
+		<string name="config_twrp">Конфигуриране на OrangeFox...</string>
+		<string name="config_twrp_err">OrangeFox не може да се конфигурира с този кернел.</string>
+		<string name="copy_log">Копиран лог на възстановяването към {1}.</string>
+		<string name="max_queue">Максималната опашка на ZIP е достигната!</string>
+		<string name="min_queue">Минималната опашка на ZIP е достигната!</string>
+		<string name="screenshot_saved">Екранната снимка беше запазе в {1}</string>
+		<string name="screenshot_err">Неуспешно снемане на екранна снимка!</string>
+		<string name="zip_wipe_cache">Един или повече ZIP файла поискаха изтриване на кеша -- изтриване на кеша сега.</string>
+		<string name="and_sec_wipe_err">Не може да се изтрие android secure</string>
+		<string name="dalvik_wipe_err">Неуспешно изтриване на dalvik</string>
+		<string name="auto_gen">(Автоматично генериране)</string>
+		<string name="curr_date">(Текуща дата)</string>
+		<string name="backup_name_len">Името на резервното копие е твърде дълго.</string>
+		<string name="backup_name_invalid">Името на резервното копие "{1}" съдържа непозволени знаци: "{1}"</string>
+		<string name="no_real_sdcard">Това устройство няма истинска SD карта! Прекратяване!</string>
+		<string name="cancel_sideload">Отмяна на ADB sideload...</string>
+		<string name="change_fs_err">Грешка при промяна на файловата система.</string>
+		<string name="change_fs_hdr">Промяна на файловата система</string>
+		<string name="theme_ver_err">Версията на персонализирана тема не съвпада с версията на OrangeFox. Използване на стандартна тема.</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">Изберете цвят</string>
+		<string name="s_color">Цвят</string>
+		<string name="current_color">Файлова система:</string>
+		<string name="show_cpu_temp_bar">Покажи температурата на процесора</string>
+		<string name="ts_inform">Информация</string>
+		<string name="sel_splash_png">Изберете Splash PNG</string>
+		<string name="swipe_to_install">Плъзнетепръст, за да инсталирате</string>
+		<string name="swipe_to_install_img">Плъзнете пръст, за да инсталирате изображение</string>
+		<string name="sel_image_type">Изберете типа изображението!</string>
+		<string name="zip_add_queue">Добави към опашката</string>
+		<string name="part_fs_error_1">Опциите за разделяне не са</string>
+		<string name="part_fs_error_2">достъпни за този раздел!</string>
+		<string name="new_file_system">Нова файлова система</string>
+		<string name="adb_sideload_opt">Опции за Sideload</string>
+		<string name="about_hdr">За приложението</string>
+		<string name="author">Автор</string>
+		<string name="credits">Заслуги</string>
+		<string name="version">Версия</string>
+		<string name="set_password">Задаване на парола</string>
+		<string name="verifying_pas">Потвърдете паролата</string>
+		<string name="dialog_offset_note">Изберете стойността на отместването</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">Настройки</string>
+		<string name="flash_img_confirm">Флашване на образ на файл</string>
+		<string name="also_wipes">Изтрива също</string>
+		<string name="confirm_wipe_cptn">Потвърдете изтриването</string>
+		<string name="storage_cptn">Хранилище</string>
+		<string name="enter_password_restore">Парола</string>
+		<string name="enter_password_cptn">Сигурност</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">Стартиране на Sideload...</string>
+		<string name="fordowns_to">към</string>
+		<string name="dbg">Отстраняване на грешки</string>
+		<string name="dbg_active">Менюто за отстраняване на грешки е активирано!</string>
+		<string name="dbg_act">Действие</string>
+		<string name="dbg_func">Функция</string>
+		<string name="dbg_set">Набор</string>
+		<string name="dbg_page">Страница</string>
+		<string name="dbg_overlay">Оверлей</string>
+		<string name="fm_none">Нито един</string>
+		
+		<string name="cust_navbar_noug">Нуга</string>
+		<string name="cust_navbar_cls">Класически</string>
+		<string name="cust_navbar_accent">Акцент</string>
+		<string name="cust_navbar_black">Черен</string>
+		<string name="cust_navbar_white">Използвай бели бутони</string>
+		<string name="cust_navbar_gray">Използвай сиви бутони</string>
+		
+		<string name="fm_open">Отвори като...</string>
+		<string name="fm_open_text">Текстов файл</string>
+		<string name="fm_open_ZIP">Флашируем ZIP</string>
+		
+		<string name="fm_open_backup">Резервно копие</string>
+		<string name="fm_open_makezip">Компресиране</string>
+		<string name="fm_open_unpackzip">Разархивиране на архив</string>
+		<string name="fm_open_image">Флашируем образ</string>
+		<string name="arc_type">Тип на архива</string>
+		<string name="arc_lvl">Ниво на компресия:</string>
+		<string name="arc_lvl_title">Компресия</string>
+		
+		<string name="bkp_date">Добави дата</string>
+		<string name="bkp_gen">Генериране на име на резервна копия</string>
+		<string name="bkp_gen_whilebkp">Генериране на име на резервна копия по време на съхранение</string>
+		<string name="bkp_quick">Бързо съхранение</string>
+		<string name="bkp_clear">Изчисти</string>
+		
+		<string name="language_cptn">Език</string>
+		<string name="cust_oth">Други</string>
+		
+		<string name="settings_general">Основни</string>
+		<string name="settings_ui">Персонализиране</string>
+		<string name="settings_screen">Дисплей</string>
+		<string name="settings_time">Регионален</string>
+		
+		<string name="lang_wait">Моля изчакайте...</string>
+		
+		<string name="settings_ui_status">Статусен бар</string>
+		<string name="settings_ui_battery">Покажи икона на батерията</string>
+		<string name="settings_ui_style">Стил на NavBar</string>
+		<string name="settings_ui_color">Фон на NavBar</string>
+		
+		<string name="settings_backup_qbkp_custom">Бързо съхранение на раздели</string>
+		
+		<string name="settings_backup_name">Име на резервна копия</string>
+		<string name="settings_backup_name_user">Не променяй</string>
+		<string name="settings_backup_name_auto">Определено автоматично</string>
+		<string name="settings_backup_name_auto_hide">По време на съхранение</string>
+		
+		<string name="update_btn">Актуализирай</string>
+		<string name="include_kernel_log">Включително и лог файловете на кернела</string>
+		<string name="include_logcat">Включи Logcat</string>
+		
+		<string name="fm_books">Любими папки</string>
+		<string name="fm_books_desc">Дълго натискане за редактиране на този списък</string>
+		<string name="fm_books_edit">Редактирай този списък...</string>
+		<string name="fm_books_desc_edit">Дълго натискане за изтриване на елемент</string>
+		<string name="fm_books_empty">(Празно)</string>
+		
+		<string name="fm_mkdir">Създай папка</string>
+		<string name="fm_mkdir_folder">Име на папка</string>
+		
+		<string name="fm_path">Въведи път</string>
+		<string name="fm_path2">Път</string>
+		
+		<string name="no_os_title">Сигурни ли сте?</string>
+		<string name="no_os_subtitle">Системният раздел е празен</string>
+		
+		<string name="no_os1">Няма инсталирана операционна система! Сигнури ли сте, че</string>
+		<string name="no_osrb">искате да рестартирате?</string>
+		<string name="no_ospo">искате да изключите?</string>
+		<string name="no_osrb_recovery">искате да рестартирате в режим на възстановяване?</string>
+		<string name="no_osrb_boot">искате да рестартирате в режим на зареждане?</string>
+		<string name="no_osrb_down">искате да рестартирате в режим на EDL?</string>
+		<string name="no_osrb_edl">искате да рестартирате в режим на EDL?</string>
+		
+		<string name="areb_confirm">Диалог за потвърждение на рестартиране</string>
+		<string name="areb_noos">Когато няма инсталирана ОС</string>
+		<string name="opt_always">Винаги</string>
+		<string name="otp_never">Никога</string>
+		
+		<string name="areb_off">Изключено</string>
+		
+		<string name="restoredialog_readonly">Никога да не показваш диалог за монтиране на системния раздел само за четене</string>
+		
+		<string name="offset_wrong">Грешно отместване!</string>
+
+		<string name="new_key">Използвай нов стил за клавиатурата</string>
+		
+		<string name="bkp_nametitle">Име на резервна копия</string>
+		<string name="bkp_namesub">Въведи или генерирай име на резервна копия</string>
+		
+		<string name="goto_storage">Хранилище</string>
+		
+		<string name="theme_apply">Актуализиране на темата...</string>
+		<string name="theme_fonts">Шрифтове</string>
+		<string name="theme_style">Стил</string>
+		<string name="theme_accent">Акцент</string>
+		<string name="theme_font_sel">Основен шрифт</string>
+		<string name="theme_sec_font_sel">Вторичен шрифт</string>
+		
+		<string name="of">на</string>
+		
+		<string name="sph_sph">Спlash</string>
+		
+		<string name="real">реален</string>
+		<string name="info">Информация</string>
+		<string name="time_m">Модифицирай</string>
+		<string name="time_c">Промени</string>
+		<string name="access">Достъп</string>
+		<string name="fm_sums">Контролна сума</string>
+		
+		<string name="use_fixed_font">Монospace шрифт в терминала</string>
+
+		<string name="adb_backup_pc1">Тази резервна копия ще бъде</string>
+		<string name="adb_backup_pc2">запазена на вашия компютър</string>
+		
+		<string name="starting_aroma">Стартиране на AromaFM...</string>
+		<string name="lang_set_wait">Смяна на език...</string>
+		<string name="installing_theme">Инсталиране на тема...</string>
+		
+		<string name="menu_btn">Меню</string>
+		
+		<string name="data_backup">Памет на устр.</string>
+		<string name="autostorage">Хранилище</string>
+		<string name="install_reboot">Рестартиране след %tw_sleep% секунди</string>
+		<string name="cancel_reboot_btn">Отмени рестартирането</string>
+		<string name="skip_digest_backup_chk" version="2">Пропусни генерирането на Digest по време на съхранение</string>
+		<string name="restore_digest_chk" version="2">Включи проверка на Digest за резервните копия</string>
+		<string name="restore_enable_digest_chk" version="2">Включи проверка на Digest за резервните копия</string>
+		<string name="decrypt_data_vold_os_missing">Липсват файлове, необходими за декриптиране на vold: {1}</string>
+		<string name="generating_digest1" version="2">Генериране на Digest</string>
+		<string name="generating_digest2" version="2"> * Генериране на Digest...</string>
+		<string name="digest_created" version="2"> * Digest е създаден.</string>
+		<string name="digest_error" version="2"> * Грешка при Digest!</string>
+		<string name="digest_compute_error" version="2"> * Грешка при изчисляване на Digest.</string>
+		<string name="verifying_digest" version="2">Проверка на Digest</string>
+		<string name="skip_digest" version="2">Пропуснато проверка на Digest според потребителски настройки.</string>
+		<string name="decrypt_success_nodev">Данните бяха успешно декриптирани</string>
+		<string name="no_digest_found" version="2">Не е намерен Digest файл за '{1}'. Моля, премахнете опцията за проверка на Digest, за да възстановите.</string>
+		<string name="digest_fail_match" version="2">Digest не съвпада за '{1}'.</string>
+		<string name="digest_matched" version="2">Digest съвпада за '{1}'.</string>
+		<string name="digest_check_skip" version="2">Пропуснато е проверката на Digest</string>
+		<string name="digest_off" version="2">Генерирането на Digest е изключено</string>
+		<string name="invalid_zip_format">Невалиден формат на zip файл!</string>
+		<string name="check_for_digest" version="2">Проверка за Digest файл...</string>
+		<string name="no_digest" version="2">Пропуснато проверка на Digest: не е намерен Digest файл</string>
+		<string name="digest_fail" version="2">Digest не съвпада</string>
+		<string name="digest_match" version="2">Digest съвпада</string>
+		<string name="password">Парола</string>
+		<string name="boot_slot">Boot Slot</string>
+		<string name="boot_slot_a">СЛОТ A</string>
+		<string name="boot_slot_use_a">ПРЕМИНАВАНЕ КЪМ SLOT A</string>
+		<string name="boot_slot_b">СЛОТ B</string>
+		<string name="boot_slot_use_b">ПРЕМИНАВАНЕ КЪМ SLOT B</string>
+		<string name="changing_boot_slot">Промяна на зареждащия слот</string>
+		<string name="changing_boot_slot_complete">Промяната на Зареждащия слот завърши</string>
+		<string name="unable_set_boot_slot">Грешка при промяна на bootloader boot slot на {1}</string>
+		<string name="flash_ab_inactive">Флаширане на A/B zip в неактивен slot: {1}</string>
+		<string name="flash_ab_reboot">За да флаширате дополнительни zip файловe, моля рестартирайте възстановяването, за да преминете към актуализираният slot.</string>
+		<string name="flash_ab_both_slots">Флаширане в двата slot-a</string>
+		<string name="ozip_decrypt_decryption">Стартиране на декриптиране на Ozip...</string>
+		<string name="ozip_decrypt_finish">Декриптиране на Ozip завършено!</string>
+		<string name="backup_storage_warning">Резервните копия на {1} не включват никакви файлове във вътрешното хранилище като снимки или изтегляния.</string>
+		<string name="sha2_chk">Използвай SHA2 за хеширане</string>
+		<string name="disabled">Изключено</string>
+		<string name="enabled">Включено</string>
+		<string name="keep_storage_data">Пропусни изтриването при възстановяване на Storage</string>
+		<string name="zip_compatible_err">Грешка при съвместимост на Zip Treble!</string>
+
+		<string name="unmount_sys_install">Демонтирай System преди инсталиране на ZIP</string>
+		<string name="unmount_system">Демонтиране на System...</string>
+		<string name="unmount_system_err">Неуспешно демонтиране на System</string>		
+
+		<string name="unmount_vendor_install">Демонтирай Vendor преди инсталиране на ZIP</string>
+		<string name="unmount_vendor">Демонтиране на Vendor...</string>
+		<string name="unmount_vendor_err">Неуспешно демонтиране на Vendor</string>	
+			
+		<string name="fbe_wipe_msg">ПРЕДУПРЕЖДЕНИЕ: {1} е изтрит. FBE устройството трябва да бъде заредено в Android, а не в Recovery, за да се зададе начална FBE политика след изтриване.</string>		
+		<string name="fastboot_button">Fastboot</string>
+		<string name="enable_adb">Включи ADB</string>
+		<string name="enable_fastboot">Включи Fastboot</string>
+		<string name="fastboot_console_msg">Влезли сте в режим Fastboot...</string>
+		<string name="data_media_fbe_msg">OrangeFox няма да създава /data/media на FBE устройство. Моля, рестартирайте в вашата rom, за да създадете /data/media</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">Проверка на подписа на инкременталния пакет...</string>
+		<string name="fox_incremental_ota_compatibility_false"> </string>
+		<string name="fox_incremental_ota_compatibility_true">Инкременталният пакет е съвместим</string>
+		<string name="fox_incremental_ota_status_enabled">Поддръжка на статуса на инкременталния пакет: Активирано</string>
+		<string name="fox_incremental_ota_status_disabled">Поддръжка на статуса на инкременталния пакет: Деактивирано</string>
+		<string name="fox_incremental_package_detected">Открит инкрементален пакет '{1}'</string>
+		<string name="fox_survival_does_not_exist">OTA Survival не съществува! Моля, инсталирайте първо пълния ROM!</string>
+		<string name="fox_install_detecting">Откриване на текущ пакет</string>
+		<string name="fox_install_standard_detected">- Открит стандартен пакет</string>
+		<string name="fox_install_miui_detected">- Открит пакет за актуализация на MIUI</string>
+		<string name="fox_zip_have_bootloader">Предупреждение: Открита е повторна инсталация на bootloader-a, извикан от '{1}'.</string>
+		<string name="fox_no_space_ota_survival">Няма достатъчно свободно място на вътрешното съхранилище за създаване на OTA survival.</string>
+		<string name="fox_incremental_ota_res">OTA_RES -- готово!</string>
+		<string name="fox_incremental_ota_res_run">Изпълнение на процеса OTA_RES...</string>
+		<string name="fox_incremental_ota_bak_run">Изпълнение на процеса OTA_BAK...</string>
+		<string name="fox_incremental_ota_bak">OTA_BAK -- готово!</string>
+		<string name="fox_internal_fatal_i1">OrangeFox: ФАТАЛНА ГРЕШКА! Не можете да архивирате вътрешното съхранилище върху себе си!</string>
+		<string name="fox_internal_fatal_i2">Трябва да промените дестинацията за архивиране на MicroSD/USB-OTG.</string>
+		<string name="fox_internal_q1">OrangeFox - Вътрешно съхранилище - внимавайте!</string>
+
+		<string name="copy_kernel_log">Копиране на лог файловете на кернела в {1}</string>
+		<string name="copy_logcat">Копиран logcat в {1}</string>
+
+		<string name="of_run_process">Стартиране на процеса '{1}'</string>
+		<string name="of_run_process_fail">Не може да се завърши процеса '{1}'</string>
+		<string name="of_run_process_done">Приключен процес '{1}'</string>
+		<string name="of_dm_verity">Успешно патнато DM-Verity</string>
+		<string name="of_dm_verity_off">DM-Verity не е активирано</string>
+		<string name="of_encryption">Успешно патнато принудително криптиране</string>
+		<string name="of_encryption_off">Принудителното криптиране не е активирано</string>
+		<string name="of_fstab">Открит fstab: '{1}'</string>
+
+		<string name="install_remlatest">Премахни последното</string>
+		
+		<string name="backups_remove_all">Всички архиви</string>
+		<string name="backups_remove">Изтрий</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">Разопаковане</string>
+		<string name="repack">Опаковане</string>
+
+		<string name="fox_save_load_aromafm_config_chk">Запази/зареди настройки на AromaFM</string>
+		<string name="search_help">Търсене на файлове и папки...</string>
+		
+		<string name="reboot_to_take_effect">Рестартирайте за влизане в сила на промените</string>
+		<string name="fox_modules_hdr">Fox добавки</string>
+		<string name="fox_modules_inst">Инсталиране на добавка</string>
+		<string name="backup_short_hdr">Нов архив</string>
+		<string name="backups_wat">Къде са архивите?</string>
+		
+		<string name="module_install">Инсталиране</string>
+		<string name="module_uninstall">Деинсталирай</string>
+		<string name="remove_of_files">Премахни файловете на OrangeFox</string>
+		<string name="module_initd">Разрешаване на init.d подръжка</string>
+		<string name="module_of_set">Архивирай настройки на OrangeFox</string>
+		<string name="module_cam">Активирай Camera2API</string>
+		<string name="module_pass">Премахване на парола</string>
+		<string name="module_remove_survival">Премахни всички скриптове за оцеляване</string>
+		<string name="fox_files_not_exist_1">Файлът не съществува!</string>
+		<string name="fox_files_not_exist_2">Моля, рефлашвайте recovery</string>
+		<string name="fox_files_not_exist_3">използвайки инсталационния zip.</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">Показване на по-малко детайли докато качвате OTA ъпдейти</string>
+		<string name="fm_icons_simple">Направете файловете икони по-големи</string>
+		<string name="theme_engine_update">Приложете промените и презаредете?</string>
+		<string name="theme_engine_reset">Нулиране на темата и презареждане?</string>
+		<string name="apply_btn">Приложи</string>
+		<string name="theme_hdr">Тема</string>
+		
+		<string name="font_small">Малък</string>
+		<string name="font_norm">Нормален</string>
+		<string name="font_big">Голям</string>
+		<string name="font_size">Размер на шрифта</string>
+		<string name="cust_autoapply">Приложи темата без потвърждаване</string>
+		<string name="cust_expand_list">Разгъвани на списъците автоматично</string>
+		
+		<string name="status_battery_style">Стил на батерията</string>
+		<string name="status_battery_circle">Кръг</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">Позиция на часовника</string>
+		<string name="status_clock_left">Ляво</string>
+		<string name="status_clock_center">Център</string>
+		<string name="status_clock_right">Дясно</string>
+		<string name="dark_title">Направи заглавието по-тъмно</string>
+		<string name="separate_status">Направи лентата с статус по-тъмна</string>
+		<string name="noshadow_title">Показване на сянка на лентата с статус</string>
+		<string name="hide_notch">Скрий нота</string>
+		<!-- NavBar -->
+		<string name="navbar_title">Навигационна лента</string>
+		<string name="navbar_onscreen">Активирай NavBar</string>
+		<string name="show_slideout">Покажи бутон за конзола</string>
+		<string name="dark_nav">Тъмно</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">Клавиатура</string>
+		<string name="keyboard_newstyle">Освежен стил</string>
+		<string name="keyboard_nums">Ред с числа</string>
+		<string name="key_swipe">Плъзнете по клавиатурата, за да изтриете всичко</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">Отключи</string>
+		<string name="lockscreen_title">Екран за заключване</string>
+		<string name="lockscreen_style">Стил на екрана за заключване</string>
+		<string name="lockscreen_clock">Часовик</string>
+		<string name="lockscreen_icon">Икона</string>
+		<string name="lockscreen_btn">Замени плъзгача с бутон</string>
+		<string name="lockscreen_info">Покажи информация за батерията и процесора</string>
+		<string name="lockscreen_quicklock">Потапянето на иконата за заключване заключва екрана</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">Инсталиране на OTA...</string>
+		<string name="ota_simple_title">Актуализиране...</string>
+		<string name="ota_simple_log_btn">Дневник</string>
+
+		<string name="battery">Батерия</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">Ключ за жест</string>
+		<string name="pass_classic">Текстов парола</string>
+		<string name="pass_dis">Деактивирай паролата</string>
+		<string name="pass_pin">PIN код</string>
+		
+		<string name="locked_info_1">Recovery е защитен срещу</string>
+		<string name="locked_info_2">неоторизиран достъп.</string>
+		<string name="locked_info_3">За да използвате основните функции на recovery</string>
+		<string name="locked_info_4">първо трябва да въведете паролата си.</string>
+		<string name="locked_info_4_gk">първо трябва да начертаете ключа си за жест.</string>
+		
+		<string name="new_pass_info_1">Въведете нова парола, за да</string>
+		<string name="new_pass_info_1_gk">Начертайте нов ключ за жест, за да защитите</string>
+		<string name="new_pass_info_2">OrangeFox срещу неоторизиран</string>
+		<string name="new_pass_info_3">достъп.</string>
+		<string name="new_pass_info_4">Трябва да въведете паролата си два пъти.</string>
+		<string name="new_pass_info_4_gk">Трябва да начертаете ключа за жест два пъти.</string>
+		<string name="new_pass_info_4_2">Въведете паролата си отново.</string>
+		<string name="new_pass_info_4_2_gk">Начертайте ключа за жест отново.</string>
+		
+		<string name="pass_page_block">Текущ метод за блокиране</string>
+		<string name="pass_page_block_inf1">Можете да спите по-спокойно, знаяйки</string>
+		<string name="pass_page_block_inf2">че сте защитен.</string>
+		<string name="pass_page_select">Изберете тип парола</string>
+		
+		<!-- Utilities -->
+		<string name="more">Още...</string>
+		<string name="hide">Скрий</string>
+		<string name="part_menu_hdr">Управление на разделението</string>
+		<string name="run_adb_startup">Стартирай ADB при стартиране</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">Активен</string>
+		<string name="mm_module_mount">Пропусни монтирането</string>
+		<string name="mm_modules">Модули</string>
+		<string name="mm_ver">Версия на Magisk</string>
+		<string name="mm_mod_ver">Версия на модула</string>
+		<string name="mm_remove">Премахни модула при следващото стартиране</string>
+		<string name="mm_remove_hint">Рестартирайте за влизане в сила на промените</string>
+		<string name="mm_remove_reboot">Рестарт</string>
+		<string name="magisk_not_found">Magisk не е открит!</string>
+		<string name="magisk_not_found_1">Искате ли да отидете в Fox Addons</string>
+		<string name="magisk_not_found_2">и да инсталирате предварително построен Magisk?</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">APatch модули</string>
+		<string name="ap_ver">Версия на APatch</string>
+		<string name="ksu_modules">KernelSU модули</string>
+		<string name="ksu_ver">Версия на KernelSU</string>
+
+		<string name="modules_not_found">Не са открити модули!</string>
+		<string name="modules_not_found_1">Модулите или не са инсталирани</string>
+		<string name="modules_not_found_2">или не могат да бъдат монтирани!</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">Настройки на OTA</string>
+		<string name="fox_miui_ota_on">Активиране на OTA</string>
+		<string name="fox_ota_on">Активиране на OTA</string>
+		<string name="fox_patch_rom">Патчване на ROM</string>
+		<string name="fox_ota_lite">OTA &amp; ROM</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">Поддържащ</string>
+		<string name="abt_fd">Създател и дизайнер на темата</string>
+		<string name="abt_bork">CEO, Сайт &amp; UI</string>
+		<string name="abt_dj">Система за изграждане, легендарен поддържащ</string>
+		<string name="abt_front">Frontend разработчик</string>
+		<string name="abt_back">Backend разработчик</string>
+		<string name="abt_device">Устройство</string>
+		<string name="version_twrp">Версия на OrangeFox</string>
+		<string name="build_type">Тип на изграждането</string>
+		<string name="abt_credits">Заслуги</string>
+		<string name="abt_trans">Преводачи</string>
+		<string name="abt_changes">Списък с промените</string>
+		<string name="abt_main_shrt">Поддържащ</string>
+		<string name="welcome_msg">Добре дошли в OrangeFox!</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">Добре дошли в OrangeFox Recovery!</string>
+		<string name="fox_release">[Издание]   : {1}</string>
+		<string name="fox_variant">[Вариант]   : {1}</string>
+		<string name="fox_codebase">[Кодова база]  : {1}, {2}</string>
+		<string name="fox_settings">[Настройки]  : {1}</string>
+		<string name="fox_misc">[Разно]      : {1}</string>
+		<string name="fox_build_date">[Дата на създаване]: {1}</string>
+		<string name="fox_build_type_unofficial">[Тип на създаването]: Неофициален. Няма официална поддръжка за неофициални създавания</string>
+		<string name="fox_build_type">[Тип на създаването]: {1}</string>
+		<string name="fox_support">[Поддръжка]   : {1}</string>
+		<string name="fox_nosupport">[Поддръжка]   : Няма официална поддръжка за неизвестни създавания</string>
+		<string name="fox_websites">Уебсайтове на OrangeFox:</string>
+		<string name="fox_downloads">[Изтегляния] : {1}</string>
+		<string name="fox_faq">[Ръководства/ЧЗВ]: {1}</string>
+		<string name="fox_encrypted">* Съхранението е криптирано</string>
+		<string name="fox_unencrypted">* Съхранението не е криптирано</string>
+		<string name="fox_display">* Дисплей:    {1}</string>
+		<string name="fox_device">* Устройство:     {1} ({2})</string>
+		<string name="fox_platform">* Платформа:   {1}</string>
+		<string name="fox_dynamic_yes">* Динамично:    да</string>
+		<string name="fox_dynamic_no">* Динамично:    не</string>
+		<string name="fox_boot_slot">* Слот за стартиране:  {1}</string>
+		<string name="fox_vab_yes">* Virtual_AB: да</string>
+		<string name="fox_vab_no">* Virtual_AB: не</string>
+		<string name="fox_kernel">* Ядро:     {1}</string>
+		<string name="fox_miui_rom">* MIUI ROM (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* Потребителски ROM (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* Отпечатък: {1}</string>
+		<string name="fox_no_rom">* Няма ROM.</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">Връзка към папка</string>
+		<string name="symlink_file_name">Връзка към файл</string>
+		<string name="symlink_broken_name">Счупена връзка</string>
+		<string name="symlink_folder">Отвори истинската папка</string>
+		<string name="symlink_file">Отвори истинския файл</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">Покажи скрити файловe</string>
+		<string name="files_auto_open">Автоматично определяне на типа на файла</string>
+		<string name="file_read">Четене на файл: {1}</string>
+		<string name="file_read_error">Не може да се отвори файлът!</string>
+		<string name="file_read_error_size">Файлът е по-голям от 1.5MB!</string>
+		<string name="file_read_error_bin">Не може да се прочете бинарен файл!</string>
+		<string name="subs_wipe">Изтриване на Substratum Оверлеи</string>
+		<string name="sort_ex_all">Всички файлове</string>
+		<string name="sort_ex_img">IMG файловe</string>
+		<string name="sort_ex_zip">ZIP файловe</string>
+		<string name="aroma_help">Натиснете отново, за да стартирате AromaFM...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">Съхранението е монтирано</string>
+		<string name="backups_rw_error_2">като само за четене!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">Приложения</string>
+		<string name="appmgr_title">Мениджър на приложенията</string>
+
+		<!-- performance -->
+		<string name="perf_title">Производителност</string>
+		<string name="perf_conf_mode">Режим на производителност на възстановяването</string>
+		<string name="perf_conf_balance">Балансиран</string>
+		<string name="perf_conf_high">Висока производителност</string>
+		<string name="perf_conf_batt">Спестяване на енергия</string>
+
+		<string name="fox_led_title">Настройки на LED</string>
+		<string name="fox_use_green_led">Използвай зелен цвят на LED</string>
+		<string name="fox_boot_fastcharge">Принудително бързо зареждане</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">Готови сте да получавате актуализации!</string>
+		<string name="fox_ota_msg_custom">Активиран режим на потребителски ROM</string>
+		<string name="fox_ota_msg_reflash">Моля, инсталирайте пълния ROM!</string>
+		<string name="fox_advanced_stock_recovery">Агресивно деактивиране на стандартно възстановяване</string>
+		<string name="fox_support_miui_ota_chk">Поддържане на OTA</string>
+		<string name="fox_include_system_survival_chk">Включване на система в OTA оцеляване</string>
+		<string name="fox_verify_incremental_ota_signature_chk">Проверка на подписа на инкрементално OTA</string>
+		<string name="fox_dmverity_chk">Деактивиране на DM-Verity</string>
+		<string name="fox_forced_encryption_chk">Деактивиране на принудително криптиране</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">Предотвратяване на автоматично рестартиране след инсталиране на OTA</string>
+		<string name="of_ota_reboot_disabled">Актуализацията на OTA приключи. Вие деактивирахте автоматичното рестартиране. Връщане на контрола към вас.</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">Забележка: Форматиране на данни е преместено към</string>
+		<string name="wipe_format_moved_info2">Страница за управление на партиции.</string>
+
+		<!-- R11 -->
+		<string name="gst_title">Навигация с жестове</string>
+		<string name="gst_enable_all">Активиране на жестове</string>
+		<string name="gst_back">Жест назад</string>
+		<string name="gst_back_left">Отляво</string>
+		<string name="gst_back_right">Отдясно</string>
+		<string name="gst_console_enable">Плъзнете от лентата с статус за да отворите конзолата</string>
+		<string name="gst_navbar_error">Някои настройки са скрити.</string>
+		<string name="gst_navbar_error_2">Деактивирайте жестовете, за да ги видите.</string>
+
+		<string name="in">в</string>
+		<string name="con_digest_start">[СЪЗДАВАНЕ НА ДИГЕСТ ЗАПОЧНАТО]</string>
+		<string name="con_digest_error">Списъкът с партиции е празен!</string>
+		<string name="con_digest_cancel">Отмяна...</string>
+		<string name="con_digest_complete">[СЪЗДАВАНЕ НА ДИГЕСТ ЗАВЪРШЕНО ЗА {1} СЕКУНДИ]</string>
+		<string name="digest_btn">Създаване на дигест</string>
+		<string name="digest_creating">Създаване на дигест...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu файла,</string>
+		<string name="size_progress_v2">%llu/%llu MB (%i%%)</string>
+
+		<string name="navpan_new_design">Нов дизайн на навигационния панел</string>
+		<string name="full_partition_list">Показване на допълнителни партиции за резервно копие</string>
+
+		<string name="data_decrypted_reload">Успешно декриптирано!</string>
+
+		<string name="install_queue_magisk_btn">Добавяне на Magisk</string>
+		<string name="hint_ffiles_missing">Згубили ли сте нещо?</string>
+		<string name="hint_ffiles_missing1">Добавки на Fox не са налични</string>
+		<string name="hint_ffiles_missing2">OrangeFox не може да достъпи своите файлове.</string>
+		<string name="hint_ffiles_missing3">Опитайте да монтирате /data или да преинсталирате</string>
+		<string name="hint_ffiles_missing4">OrangeFox, ако /data е изтрито.</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">Скриване на подсказка</string>
+
+		<string name="info_dir_empty">Папката е празна</string>
+		<string name="info_dir_empty_hidden">Някои файлове са скрити</string>
+
+		<string name="navbar_style_line">Линия</string>
+		<string name="accent_in_titles">Цвят на акцентен текст в заглавието</string>
+
+		<string name="backup_quick_info1">Тези партиции ще бъдат избрани</string>
+		<string name="backup_quick_info2">след натискане на бутона "Бързо резервно копие"</string>
+		<string name="mbyte">MB</string>
+		<string name="mbytesec">MB/s</string>
+		<string name="backup_av_files">Файл</string>
+		<string name="backup_av_img">Изображение</string>
+		<string name="backup_exp_size">Очакван размер</string>
+		<string name="time_minute">мин.</string>
+		<string name="backup_av">Средно време</string>
+		<string name="backup_av1">Искате ли да нулирате стойностите на скоростта</string>
+		<string name="backup_av2">до стандартни? Средно време</string>
+		<string name="backup_av3">прогнозите ще бъдат по-малко точни.</string>
+
+		<string name="cust_line_white">Използвай бяла линия</string>
+		<string name="cust_line_gray">Използвай сива линия</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">Смени слота</string>
+		<string name="slot_switch_a">Преминете към слот А</string>
+		<string name="slot_switch_b">Преминете към слот B</string>
+		<string name="slot_active_a">Слот A е активен</string>
+		<string name="slot_active_b">Слот B е активен</string>
+
+		<string name="theme_font_primary_tab">Основен</string>
+		<string name="theme_font_secondary_tab">Вторичен</string>
+		<string name="theme_font_size_tab">Размер</string>
+		<string name="theme_font_select">Избери шрифт</string>
+
+		<string name="theme_fweight">Тежест на шрифта</string>
+		<string name="theme_fweight_norm">По подразбиране</string>
+		<string name="theme_fweight_reg">Обикновен</string>
+		<string name="theme_fweight_med">Среден</string>
+
+		<string name="swipe_up_to_unlock">Плъзнете нагоре от долната част на екрана за да отключите</string>
+
+		<string name="spl_background">Цвят на фона</string>
+		<string name="spl_logo">Лого</string>
+		<string name="spl_white">Бял</string>
+		<string name="spl_black">Черен</string>
+		<string name="spl_night">Нощ</string>
+		<string name="spl_orange">Оранжев</string>
+		<string name="spl_accent">Акцент</string>
+		<string name="spl_image">Изображение на фона</string>
+		<string name="spl_del_img">Премахни изображение</string>
+		<string name="hidden">Скрит</string>
+		<string name="spl_ofr">"OrangeFox Recovery" етикет</string>
+
+		<string name="batch_selected">%of_batch_count% избрани</string>
+		<string name="batch_title">Групови действия</string>
+		<string name="batch_files_folders">Файлове и папки</string>
+
+		<string name="fm_action_folder">Действия върху тази папка</string>
+
+		<string name="tap_to_generate">Докоснете тук, за да изчислите</string>
+		<string name="calc_checksum">Изчисляване...</string>
+		<string name="cant_access_data">Не може да се получи достъп до данните. Монтирайте раздела с данните ръчно.</string>
+
+		<string name="backup_pass_wait">Промяна на паролата...</string>
+		<string name="pass_encrypt_error1">Не можете да промените паролата</string>
+		<string name="pass_encrypt_error2">когато данните са криптирани!</string>
+
+		<string name="backup_encrypt_data_info">Само раздела с данните ще бъде криптиран</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">Инсталиране на Ramdisk</string>
+		<string name="img_type">Тип на изображението</string>
+		<string name="img_select_type">Изберете типа изображението</string>
+		<string name="repack_overwrite_warning">Ако устройството е било претходно рутирано, рут достъпът е бил презаписан и трябва да бъде преинсталиран.</string>		
+
+		<string name="repack_backup_first">Създайте резервно копие на съществуващия образ първо</string>
+
+		<string name="unpack_error">Грешка при разопаковане на образа.</string>
+		<string name="repack_error">Грешка при повторно опаковане на образа.</string>
+		<string name="unpacking_image">Разопаковане на {1}...</string>
+		<string name="repacking_image">Повторно опаковане на {1}...</string>
+		
+		<string name="fix_recovery_loop">Корекция на цикъла на повторно стартиране на възстановителния режим</string>
+		<string name="fixing_recovery_loop">Корекция на цикъла на повторно стартиране на възстановителния режим...</string>
+		<string name="fix_recovery_loop_complete">Корекция на цикъла на повторно стартиране на възстановителния режим завършена</string>
+		<string name="fixing_recovery_loop_patch">Патчване на ядрото...</string>
+		<string name="fix_recovery_loop_patch_error">Грешка при патчване на ядрото.</string>
+		<string name="try_app">Опитайте нашето приложение!</string>
+		<string name="try_app_2">Проверете за актуализации на възстановителния режим чрез нашето</string>
+		<string name="try_app_3">ново приложение! </string>
+		<string name="try_app_4">Линк за изтегляне:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">Редактиране на файл в nano</string>
+		<string name="fm_open_terminal_btn">Отваряне на терминал тук</string>
+		<string name="batch_progress">Прогрес</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">Потребителски настройки за %fox_compatibility_fox_device%</string>
+		<string name="custom_settings_title">Потребителски настройки</string>
+		<string name="tap_to_show">Докоснете за показва</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">Активиране на Android Rescue Party! Възможни решения? Или:</string>
+		<string name="rescue_party1"> 1. Изтриване на кешовете, и/или</string>
+		<string name="rescue_party2"> 2. Форматиране на данните, и/или</string>
+		<string name="rescue_party3"> 3. Чисто инсталиране на вашата ROM.</string>
+		<string name="rescue_party4">Проблемът е:</string>
+
+		<string name="restore_system_context">Не може да се получи стандартния контекст за {1} -- Android може да не стартира.</string>
+		
+		<string name="batch_progress">Прогрес</string>
+		<string name="recovery_busy">Възстановителния режим е зает</string>
+		<string name="status_delimeter">Разделител на лентата с статус</string>
+		<string name="status_delimeter_shadow">Сянка</string>
+
+		<string name="mount_vab_partitions">Устройствата на супер може да не се монтират до след презареждане на възстановителния режим.</string>
+		<string name="merges_snapshots">Сливане на снимки</string>
+		<string name="merging_snapshots">Сливане на снимки...</string>
+		<string name="merging_snapshots_complete">Сливени снимки</string>
+		
+		<string name="unmap_super_devices">Премахване на супер устройства</string>
+		<string name="unmapping_super_devices">Премахване на супер устройства...</string>
+		<string name="unmap_super_devices_complete">Всички супер устройства са премахнати</string>
+
+		<string name="auto_reflashtwrp_chk">Преинсталирайте OrangeFox след инсталиране на ROM</string>
+		<string name="modified_ramdisk_error">файловете на ramdisk са били модифицирани, не може да се създаде ramdisk за инсталиране. fastboot boot OrangeFox и опитайте този вариант отново или се върнете към Файлове и инсталирайте img файла като Recovery Ramdisk, използвайки бутона Инсталиране на Ramdisk.</string>
+		<string name="create_ramdisk_error">грешка при създаване на ramdisk за инсталиране.</string>
+		<string name="reflash_twrp">Инсталиране на текущия OrangeFox</string>
+		<string name="reflashing_twrp">Инсталиране на OrangeFox...</string>
+		<string name="reflash_twrp_complete">Инсталирането на OrangeFox завърши</string>
+
+		<string name="auto_disable_avb2">Деактивиране на vbmeta AVB2.0 след инсталиране на ROM</string>
+		<string name="disable_avb2">Деактивиране на vbmeta AVB2.0</string>
+		<string name="disable_avb2_confirm">Деактивиране на vbmeta AVB2.0?</string>
+		<string name="disabling_AVB2">Деактивиране на vbmeta AVB2.0...</string>
+		<string name="disabling_AVB2_complete">vbmeta AVB2.0 е деактивиран!</string>
+		<string name="disable_avb2_success_msg">Деактивиране на vbmeta AVB2.0: обработка на '{1}' успешна.</string>
+		<string name="disable_avb2_fail_msg">Деактивиране на vbmeta AVB2.0: обработка на '{1}' неуспешна!</string>
+
+		<string name="enable_hw_control">Контрол на хардуера чрез графичен интерфейс</string>
+		<string name="enable_hw_control_1">Това ще позволи навигация през</string>
+		<string name="enable_hw_control_2">интерфейса с помощта на хардуерните</string>
+		<string name="enable_hw_control_3">бутони за контрол на звука и включване/изключване.</string>
+		<string name="enable_hw_control_4">Жестовете ще бъдат деактивирани. Продължаваме ли?</string>
+	</resources>
+</language>

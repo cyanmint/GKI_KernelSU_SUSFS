@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<recovery>
+	<resources>
+		<!-- Action Bar -->
+		<image name="actionbar_back" filename="SVG/ActionBar/back.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_cancel" filename="SVG/ActionBar/cancel.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_delete" filename="SVG/ActionBar/delete.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_edit" filename="SVG/ActionBar/edit.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_encr_dis" filename="SVG/ActionBar/encr_dis.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_encr_ena" filename="SVG/ActionBar/encr_ena.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_flash" filename="SVG/ActionBar/flashlight_off.svg" retainaspect="1" tint="#ACCENT#" scale="2.75"/>
+		<image name="actionbar_flash_on" filename="SVG/ActionBar/flashlight_on.svg" retainaspect="1" tint="#ACCENT#" scale="2.75"/>
+		<image name="actionbar_reset" filename="SVG/ActionBar/reset.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_settings" filename="SVG/ActionBar/settings.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_sort" filename="SVG/ActionBar/sort.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_power_off" filename="SVG/ActionBar/power_off.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_storage" filename="SVG/ActionBar/storage.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_search" filename="SVG/ActionBar/search.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_menu" filename="SVG/ActionBar/menu.svg" retainaspect="1" tint="#ACCENT#"/>
+		<image name="actionbar_help" filename="SVG/Icons/help.svg" retainaspect="1" tint="#ACCENT#" scale="3.25"/>
+	</resources>
+	<variables>
+		<variable name="actbar_color" value="%#A_COLOR#%"/>
+		<variable name="theme_pie" value="#ENABLE#"/>
+	</variables>
+</recovery>

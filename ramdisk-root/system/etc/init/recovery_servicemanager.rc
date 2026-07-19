@@ -1,0 +1,33 @@
+# OrangeFox Recovery servicemanager deadlock fix
+# This file provides init-level control of servicemanager lifecycle
+# to prevent crypto-related deadlocks during boot
+#
+# Key insight: fastbootd mode doesn't experience deadlock because
+# servicemanager is NOT auto-started during early boot phases.
+# This configuration adopts the fastbootd approach.
+
+# DO NOT auto-start servicemanager during boot phases
+# This prevents deadlock with crypto initialization
+# The GUI splash screen provides manual control buttons if needed
+
+# Ensure all service managers stay disabled during all boot phases
+on post-fs
+    # Explicitly stop if somehow started
+    stop servicemanager
+    stop hwservicemanager
+    stop vndservicemanager
+    stop keystore2
+
+on post-fs-data
+    # Keep disabled
+    stop servicemanager
+    stop hwservicemanager
+    stop vndservicemanager
+    stop keystore2
+
+on boot
+    # Keep disabled - this is the key difference from fastbootd
+    stop servicemanager
+    stop hwservicemanager
+    stop vndservicemanager
+    stop keystore2

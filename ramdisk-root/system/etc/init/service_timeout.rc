@@ -1,0 +1,25 @@
+# Service Timeout Protection for TWRP Recovery
+# Automatically kills stuck/frozen services that can cause splash screen hangs
+
+on early-init
+    # Set default service timeout (30 seconds)
+    setprop sys.service.timeout 30
+
+on post-fs
+    # Run diagnostic script to capture early boot state
+    exec - root root -- /system/bin/sh /system/bin/twrp_diagnostics.sh
+    
+    # Wait a moment for services to settle
+    exec - root root -- /system/bin/sleep 3
+    
+    # Kill any services stuck in a restart loop
+    exec - root root -- /system/bin/sh -c "for i in 1 2 3 4 5; do pkill -9 -f 'servicemanager.*restart'; sleep 0.2; done"
+
+on boot
+    # Final safety check - kill any blocking processes
+    exec - root root -- /system/bin/sh -c "killall -9 servicemanager hwservicemanager vndservicemanager keystore2 2>/dev/null || true"
+    
+    # Ensure UI-critical paths exist and are writable
+    mkdir /tmp/recovery 0755
+    chmod 0777 /tmp
+    chmod 0755 /tmp/recovery

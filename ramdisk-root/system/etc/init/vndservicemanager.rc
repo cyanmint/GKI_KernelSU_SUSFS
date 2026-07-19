@@ -1,0 +1,12 @@
+# DO NOT auto-start vndservicemanager in recovery to prevent crypto deadlock
+# vndservicemanager can be started manually if needed
+# on init
+#     start vndservicemanager
+
+service vndservicemanager /system/bin/vndservicemanager /dev/vndbinder
+    disabled
+    user root
+    group root readproc
+    writepid /dev/cpuset/system-background/tasks
+    shutdown critical
+    seclabel u:r:recovery:s0

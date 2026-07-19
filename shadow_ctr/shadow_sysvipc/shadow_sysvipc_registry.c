@@ -26,10 +26,12 @@
  * - Key-based lookup semantics mirroring msgget(2)/semget(2)/shmget(2).
  * - Reference counting tied to task groups (transparent syscall path).
  * - msgctl/semctl/shmctl support for IPC_STAT and IPC_RMID on virtual objects.
+ * - Real message-queue payload transfer (msgsnd/msgrcv), including mtype
+ *   matching, blocking, IPC_NOWAIT and MSG_NOERROR semantics (see
+ *   shadow_sysvipc_msgq.c).
  *
  * What is NOT simulated
  * ---------------------
- * - Actual message passing (msgsnd/msgrcv).
  * - Actual semaphore operations (semop/semtimedop).
  * - Actual shared-memory mapping (shmat/shmdt).
  * Those require real in-kernel SysV IPC data paths.  Returning a fabricated
@@ -55,6 +57,13 @@ static bool svipc_type_valid(u32 type)
 static u32 svipc_key_hash_val(s32 key, u32 type)
 {
 	return (u32)key ^ (type << 28);
+}
+
+static void svipc_resource_init_common(struct svipc_resource *res)
+{
+	INIT_LIST_HEAD(&res->msgs);
+	mutex_init(&res->msgs_lock);
+	init_waitqueue_head(&res->msgs_wait);
 }
 
 u32 svipc_shadow_flags_from_ipc(int flags)
@@ -114,6 +123,8 @@ void svipc_put(struct svipc_resource *res)
 		xa_erase(&svipc_map, res->id);
 		mutex_unlock(&svipc_map_lock);
 		atomic_dec(&svipc_count);
+		if (res->type == SHADOW_SYSVIPC_TYPE_MSGQ)
+			svipc_msgq_purge_locked(res);
 		kfree(res);
 	}
 }
@@ -175,6 +186,7 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 			res->nsems = nsems;
 			res->size = size;
 			refcount_set(&res->refcount, 1);
+			svipc_resource_init_common(res);
 
 			ret = xa_alloc(&svipc_map, &res->id, res,
 				       XA_LIMIT(1, INT_MAX), GFP_KERNEL);
@@ -202,6 +214,7 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 		res->nsems = nsems;
 		res->size = size;
 		refcount_set(&res->refcount, 1);
+		svipc_resource_init_common(res);
 
 		mutex_lock(&svipc_map_lock);
 		ret = xa_alloc(&svipc_map, &res->id, res,
@@ -248,6 +261,8 @@ void svipc_force_free_all_resources(void)
 		if (res->key != SHADOW_IPC_PRIVATE)
 			hash_del(&res->key_node);
 		xa_erase(&svipc_map, id);
+		if (res->type == SHADOW_SYSVIPC_TYPE_MSGQ)
+			svipc_msgq_purge_locked(res);
 		kfree(res);
 	}
 	mutex_unlock(&svipc_map_lock);

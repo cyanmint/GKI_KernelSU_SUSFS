@@ -1,0 +1,1256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>العربية</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">النظام</string>
+		<string name="system_image">نظام بصيغة امج</string>
+		<string name="vendor">بائع</string>
+		<string name="vendor_image">صورة المورد</string>
+		<string name="boot">التمهيد</string>
+		<string name="recovery">الإستعادة</string>
+		<string name="cache">ذاكرة التخزين المؤقت</string>
+		<string name="data">البيانات</string>
+		<string name="sdcard">ذاكرة التخزين الخارجية</string>
+		<string name="internal">ذاكرة التخزين الداخلية</string>
+		<string name="microsd">بطاقة التخزين الخارجية</string>
+		<string name="usb_storage">تخزين USB</string>
+		<string name="android_secure">أمن أندرويد</string>
+		<string name="dalvik">Dalvik / ART Cache</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">SD-EXT</string>
+		<string name="adopted_data">البيانات المعتمدة</string>
+		<string name="adopted_storage">التخزين المتوافق</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">اورانج فوكس %fox_actual_build%</string>
+		<string name="cpu_temp">المعالج: %tw_cpu_temp% &#xB0;C</string>
+		<string name="sort_by_name_asc">الاسم</string>
+		<string name="sort_by_date_asc">التاريخ</string>
+		<string name="sort_by_size_asc">الحجم</string>
+		<string name="sort_by_name_desc">الاسم</string>
+		<string name="sort_by_date_desc">التاريخ</string>
+		<string name="sort_by_size_desc">الحجم</string>
+		<string name="install_btn">تثبيت</string>
+		<string name="wipe_btn">مسح</string>
+		<string name="backup_btn">النسخ الاحتياطي</string>
+		<string name="restore_btn">استعادة</string>
+		<string name="mount_btn">تركيب</string>
+		<string name="file_manager_btn">الملفات</string>
+		<string name="advanced_btn">متقدم</string>
+		<string name="reboot_btn">إعادة التشغيل</string>
+		<string name="copy_log_btn">نسخ السجل إلي الذاكرة</string>
+		<string name="install_zip_hdr">تثبيت Zip</string>
+		<string name="install_zip_btn">تثبيت Zip</string>
+		<string name="install_image_hdr">تثبيت image</string>
+		<string name="install_image_btn">تثبيت IMAGE</string>
+		<string name="install_select_file_hdr">اختار الملف</string>
+		<string name="install_select_file_btn">اختار الملف</string>
+		<string name="adb_sideload_btn">جسر تصحيح أندرويد والتحميل الجانبي</string>
+		<string name="select_storage_hdr">اختيار التخزين</string>
+		<string name="select_storage_btn">اختيار التخزين</string>
+		<string name="queue_hdr">قائمة الانتظار</string>
+		<string name="raised_clearqueue_btn">مسح قائمة الانتظار</string>
+		<string name="raised_viewqueue_btn">عرض قائمة الانتظار</string>
+		<string name="zip_queue_count">%tw_zip_queue_count% من الحد الأقصى من 10 ملفات في قائمة الانتظار</string>
+		<string name="folder">مجلد</string>
+		<string name="file">ملف</string>
+		<string name="zip_sig_chk">التحقق من توقيع ال ZIP</string>
+		<string name="inject_twrp_chk">حقن اورانج فوكس بعد التثبيت</string>
+		<string name="install_reboot_chk">إعادة التشغيل بعد اكتمال التثبيت</string>
+		<string name="options_hdr">خيارات</string>
+		<string name="zip_queue">قائمه الانتظار</string>
+		<string name="install_zip_count_hdr">تثبيت الملف %tw_zip_index% من %tw_zip_queue_count%</string>
+		<string name="working">جار العمل...</string>
+		<string name="failed">فشل</string>
+		<string name="successful">ناجح</string>
+		<string name="wipe_cache_btn">مسح ذاكرة التخزين المؤقت</string>
+		<string name="reboot_system_btn">اعادة تشغيل النظام</string>
+		<string name="reboot_recovery_btn">إعادة التشغيل الى وضع الريكفري</string>
+		<string name="install_sel_target">حدد القسم الهدف</string>
+		<string name="flash_image_select">قسم</string>
+		<string name="flashing_image">تنصيب ملف IMG...</string>
+		<string name="image_flashed">تم تنصيب ملف IMG</string>
+		<string name="wipe_cache_dalvik_confirm">مسح الكاش والدالفيك</string>
+		<string name="wipe_dalvik_confirm">مسح الدالفيك</string>
+		<string name="wiping_cache_dalvik">جارى مسح المخزن &amp; الدالفيك...</string>
+		<string name="wipe_cache_dalvik_complete">تم مسح ذاكرة التخزينت المؤقت;apm&amp; دالفك</string>
+		<string name="cache_dalvik_done">تم مسح ذاكرة التخزين المؤقت ;apm&amp; دالفك</string>
+		<string name="swipe_wipe">اسحب للمسح</string>
+		<string name="rebooting">إعادة التشغيل...</string>
+		<string name="swipe_reboot">اسحب لأعادة التشغيل</string>
+		<string name="confirm_action">تأكيد الأمر</string>
+		<string name="cancel_btn">إلغاء</string>
+		<string name="wipe_hdr">مسح</string>
+		<string name="factory_reset_hdr">إستعادة ضبط المصنع</string>
+		<string name="factory_reset1">مسح البيانات (الداتا) وذاكرة التخزين المؤقتة و الدالفيك</string>
+		<string name="factory_reset2">(باستثناء ذاكرة التخزين الداخلية)</string>
+		<string name="factory_reset3">في أغلب الأوقات، هذا</string>
+		<string name="factory_reset4">المسح الوحيد الذي تحتاجه.</string>
+		<string name="factory_reset5">(لا يتضمن المستخدمين / شاشة القفل)</string>
+		<string name="factory_resetting">إعادة التعيين إلى إعدادات المصنع...</string>
+		<string name="advanced_wipe_hdr">مسح متقدم</string>
+		<string name="advanced_wipe_btn">مسح متقدم</string>
+		<string name="wipe_enc_confirm">مسح التشفير من البيانات</string>
+		<string name="formatting_data">جار مسح البيانات...</string>
+		<string name="swipe_format_data">اسحب لمسح البيانات</string>
+		<string name="factory_reset_complete">اكتمل ضبط المصنع</string>
+		<string name="sel_part_hdr">تحديد الأقسام</string>
+		<string name="wipe_sel_confirm">مسح الأقسام المحددة</string>
+		<string name="wiping_part">جار مسح الأقسام...</string>
+		<string name="wipe_complete">تم المسح</string>
+		<string name="format_data_hdr">مسح البيانات</string>
+		<string name="format_data_btn">مسح البيانات</string>
+		<string name="format_data_ptr1">عملية إعادة التهيئة سوف تحذف جميع تطبيقاتك،</string>
+		<string name="format_data_ptr2">النسخ الاحتياطية والصور والفيديو و الوسائط و</string>
+		<string name="format_data_ptr3">يقوم بإزالة التشفير عن وحدة التخزين الداخلية.</string>
+		<string name="format_data_adopted">يتضمن الذاكرة المعتمدة</string>
+		<string name="format_data_undo">هذا لا يمكن التراجع عنه.</string>
+		<string name="format_data_complete">تم مسح البيانات</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">اكتب كلمة "yes" باللغة الانكليزية للتأكيد.</string>
+		<string name="part_opt_hdr">معلومات القسم</string>
+		<string name="file_sys_opt">خيارات القسم</string>
+		<string name="part_mount_point">نقطة التحميل</string>
+		<string name="part_curr_fs">نظام الملفات</string>
+		<string name="part_present">الوقت الحالي</string>
+		<string name="part_removable">قابلة للإزالة</string>
+		<string name="part_yes">نعم</string>
+		<string name="part_no">لا</string>
+		<string name="part_size">الحجم</string>
+		<string name="part_used">مُستَخدم</string>
+		<string name="part_free">متاح</string>
+		<string name="part_backup_size">حجم النسخ الاحتياطي</string>
+		<string name="resize_btn">تغيير حجم FS</string>
+		<string name="resize_confirm">تغيير حجم القسم</string>
+		<string name="resizing">جار اعادة التقسيم...</string>
+		<string name="resize_complete">تمت إعادة التقسيم</string>
+		<string name="swipe_resize">اسحب لإعادة التقسيم</string>
+		<string name="repair_btn">اصلاح FS</string>
+		<string name="repair_confirm">اصلاح القسم</string>
+		<string name="repairing">الإصلاح جارٍ...</string>
+		<string name="repair_complete">اكتمل الإصلاح</string>
+		<string name="swipe_repair">اسحب للإصلاح</string>
+		<string name="change_fs_btn">تغيير FS</string>
+		<string name="change_fs_warn1">بعض الرومات / الكيرنلات قد لا تدعم بعض</string>
+		<string name="change_fs_warn2">بعض انظمة الملفات. تقدم بحذر!</string>
+		<string name="change_fs_confirm">تغيير FS الى</string>
+		<string name="formatting">إعادة التهيئة جارية...</string>
+		<string name="format_complete">تم مسح البيانات</string>
+		<string name="swipe_change_fs">اسحب للتغيير</string>
+		<string name="back_btn">رجوع</string>
+		<string name="wipe_enc_btn">حذف التشفير</string>
+		<string name="swipe_factory_reset">مرر للإعادة إلى ضبط المصنع</string>
+		<string name="backup_hdr">نسخه احتياطيه</string>
+		<string name="encryption_hdr">تمكين التشفير</string>
+		<string name="name">الاسم</string>
+		<string name="enable_backup_comp_chk">تمكين الضغط</string>
+		<string name="skip_md5_backup_chk">تخطي إنشاء ملف MD5 خلال النسخ الاحتياطي</string>
+		<string name="disable_backup_space_chk">تعطيل التحقق من المساحة المتوفؤة قبل النسخ الإحتياطي</string>
+		<string name="swipe_backup">اسحب للنسخ الاحتياطي</string>
+		<string name="backup_name_exists">نسخة احتياطية بهذا الاسم موجودة مسبقاً!</string>
+		<string name="pass_not_match">لا تتطابق كلمات المرور!</string>
+		<string name="partitions">اقسام</string>
+		<string name="progress">التنفيذ</string>
+		<string name="backup_complete">تم النسخ الاحتياطي</string>
+		<string name="restore_hdr">النسخ الاحتياطي</string>
+		<string name="restore_backup_hdr">استرجاع النسخة الاحتياطية</string>
+		<string name="sel_backup_hdr">تحديد النسخة الاحتياطية</string>
+		<string name="restore_dec_fail">كلمة المرور خاطئة، أعد المحاولة!</string>
+		<string name="del_backup_confirm">حذف النسخ الاحتياطي</string>
+		<string name="del_backup_confirm2">لا يمكن التراجع عن هذا العمل!</string>
+		<string name="deleting_backup">جار حذف النسخة الإحتياطية...</string>
+		<string name="backup_deleted">تم حذف النسخة الاحتياطية</string>
+		<string name="swipe_delete">اسحب للحذف</string>
+		<string name="restore_backup_date">تاريخ النسخ الاحتياطي</string>
+		<string name="restore_md5_chk">التحقق من MD5 لملفات النسخ الإحتياطي</string>
+		<string name="restore_enable_md5_chk">تفعيل تحقق MD5 للتحقق من ملفات النسخ الاحتياطية</string>
+		<string name="restore_complete">اكتملت الاستعادة</string>
+		<string name="swipe_restore">اسحب للاستعادة</string>
+		<string name="rename_backup_hdr">إعادة تسمية النسخة الإحتياطية</string>
+		<string name="rename_backup_confirm">إعادة تسمية النسخة الإحتياطية</string>
+		<string name="rename_backup_confirm2">لا يمكن التراجع عن هذا العمل!</string>
+		<string name="renaming_backup">جاري إعادة تسمية النسخة الإحتياطية...</string>
+		<string name="rename_backup_complete">تمت إعادة تسمية النسخة الإحتياطية</string>
+		<string name="swipe_to_rename">اسحب لإعادة التسمية</string>
+		<string name="mount_hdr">تركيب</string>
+		<string name="mount_sys_ro_chk">تثبيت أقسام النظام للقراءة فقط</string>
+		<string name="erofs_is_ro_fs">EROFS هو نظام ملفات للقراءة فقط ولا يمكن تثبيته في وضع القراءة/الكتابة!</string>
+		<string name="decrypt_data_btn">فك تشفير البيانات</string>
+		<string name="disable_mtp_btn">تعطيل MTP</string>
+		<string name="enable_mtp_btn">تفعيل MTP</string>
+		<string name="usb_storage_hdr">وحدة تخزين USB</string>
+		<string name="usb_storage_btn">وحدة تخزين USB</string>
+		<string name="usb_stor_mnt1">وحدة تخزين USB محمّلة</string>
+		<string name="usb_stor_mnt2">تأكد من إزالة جهازك بأمان</string>
+		<string name="usb_stor_mnt3">من الحاسب قبل إلغاء التحميل!</string>
+		<string name="unmount_btn">إلغاء التحميل</string>
+		<string name="rb_system_btn">النظام</string>
+		<string name="rb_poweroff_btn">إيقاف التشغيل</string>
+		<string name="rb_recovery_btn">الإستعادة</string>
+		<string name="rb_bootloader_btn">Bootloader</string>
+		<string name="rb_theme">السمة</string>
+		<string name="rb_download_btn">التحميل</string>
+		<string name="rb_edl_btn">Edl</string>
+		<string name="turning_off">جار إيقاف التشغيل...</string>
+		<string name="swipe_power_off">اسحب لإيقاف التشغيل</string>
+		<string name="sys_ro">‮قسم النظام</string>
+		<string name="sys_ro_hdr">قسم النظام ليس معدّلاً</string>
+		<string name="sys_rop1">يمكن لإورانج فوكس ان يترك قسم النظام الخاص بك</string>
+		<string name="sys_rop2">غير معدلة لجعلها أسهل بالنسبة لك</string>
+		<string name="sys_rop2a">اخذ تحديثات رسمية.</string>
+		<string name="sys_rop3">اورانج فوكس لن تكون قادرة على منع</string>
+		<string name="sys_rop4">روم رسمي لإستبدال اورانج فوكس.</string>
+		<string name="sys_rop5">تثبيت ZIP او عملية ADB</string>
+		<string name="sys_rop6">ربما لا يزال يعدل قسم النظام.</string>
+		<string name="sys_ro_never_show_chk">لا تضهر هذه الشاشة ثانية</string>
+		<string name="sys_ro_keep_ro_btn">الإبقاء للقراءة فقط</string>
+		<string name="swipe_allow_mod">اسحب للسماح بالتعديلات</string>
+		<string name="settings_hdr">الاعدادات</string>
+		<string name="settings_cptn">عام</string>
+		<string name="use_rmrf_chk">استخدام الحذف بدلاً من إعادة التهيئة</string>
+		<string name="use24clock_chk">نظام 24 ساعة</string>
+		<string name="rev_navbar_chk">تخطيط معكوس لشريط التنقل</string>
+		<string name="simact_chk">محاكاة الإجراءات لاختبار السمة</string>
+		<string name="simfail_chk">محاكاة الفشل للإجراءات</string>
+		<string name="sel_tz_list">المنطقة الزمنية</string>
+		<string name="dialog_reset_theme_hdr">إعادة التعيين إلى الافتراضي</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(-11 عن التوقيت العالمي) ساموا، جزر ميدواي</string>
+		<string name="utcm10">(-10 عن التوقيت العالمي) هاواي</string>
+		<string name="utcm9">(-9 عن التوقيت العالمي) ألاسكا</string>
+		<string name="utcm8">(-8 عن التوقيت العالمي) توقيت المحيط الهادئ</string>
+		<string name="utcm7">(-7 عن التوقيت العالمي) توقيت جبال روكي</string>
+		<string name="utcm6">(-6 عن التوقيت العالمي) التوقيت المركزي</string>
+		<string name="utcm5">(-5 عن التوقيت العالمي) التوقيت الشرقي</string>
+		<string name="utcm4">(-4 عن التوقيت العالمي) توقيت المحيط الأطلسي</string>
+		<string name="utcm3">(-3 عن التوقيت العالمي) البرازيل، بوينس آيرس</string>
+		<string name="utcm2">(-2 عن التوقيت العالمي) منتصف المحيط الأطلسي</string>
+		<string name="utcm1">(-1 عن التوقيت العالمي) جزر الأزور، الرأس الأخضر</string>
+		<string name="utc0">(التوقيت العالمي) لندن، دبلن، لشبونة</string>
+		<string name="utcp1">(+1 على التوقيت العالمي) برلين، بروكسل، باريس</string>
+		<string name="utcp2">(+2 على التوقيت العالمي) أثينا، اسطنبول، جنوب أفريقيا</string>
+		<string name="utcp3">(+3 على التوقيت العالمي) موسكو، بغداد</string>
+		<string name="utcp4">(+4 على التوقيت العالمي) أبو ظبي، تبليسي، مسقط</string>
+		<string name="utcp5">(+5 على التوقيت العالمي) ايكاترينبرج، إسلام أباد</string>
+		<string name="utcp6">(+6 على التوقيت العالمي) ألماتي، دكا، كولومبو</string>
+		<string name="utcp7">(+7 على التوقيت العالمي) بانكوك، هانوي، جاكرتا</string>
+		<string name="utcp8">(+8 على التوقيت العالمي) بكين، سنغافورة، هونغ كونغ</string>
+		<string name="utcp9">(+9 على التوقيت العالمي) طوكيو، سيول، ياكوتسك</string>
+		<string name="utcp10">(+10 على التوقيت العالمي) شرق أستراليا، غوام</string>
+		<string name="utcp11">(+11 على التوقيت العالمي) فلاديفوستوك، جزر سليمان</string>
+		<string name="utcp12">(+12 على التوقيت العالمي) أوكلاند، ولينغتون، فيجي</string>
+		<string name="tz_offset_hdr">وقت الإزاحة</string>	
+		<string name="tz_offset">إزاحة</string>
+		<string name="sel_tz_offset">حدد الإزاحة (عادة ما تكون 0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">التوقيت الصيفي</string>
+		<string name="curr_tz">المنطة الزمنية الحالية %tw_time_zone%</string>
+		<string name="curr_tz_s">المنطة الزمنية الحالية:</string>
+		<string name="set_tz_btn">تعيين المنطقة الزمنية</string>
+		<string name="settings_screen_cptn">إعدادات الشاشة</string>
+		<string name="settings_screen_timeout_cptn">انتهت المهلة</string>
+		<string name="settings_screen_timeout_cptn2">انتهاء المهلة:</string>
+		<string name="timeout_unit">ثواني</string>
+		<string name="enable_timeout_chk">تفعيل مهلة الشاشة الرئيسية</string>
+		<string name="screen_to_na">إعدادات مهلة إطفاء الشاشة غير متوفرة</string>
+		<string name="rotation_chk">تدوير</string>
+		<string name="screen_bright_slider">السطوع %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">إعدادت السطوع غير متوفرة</string>
+		<string name="vibration_hdr">اهتزاز</string>
+		<string name="button_vibration_hdr">اهتزاز الازرار معطل</string>
+		<string name="kb_vibration_hdr">اهتزاز عند الكتابة على لوحة المفاتيح معطل</string>
+		<string name="act_vibration_hdr">اهتزاز الافعال معطل</string>
+		<string name="button_vibration">الاهتزاز عند الضغط على الزر:</string>
+		<string name="kb_vibration">الاهتزاز عند الكتابة على لوحة المفاتيح:</string>
+		<string name="act_vibration">الاهتزاز عند القيام بإجراءات:</string>
+		<string name="advanced_hdr">متقدم</string>
+		<string name="copy_log_confirm">نسخ السجل إلى بطاقة SD</string>
+		<string name="copying_log">جار نسخ السجل إلى ذاكرة التخزين الداخلية...</string>
+		<string name="copy_log_complete">تم نسخ السجل</string>
+		<string name="terminal_btn">Terminal</string>
+		<string name="inject_twrp_btn">حقن اورانج فوكس</string>
+		<string name="inject_twrp_confirm">إعادة حقن OrangeFox</string>
+		<string name="injecting_twrp">اعادة الحقن باورانج فوكس...</string>
+		<string name="inject_twrp_complete">تم الحقن باورانج فوكس</string>
+		<string name="swipe_to_confirm">اسحب للتأكيد</string>
+		<string name="part_sd_hdr">تقسيم بطاقة التخزين الداخلية</string>
+		<string name="rem_sd">ذاكرة قابلة للإزالة</string>
+		<string name="rem_sd_sel">اختر جهاز قابل للإزالة!</string>
+		<string name="invalid_partsd_sel">يجب اختيار جهاز قابل للإزالة</string>
+		<string name="part_sd_lose">سوف تفقد كافة الملفات الموجودة على بطاقة التخزين الداخلية!</string>
+		<string name="part_sdcard_sel_note_1">التقسيم سيحذف جميع الملفات</string>
+		<string name="part_sdcard_sel_note_2">على بطاقة SD خاصتك!</string>
+		<string name="part_sd_undo">هذا الإجراء لا يمكن التراجع عنه!</string>
+		<string name="part_sd_ext_sz">حجم EXT:</string>
+		<string name="btn_flat_ext4">EXT4</string>
+		<string name="btn_flat_ext3">EXT3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">حجم Swap:</string>
+		<string name="file_system">نظام الملفات:</string>
+		<string name="swipe_part_sd">اسحب للتقسيم</string>
+		<string name="partitioning_sd">تقسيم ذاكرة التخزين الداخلية...</string>
+		<string name="partitioning_sd2">قد يستغرق ذلك بضع دقائق.</string>
+		<string name="part_sd_complete">اكتملت عملية التقسيم</string>
+		<string name="swipe_to_unlock">اسحب لإلغاء القفل</string>
+		<string name="fm_actions">الاجراءت</string>
+		<string name="fm_hdr">الملفات</string>
+		<string name="fm_sel_file">حدد ملفاً أو مجلداً</string>
+		<string name="fm_type_folder">مجلد</string>
+		<string name="fm_type_file">ملف</string>
+		<string name="fm_copy_btn">نسخ</string>
+		<string name="fm_copying">النسخ</string>
+		<string name="fm_move_btn">نقل</string>
+		<string name="fm_moving">جاري النقل</string>
+		<string name="fm_chmod755_btn">وضع 755</string>
+		<string name="fm_chmod755ing">وضع 755</string>
+		<string name="fm_chmod644_btn">وضع 644</string>
+		<string name="fm_chmod644ing">وضع 644</string>
+		<string name="fm_chmod_btn">تعيين الأذونات</string>
+		<string name="fm_delete_btn">حذف</string>
+		<string name="fm_deleting">جار الحذف</string>
+		<string name="fm_rename_btn">إعادة تسمية</string>
+		<string name="fm_renaming">اعادة التسمية</string>
+		<string name="fm_sel_dest">مجلد الوجهة</string>
+		<string name="fm_rename_hdr">إعادة تسمية</string>
+		<string name="fm_set_perms_hdr">تعيين الأذونات</string>
+		<string name="fm_perms">الأذونات</string>
+		<string name="fm_complete">اكتملت عملية الملف</string>
+		<string name="decrypt">فُكَّ التشفير</string>
+		<string name="data_part">قسم البيانات</string>
+		<string name="encrypt_data_part">قسم البيانات مشفر</string>
+		<string name="sel_encrypt_backup">يجب عليك اختيار نسخ احتياطي مشفر.</string>
+		<string name="decrypt_data_enter_note1">الرجاء إدخال كلمة المرور او</string>
+		<string name="decrypt_data_enter_note1a">الرجاء إدخال النمط او</string>
+		<string name="decrypt_data_enter_note2">اضغط زر الرجوع لإلغاء الأمر.</string>
+		<string name="decrypt_data_enter_pass">ادخال كلمة المرور</string>
+		<string name="decrypt_data_failed_pattern">فشل النمط!</string>
+		<string name="decrypt_try_again">من فضلك حاول مرة أخرى.</string>
+		<string name="decrypt_data_enter_pattern">أدخل نمط.</string>
+		<string name="decrypt_data_trying">محاولة فك التشفير</string>
+		<string name="term_s_hdr">Terminal</string>
+		<string name="adb_sideload_hdr">ADB تحميل</string>
+		<string name="sideload_wipe_dalvik_chk">مسح الذاكرة المؤقتة Dalvik</string>
+		<string name="sideload_wipe_cache_chk">مسح ذاكرة التخزين المؤقت</string>
+		<string name="swipe_to_sideload">اسحب لبدأ الـ Sideload</string>
+		<string name="sideload_confirm">ADB تحميل</string>
+		<string name="sideload_usage">الاستخدام: ADB SideLoad File.ZIP</string>
+		<string name="sideload_complete">تم التحميل الجانبي عبر جسر نصحيح أندرويد</string>
+		<string name="fix_contexts_hdr">تصحيح السياقات</string>
+		<string name="fix_contexts_confirm">إصلاح سياقات SELinux</string>
+		<string name="fix_contexts_note1">ملاحظة: إعادة تعيين الصلاحيات مطلوبٌ نادراً.</string>
+		<string name="fix_contexts_note2">قد يؤدي إعادة تعيين سياقات SELinux إلى</string>
+		<string name="fix_contexts_note3">عدم اقلاع جهازك بشكل صحيح.</string>
+		<string name="swipe_to_fix_contexts">اسحب لتصحيح السياقات</string>
+		<string name="fixing_contexts">جار تصحيح السياقات...</string>
+		<string name="fix_contexts_complete">تم تصحيح السياقات</string>
+		<string name="reboot_hdr">إعادة التشغيل</string>
+		<string name="sel_storage_list">اختيار التخزين</string>
+		<string name="ok_btn">موافق</string>
+		<string name="install_twrp_ramdisk">تثبيت رامديسك الاستعادة</string>
+		<string name="install_kernel">تثبيت النواة</string>
+		<string name="repack_backup_first">إنشاء نسخ احتياطي للصورة الحالية أولاً</string>
+		<string name="installing">جاري التثبيت...</string>
+		<string name="install_complete">اكتمل التثبيت</string>
+		<string name="decrypt_users">فك تشفير المستخدمين</string>
+		<string name="backup_storage_undecrypt_warning">النسخ الاحتياطي لا يتضمن بعض ملفات المستخدم {1}، لأن المستخدم غير مشفر.</string>
+		<string name="decrypting_user_fbe">محاولة فك تشفير FBE للمستخدم {1}...</string>
+		<string name="decrypt_user_success_fbe">تم فك تشفير المستخدم {1} بنجاح</string>
+		<string name="decrypt_user_fail_fbe">فشل في فك تشفير المستخدم {1}</string>
+		<string name="decrypt_data_user">المستخدم المحدد</string>
+		<string name="data_users">المستخدمون</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">الكيرنل لا يدعم قراءة سياقات SELinux.</string>
+		<string name="full_selinux">الدعم الكامل ل SELinux متوفر.</string>
+		<string name="no_selinux">لا يوجد دعم ل SELinux ( لا libselinux).</string>
+		<string name="mtp_enabled">نقل الوسائط مفعل</string>
+		<string name="mtp_disabled">نقل الوسائط معطل</string>
+		<string name="mtp_crash">فشلت آلية نقل الوسائط ، لن يتم تشغيلها عند الإقلاع.</string>
+		<string name="decrypt_success">نجح فك التشفير بكلمة المرور الافتراضية.</string>
+		<string name="unable_to_decrypt">غير قادر على فك التشفير بكلمة المرور الإفتراضية. قد تحتاج إلى إعادة تهيئة البيانات.</string>
+		<string name="generating_md51">إنشاء ملف التأكد من المطابقة (MD5)</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * إنشاء ملف التأكد من المطابقة (md5) جارٍ...</string>
+		<string name="md5_created"> * تم إنشاء ملف التأكد من المطابقة (MD5).</string>
+		<string name="md5_error"> * خطأ في ملف التأكد من المطابقة (MD5)!</string>
+		<string name="md5_compute_error"> * خطأ في معالجة ملف التأكد من المطابقة (MD5).</string>
+		<string name="current_date">(التاريخ الحالي)</string>
+		<string name="auto_generate">(إنشاء تلقائي)</string>
+		<string name="unable_to_locate_partition">غير قادر على تحديد موقع القسم '{1}' من أجل الحسابات اللازمة للنسخ الاحتياطي.</string>
+		<string name="no_partition_selected">لا توجد أقسام محددة لتُنسخ احتياطياً.</string>
+		<string name="total_partitions_backup"> * العدد الإجمالي للأقسام التي ستُنسخ احتياطياً: {1}</string>
+		<string name="total_backup_size"> * الحجم الإجمالي لجميع البيانات: {1}ميغابايت</string>
+		<string name="available_space"> * المساحة المتوفرة: {1}ميغابايت</string>
+		<string name="unable_locate_storage">غير قادر على تحديد موقع جهاز التخزين.</string>
+		<string name="no_space">لا توجد مساحة كافية في ذاكرة التخزين.</string>
+		<string name="backup_started">[جاري النسخ الاحتياطي]</string>
+		<string name="backup_folder"> * مجلد النسخ الاحتياطي: {1}</string>
+		<string name="fail_backup_folder">فشل في إنشاء مجلد النسخ الاحتياطي.</string>
+		<string name="avg_backup_fs">معدل النسخ الاحتياطي للأقراص المصورة: {1} ميغابايت/ثانية</string>
+		<string name="avg_backup_img">معدل النسخ الاحتياطي للأقراص المصورة: {1} ميغابايت/ثانية</string>
+		<string name="total_backed_size">[{1} ميغابايت الحجم الإجمالي الاحتياطي]</string>
+		<string name="backup_completed">[استغرق النسخ الاحتياطي {1} ثانية]</string>
+		<string name="restore_started">[بدأت الاستعادة]</string>
+		<string name="restore_folder">مجلد الاستعادة: '{1}'</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} انتهى ({2} ثانية)]</string>
+		<string name="verifying_md5">جاري التحقق من صحة ملف المطابقة MD5</string>
+		<string name="skip_md5">تخطي التحقق من MD5 استناداً إلى إعداد المستخدم.</string>
+		<string name="calc_restore">حساب تفاصيل الاستعادة...</string>
+		<string name="restore_read_only">لا يمكن استعادة {1} -- تم تحميله للقراءة فقط.</string>
+		<string name="restore_unable_locate">غير قادر على تحديد موقع القسم '{1}' من أجل الاستعادة.</string>
+		<string name="no_part_restore">لا توجد أقسام محددة للاستعادة.</string>
+		<string name="restore_part_count">استعادة {1} قسم/أقسام جارية...</string>
+		<string name="total_restore_size">الحجم الإجمالي للمُستعاد هو {1}ميغابايت</string>
+		<string name="updating_system_details">جاري تحديث تفاصيل النظام</string>
+		<string name="restore_completed">[اكتملت الاستعادة في {1} ثانية]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">خطأ في الفتح: '{1}' ({2})</string>
+		<string name="unable_locate_part_backup_name">غير قادر على تحديد موقع القسم بواسطة النسخة الاحتياطية: '{1}'</string>
+		<string name="unable_find_part_path">غير قادر على إيجاد قسم للمسار '{1}'</string>
+		<string name="update_part_details">جاري تحديث تفاصيل القسم...</string>
+		<string name="update_part_details_done">...تم</string>
+		<string name="wiping_dalvik">إفراغ مجلدات ذاكرة التخزين المؤقتة Dalvik...</string>
+		<string name="cleaned">تم التنظيف: {1}...</string>
+		<string name="dalvik_done">-- اكتمل إفراغ مجلدات ذاكرة التخزين المؤقتة Dalvik!</string>
+		<string name="no_andsec">لا توجد أقسام أمان نظام الأندرويد.</string>
+		<string name="unable_to_locate">غير قادر على تحديد موقع {1}.</string>
+		<string name="wiping_datamedia">إفراغ ذاكرة التخزين الداخلية -- /data/media...</string>
+		<string name="unable_to_mount">غير قادر على تحديد موقع {1}</string>
+		<string name="unable_to_mount_internal">غير قادر على تحميل ذاكرة التخزين الداخلية</string>
+		<string name="unable_to_mount_storage">غير قادر على تحميل ذاكرة التخزين</string>
+		<string name="fail_decrypt">فشل فك تشفير البيانات.</string>
+		<string name="no_crypto_support">لا يوجد دعم للتشفير مُضاف برمجياً إلى هذه البُنيَة.</string>
+		<string name="decrypt_success_dev">تم فك تشفير البيانات بنجاح، دليل البيانات الجديد: '{1}'</string>
+		<string name="done">تم</string>
+		<string name="start_partition_sd">تقسيم ذاكرة التخزين الداخلية...</string>
+		<string name="partition_sd_locate">غير قادر على تحديد موقع الدليل للقسم.</string>
+		<string name="ext_swap_size">حجم EXT + SWAP اكبر من ذاكرة الجهاز الداخلية.</string>
+		<string name="remove_part_table">جار إزالة جدول القسم...</string>
+		<string name="unable_rm_part">غير قادر على إزالة جدول القسم.</string>
+		<string name="create_part">جار إنشاء {1} قسم...</string>
+		<string name="unable_to_create_part">غير قادر على إنشاء {1} قسم.</string>
+		<string name="format_sdext_as">إعادة تنسيق ذاكرة التخزين الخارجية إلى {1}...</string>
+		<string name="part_complete">اكتملت عملية التقسيم.</string>
+		<string name="unable_to_open">غير قادر على فتح '{1}'.</string>
+		<string name="mtp_already_enabled">آلية نقل الوسائط تم تفعيلها مسبقاً</string>
+		<string name="mtp_fail">فشل في تفعيل آلية نقل الوسائط</string>
+		<string name="no_mtp">لا يتوفر دعم آلية نقل الوسائط</string>
+		<string name="mtp_base_path_missing">لم يتم العثور على تخزين الوسائط. تعذر تمكين MTP.</string>
+		<string name="image_flash_start">[عملية تنصيب امج بدأت]</string>
+		<string name="img_to_flash">ملف امج الذي سيتم تنصيبه: '{1}'</string>
+		<string name="flash_unable_locate">غير قادر على تحديد موقع القسم '{1}' من أجل التثبيت عليه.</string>
+		<string name="no_part_flash">لا أقسام محددة ليتم التثبيت عليها.</string>
+		<string name="too_many_flash">تم تحديد الكثير من الأقسام ليتم التثبيت عليها.</string>
+		<string name="invalid_flash">القسم المحدد للتثبيت غير صالح.</string>
+		<string name="flash_done">[عملية تنصيب ملف امج اكتملت]</string>
+		<string name="wiping">مسح {1}</string>
+		<string name="repair_not_exist">{1} غير مَوجود! لا يمكن الإصلاح!</string>
+		<string name="repairing_using">إصلاح {1} باستخدام {2}...</string>
+		<string name="unable_repair">غير قادر على الإصلاح {1}.</string>
+		<string name="mount_data_footer">لا يمكن تحميل البيانات data/ وغير قادر على العثور على علامة التشفير.</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">لا يمكن إنشاء '{1}' مجلد ({2}).</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">فشل تحميل '{1}' ({2})</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">فشل في إلغاء تحميل '{1}' ({2})</string>
+		<string name="cannot_resize">غير قاظر على اعادة التقسيم {1}.</string>
+		<string name="repair_resize">تصليح {1} قبل اعادة التقسيم.</string>
+		<string name="unable_resize">غير قادر على إعادة التقسيم {1}.</string>
+		<string name="no_md5_found">لم يوجد ملف md5 ل '{1}'. الرجاء الغاء تحديد تحقق MD5 للإستعادة.</string>
+		<string name="md5_fail_match">فشل في مطابقة MD5 ل '{1}'.</string>
+		<string name="fail_decrypt_tar">فشل في فك تشفير مللف tarم '{1}'</string>
+		<string name="format_data_msg">قد تحتاج إلى إعادة التشغيل الركفري لتتمكن من استخدام قسم البيانات data/ مرة أخرى.</string>
+		<string name="format_data_err">غير قادر على إعادة التنسيق لأجل إزالة التشفير.</string>
+		<string name="formatting_using">جار إصلاح {1} باستخدام {2}...</string>
+		<string name="unable_to_wipe">غير قادر على إلمسح {1}.</string>
+		<string name="cannot_wipe">القسم {1} لا يمكن حذفه.</string>
+		<string name="remove_all">اذالة جميع الملفات تحت '{1}'</string>
+		<string name="wiping_data">جار محو البيانات دون محو /data/media...</string>
+		<string name="backing_up">جار النسخ الاحتياطي ل {1}...</string>
+		<string name="backing">جاري النسخ الاحتياطي</string>
+		<string name="backup_size">حجم النسخة الاحتياطية ل '{1}' هو 0 بايت.</string>
+		<string name="datamedia_fs_restore">تحذير: هذا النسخ الاحتياطي /data عُمل ب {1} ملف النضام! هذه النسخة الاحتياطية يمكن الا تقلع حتى ترجع الى {1}.</string>
+		<string name="restoring">جار استعادة {1}...</string>
+		<string name="restoring_hdr">استعادة...</string>
+		<string name="recreate_folder_err">غير قادر على إعادة إنشاء المجلد {1}.</string>
+		<string name="img_size_err">حجم ملف امج أكبر من القسم</string>
+		<string name="flashing">جار تثبيت {1}...</string>
+		<string name="backup_folder_set">تم تعيين مجلد النسخ الاحتياطي إلى '{1}'</string>
+		<string name="locate_backup_err">غير قادر على تحديد موقع النسخة الاحتياطية '{1}'</string>
+		<string name="set_restore_opt">اعداد خيارات الاسترجاع: '{1}':</string>
+		<string name="md5_check_skip">تمتخطي من التحقق من ملف MD5</string>
+		<string name="ors_encrypt_restore_err">غير قادر على استخدام OpenRecoveryScript لاستعادة النسخة الاحتياطية المشفرة.</string>
+		<string name="mounting">تحميل</string>
+		<string name="unmounting">إلغاء التحميل</string>
+		<string name="mounted">تم تحميل '{1}'</string>
+		<string name="unmounted">تم إلغاء تحميل '{1}'</string>
+		<string name="setting">اعداد '{1}' إلى '{2}'</string>
+		<string name="setting_empty">تحويل '{1}' إلى فارغ</string>
+		<string name="making_dir1">إنشاء دليل</string>
+		<string name="making_dir2">إنشاء الدليل: '{1}'</string>
+		<string name="running_command">تنفيذ الأمر</string>
+		<string name="sideload">ADB تحميل</string>
+		<string name="start_sideload">بدء ميزة التحميل الجانبي ل ADB...</string>
+		<string name="need_new_adb">أنت بحاجة إلى Adb بإصدار 1.0.32 أو أحدث لكي تقوم ب التحميل الجانبي على هذا الجهاز.</string>
+		<string name="no_pwd">لم يتم التزويد بكلمة السر.</string>
+		<string name="done_ors">تمت معالجة ملف الأوامر</string>
+		<string name="injecttwrp">حقن اورانج فوكس ضمن ملف بوت امج...</string>
+		<string name="zip_err">خطأ في تثبيت الملف المضغوط '{1}'</string>
+		<string name="installing_zip">تثبيت الملف المضغوط '{1}'</string>
+		<string name="select_backup_opt">اعداد خيارات النسخ الاحتياطي:</string>
+		<string name="compression_on">تم تفعيل الضغط</string>
+		<string name="md5_off">إنشاء ملف التأكد من المطابقة Md5 تم إيقافه</string>
+		<string name="backup_fail">فشلت عملية النسخ الاحتياطي</string>
+		<string name="backup_clean">فشلت عملية النسخ الاحتياطي. حذف ملف النسخ الاحتياطي.</string>
+		<string name="running_recovery_commands">تنفيذ أوامر الركفري</string>
+		<string name="recovery_commands_complete">اكتملت عملية تنفيذ أوامر الركفري</string>
+		<string name="running_ors">تنفيذ OpenRecoveryScript</string>
+		<string name="ors_complete">اكتمل تنفيذ الأوامر التابعة ل OpenRecoveryScript</string>
+		<string name="no_updater_binary">لم يتم العثور على '{1}' في الملف المضغوط zip.</string>
+		<string name="check_for_md5">التحقق من وجود ملف MD5...</string>
+		<string name="fail_sysmap">فشل في إيجاد الملف '{1}'</string>
+		<string name="verify_zip_sig">التحقق من صحة الملف المضغوط Zip...</string>
+		<string name="verify_zip_fail">فشل التحقق من صحة الملف المضغوط zip!</string>
+		<string name="verify_zip_done">التحقق من صحة الملف المضغوط Zip تم بنجاح.</string>
+		<string name="zip_corrupt">الملف المضغوط zip تالف!</string>
+		<string name="no_md5">تخطي التحقق من ملف MD5: لا يوجد ملف Md5</string>
+		<string name="md5_fail">MD5 لا يتطابق</string>
+		<string name="md5_match">MD5 تطابق</string>
+		<string name="pid_signal">{1} عملية انتهت بإشارة: {2}</string>
+		<string name="pid_error">{1} عملية انتهت بخطأ: {2}</string>
+		<string name="run_script">يتم تنفيذ {1} أمر...</string>
+		<string name="split_backup">جار فصل ملف النسخة الاحتياطية إلى عدة ملفات مضغوطة...</string>
+		<string name="backup_error">خطأ في إنشاء النسخة الاحتياطية.</string>
+		<string name="restore_error">خطأ خلال عملية الاستعادة.</string>
+		<string name="split_thread">تجزئة الفرع ذو الرمز {1} إلى {2} ملف مضغوط</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu من %llu ملفات، %i%%</string>
+		<string name="size_progress">%llu من %llu ميغابايت، %i%%</string>
+		<string name="decrypt_cmd">محاولة فك تشفير بيانات القسم عبر سطر الأوامر.</string>
+		<string name="base_pkg_err">فشل في تحميل الحزم الأساسية.</string>
+		<string name="simulating">إجراءات المحاكاة</string>
+		<string name="backup_cancel">تم إلغاء عملية النسخ الاحتياطي</string>
+		<string name="config_twrp">اعداد اورانج فوكس...</string>
+		<string name="config_twrp_err">غير قادر اعداد اورانج فوكس مع هذا الكيرنل.</string>
+		<string name="copy_log">تم نسخ سجل الركفري إلى {1}.</string>
+		<string name="max_queue">تم الوصول إلى الحد الأقصى من قائمة الانتظار!</string>
+		<string name="min_queue">تم الوصول إلى الحد الأقصى من قائمة الانتظار!</string>
+		<string name="screenshot_saved">تم حفظ لقطة الشاشة في {1}</string>
+		<string name="screenshot_err">فشل في أخذ لقطة للشاشة!</string>
+		<string name="zip_wipe_cache">ملف مضغوط zip واحد أو أكثر طلب إفراغ ذاكرة التخزين المؤقت -- إفراغ ذاكرة التخزين المؤقت الآن.</string>
+		<string name="and_sec_wipe_err">غير قادر على مسح ملفات الأندرويد المؤمنة</string>
+		<string name="dalvik_wipe_err">فشل في إفراغ ذاكرة التخزين المؤقتة dalvik</string>
+		<string name="auto_gen">(إنشاء تلقائي)</string>
+		<string name="curr_date">(التاريخ الحالي)</string>
+		<string name="backup_name_len">اسم ملف النسخة الاحتياطية طويل جداً.</string>
+		<string name="backup_name_invalid">اسم النسخة الاحتياطية '{1}' يحتوي على رمز غير صالح: '{1}'</string>
+		<string name="no_real_sdcard">هذا الجهاز لا يحوي بطاقة تخزين داخلي حقيقية! جار الإلغاء!</string>
+		<string name="cancel_sideload">جار إلغاء التحميل الجانبي ل ADB...</string>
+		<string name="change_fs_err">خطأ في عملية تغيير نظام الملفات.</string>
+		<string name="change_fs_hdr">تغيير الحجم المتوفر لملف النظام</string>
+		<string name="theme_ver_err">اصدار السمة لا يتوافق مع اصدار اورانج فوكس. استخدام الثيم الافتراضي.</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">تحديد اللون</string>
+		<string name="s_color">لون</string>
+		<string name="current_color">نظام الملفات:</string>
+		<string name="show_cpu_temp_bar">عرض درجة حرارة المعالج</string>
+		<string name="ts_inform">معلومات</string>
+		<string name="sel_splash_png">اختر صورة الاقلاع بصيغة PNG</string>
+		<string name="swipe_to_install">اسحب للتثبيت</string>
+		<string name="swipe_to_install_img">اسحب لتثبيت ملف امج</string>
+		<string name="sel_image_type">اختر نوع ملف امج!</string>
+		<string name="zip_add_queue">إضافة إلى قائمة الانتظار</string>
+		<string name="part_fs_error_1">خيارات القسم ليست</string>
+		<string name="part_fs_error_2">متاحة لهذا القسم!</string>
+		<string name="new_file_system">نظام الملفات الجديد</string>
+		<string name="adb_sideload_opt">خيارات Slideload</string>
+		<string name="about_hdr">حول</string>
+		<string name="author">المسؤول</string>
+		<string name="credits">الشكر</string>
+		<string name="version">الاصدار</string>
+		<string name="set_password">تعيين كلمة مرور</string>
+		<string name="verifying_pas">التحقق من كلمة المرور</string>
+		<string name="dialog_offset_note">حدد قيمة الإزاحة الخاصة بك</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">خيارات</string>
+		<string name="flash_img_confirm">تنصيب ملف امج</string>
+		<string name="also_wipes">وايضا امسح</string>
+		<string name="confirm_wipe_cptn">تاكيد الحذف</string>
+		<string name="storage_cptn">تخزين</string>
+		<string name="enter_password_restore">كلمة المرور</string>
+		<string name="enter_password_cptn">الحماية</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">بدأ Slideload...</string>
+		<string name="fordowns_to">إلى</string>
+		<string name="dbg">التصحيح</string>
+		<string name="dbg_active">تم تفعيل قائمة التصحيح!</string>
+		<string name="dbg_act">عمل</string>
+		<string name="dbg_func">وظيفة</string>
+		<string name="dbg_set">تعيين</string>
+		<string name="dbg_page">الصفحة</string>
+		<string name="dbg_overlay">الطبقات</string>
+		<string name="fm_none">لا شَيْء</string>
+		
+		<string name="cust_navbar_noug">نوجا</string>
+		<string name="cust_navbar_cls">كلاسيكي</string>
+		<string name="cust_navbar_accent">الطابع</string>
+		<string name="cust_navbar_black">أسود</string>
+		<string name="cust_navbar_white">استخدم الازرار البيضاء</string>
+		<string name="cust_navbar_gray">استخدام أزرار االغامقة</string>
+		
+		<string name="fm_open">فتح كـ...</string>
+		<string name="fm_open_text">ملف نصي</string>
+		<string name="fm_open_ZIP">ملف ZIP قابل للتثبيت</string>
+		
+		<string name="fm_open_backup">نسخه احتياطيه</string>
+		<string name="fm_open_makezip">ظغط</string>
+		<string name="fm_open_unpackzip">فك ضفط الملف المضغوط</string>
+		<string name="fm_open_image">ملف امج قابل للتثبيت</string>
+		<string name="arc_type">نوع الملف المضغوط</string>
+		<string name="arc_lvl">مستوى الضغط:</string>
+		<string name="arc_lvl_title">الضغط</string>
+		
+		<string name="bkp_date">إضافة تاريخ</string>
+		<string name="bkp_gen">إنشاء اسم النسخ الاحتياطي</string>
+		<string name="bkp_gen_whilebkp">إنشاء اسم النسخ الاحتياطي عند النسخ</string>
+		<string name="bkp_quick">نسخ احتياطي سريع</string>
+		<string name="bkp_clear">مسح</string>
+		
+		<string name="language_cptn">اللّغة</string>
+		<string name="cust_oth">آخرى</string>
+		
+		<string name="settings_general">عام</string>
+		<string name="settings_ui">التخصيص</string>
+		<string name="settings_screen">الشاشة</string>
+		<string name="settings_time">إقليمي</string>
+		
+		<string name="lang_wait">الرجاء الإنتظار...</string>
+		
+		<string name="settings_ui_status">شريط الحالة</string>
+		<string name="settings_ui_battery">اضهار ايقونة البطارية</string>
+		<string name="settings_ui_style">شكل شريط التنقل</string>
+		<string name="settings_ui_color">خلفية شريط التنقل</string>
+		
+		<string name="settings_backup_qbkp_custom">النسخ السريع للأقسام</string>
+		
+		<string name="settings_backup_name">أسم النسخة الأحتياطية</string>
+		<string name="settings_backup_name_user">لا تقم بالتغيير</string>
+		<string name="settings_backup_name_auto">تعرف تلقائياً</string>
+		<string name="settings_backup_name_auto_hide">بينما يتم النسخ</string>
+		
+		<string name="update_btn">تحديث</string>
+		<string name="include_kernel_log">يتضمن سجل الكيرنل</string>
+		<string name="include_logcat">تضمين Logcat</string>
+		
+		<string name="fm_books">المجلدات المفضلة</string>
+		<string name="fm_books_desc">ضغطة طويلة لتعديل هذه القائمة</string>
+		<string name="fm_books_edit">تعديل هذه القائمة...</string>
+		<string name="fm_books_desc_edit">ضغطة طويلة لحذف القطعة</string>
+		<string name="fm_books_empty">(فارغ)</string>
+		
+		<string name="fm_mkdir">جديد مجلد إنشاء</string>
+		<string name="fm_mkdir_folder">إسم المجلد</string>
+		
+		<string name="fm_path">أدخل المسار</string>
+		<string name="fm_path2">مسار</string>
+		
+		<string name="no_os_title">هل أنت متأكد؟</string>
+		<string name="no_os_subtitle">قسم النظام فارغ</string>
+		
+		<string name="no_os1">لا يوجد نظام مثبت! هل أنت متأكد</string>
+		<string name="no_osrb">اتريد اعادة التشغيل؟</string>
+		<string name="no_ospo">ااريد ايقاف التشغيل؟</string>
+		<string name="no_osrb_recovery">اتريد اعادة تشغيل الركفري؟</string>
+		<string name="no_osrb_boot">اتريد اعادة تشغيل البوتلودر؟</string>
+		<string name="no_osrb_down">اتريد اعادة التشغيل الى وضع التحميل؟</string>
+		<string name="no_osrb_edl">اتريد اعادة التشغيل الى وضع EDL ا؟</string>
+		
+		<string name="areb_confirm">حوار تأكيد إعادة التشغيل</string>
+		<string name="areb_noos">عندما لا يكون هناك نظام تشغيل مثبت</string>
+		<string name="opt_always">دائما</string>
+		<string name="otp_never">أبدا</string>
+		
+		<string name="areb_off">متوقف</string>
+		
+		<string name="restoredialog_readonly">لا تظهر أبدا حوار ربط النظام في وضع القراءة فقط</string>
+		
+		<string name="offset_wrong">إزاحة خاطئة!</string>
+
+		<string name="new_key">استخدام نمط جديد للوحة المفاتيح</string>
+		
+		<string name="bkp_nametitle">أسم النسخة الأحتياطية</string>
+		<string name="bkp_namesub">اكتب أو ولد اسم للنسخة الاحتياطية</string>
+		
+		<string name="goto_storage">تخزين</string>
+		
+		<string name="theme_apply">جار تحديث الطابع...</string>
+		<string name="theme_fonts">الخطوط</string>
+		<string name="theme_style">النمط</string>
+		<string name="theme_accent">الطابع</string>
+		<string name="theme_font_sel">الخط الأساسي</string>
+		<string name="theme_sec_font_sel">الخط الثانوي</string>
+		
+		<string name="of">من</string>
+		
+		<string name="sph_sph">طرطشة</string>
+		
+		<string name="real">حقيقي</string>
+		<string name="info">معلومات</string>
+		<string name="time_m">تعديل</string>
+		<string name="time_c">تغيير</string>
+		<string name="access">الوصول</string>
+		<string name="fm_sums">التحقق من المجموع</string>
+		
+		<string name="use_fixed_font">خط موحد العرض في الطرفية</string>
+
+		<string name="adb_backup_pc1">ستكون هذه النسخة الاحتياطية</string>
+		<string name="adb_backup_pc2">محفوظة على حاسبك الشخصي</string>
+		
+		<string name="starting_aroma">جار تشغير مدير ملفات أروما...</string>
+		<string name="lang_set_wait">جار تغيير اللغة...</string>
+		<string name="installing_theme">جار تثبيت الطابع...</string>
+		
+		<string name="menu_btn">القائمة</string>
+		
+		<string name="data_backup">البيانات</string>
+		<string name="autostorage">تخزين</string>
+		<string name="install_reboot">سيعاد التشغيل خلال %tw_sleep% ثانية</string>
+		<string name="cancel_reboot_btn">ألغاء إعادة التشغيل</string>
+		<string name="skip_digest_backup_chk" version="2">تخطي توليد الخلاصة أثناء النسخ الاحتياطي</string>
+		<string name="restore_digest_chk" version="2">تمكين التحقق من خلاصات النسخ الاحتياطية</string>
+		<string name="restore_enable_digest_chk" version="2">تمكين التحقق من خلاصات النسخ الاحتياطية</string>
+		<string name="decrypt_data_vold_os_missing">الملفات المفقودة المطلوبة لفك تشفير vold: {1}</string>
+		<string name="generating_digest1" version="2">إنشاء الهضم</string>
+		<string name="generating_digest2" version="2"> * إنشا الهضم...</string>
+		<string name="digest_created" version="2"> * تم إنشاء الهضم.</string>
+		<string name="digest_error" version="2"> * خطأ في الهضم!</string>
+		<string name="digest_compute_error" version="2"> * خطأ في حساب الهضم.</string>
+		<string name="verifying_digest" version="2">التحقق من الهضم</string>
+		<string name="skip_digest" version="2">تخطي فحص الهضم بناءً على إعداد المستخدم.</string>
+		<string name="decrypt_success_nodev">تم فك تشفير البيانات بنجاح</string>
+		<string name="no_digest_found" version="2">لم يتم العثور على ملف الهضم لـ '{1}'. يرجى إلغاء تحديد تمكين التحقق من الهضم للاستعادة.</string>
+		<string name="digest_fail_match" version="2">فشل تطابق الهضم على '{1}'.</string>
+		<string name="digest_matched" version="2">تم تطابق الهضم لـ '{1}'.</string>
+		<string name="digest_check_skip" version="2">تخطي فحص الهضم قيد التشغيل</string>
+		<string name="digest_off" version="2">إنشاء الهضم معطل</string>
+		<string name="invalid_zip_format">تنسيق ملف zip غير صالح!</string>
+		<string name="check_for_digest" version="2">التحقق من وجود ملف الهضم...</string>
+		<string name="no_digest" version="2">تخطي فحص الهضم: لم يتم العثور على ملف الهضم</string>
+		<string name="digest_fail" version="2">الهضم لا يتطابق</string>
+		<string name="digest_match" version="2">الهضم مطابق</string>
+		<string name="password">كلمة المرور</string>
+		<string name="boot_slot">فتحة التمهيد</string>
+		<string name="boot_slot_a">فتحة A</string>
+		<string name="boot_slot_use_a">التحول إلى الفتحة A</string>
+		<string name="boot_slot_b">فتحة B</string>
+		<string name="boot_slot_use_b">التحول إلى الفتحة B</string>
+		<string name="changing_boot_slot">تغير فتحة التمهيد</string>
+		<string name="changing_boot_slot_complete">اكتمل تغيير فتحة التمهيد</string>
+		<string name="unable_set_boot_slot">خطأ في تغيير فتحة التمهيد إلى {1}</string>
+		<string name="flash_ab_inactive">فلاشة zip غير النشطة إلى الفتحة {1}</string>
+		<string name="flash_ab_reboot">لفلاشة زيب إضافية، يرجى إعادة تشغيل الاستعادة للتحويل إلى الفتحة المحدثة.</string>
+		<string name="flash_ab_both_slots">فلاشة إلى كلا الفتحتين</string>
+		<string name="ozip_decrypt_decryption">بدء فك تشفير Ozip...</string>
+		<string name="ozip_decrypt_finish">انتهى فك تشفير Ozip!</string>
+		<string name="backup_storage_warning">النسخ الاحتياطي لـ {1} لا يتضمن أي ملفات في التخزين الداخلي مثل الصور أو التنزيلات.</string>
+		<string name="sha2_chk">استخدام SHA2 للتجزئة</string>
+		<string name="disabled">معطل</string>
+		<string name="enabled">مفعل</string>
+		<string name="keep_storage_data">تخطي المسح عند استعادة التخزين</string>
+		<string name="zip_compatible_err">خطأ في توافق Treble zip!</string>
+
+		<string name="unmount_sys_install">فصل النظام قبل تثبيت ZIP</string>
+		<string name="unmount_system">جاري فصل النظام...</string>
+		<string name="unmount_system_err">فشل في فصل النظام</string>		
+
+		<string name="unmount_vendor_install">فصل البائع قبل تثبيت ZIP</string>
+		<string name="unmount_vendor">جاري فصل البائع...</string>
+		<string name="unmount_vendor_err">فشل في فصل البائع</string>	
+			
+		<string name="fbe_wipe_msg">تحذير: {1} تم مسحه. يجب تشغيل جهاز FBE في Android وليس الاستعادة لتعيين سياسة FBE الأولية بعد المسح.</string>		
+		<string name="fastboot_button">Fastboot</string>
+		<string name="enable_adb">تمكين ADB</string>
+		<string name="enable_fastboot">تمكين Fastboot</string>
+		<string name="fastboot_console_msg">تم الدخول إلى وضع Fastboot...</string>
+		<string name="data_media_fbe_msg">won't recreate /data/media on an FBE device. Please reboot into your rom to create /data/media</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">التحقق من توقيع الحزمة التزايدية...</string>
+		<string name="fox_incremental_ota_compatibility_false">الحزمة التزايدية غير متوافقة مع هذا ROM!</string>
+		<string name="fox_incremental_ota_compatibility_true">الحزمة التزايدية متوافقة</string>
+		<string name="fox_incremental_ota_status_enabled">حالة دعم الحزمة التزايدية: مفعل</string>
+		<string name="fox_incremental_ota_status_disabled">حالة دعم الحزمة التزايدية: معطل</string>
+		<string name="fox_incremental_package_detected">تم كشف الحزمة التزايدية '{1}'</string>
+		<string name="fox_survival_does_not_exist">OTA Survival لا يوجد! يرجى فلاشة ROM كاملة أولاً!</string>
+		<string name="fox_install_detecting">الكشف عن الحزمة الحالية</string>
+		<string name="fox_install_standard_detected">- تم الكشف عن الحزمة القياسية</string>
+		<string name="fox_install_miui_detected">- تم الكشف عن حزمة تحديث MIUI</string>
+		<string name="fox_zip_have_bootloader">تحذير: تم الكشف عن إعادة تثبيت bootloader الذي تم استدعاؤه بواسطة '{1}'.</string>
+		<string name="fox_no_space_ota_survival">ليس هناك مساحة كافية على التخزين الداخلي لإنشاء OTA survival.</string>
+		<string name="fox_incremental_ota_res">OTA_RES -- تم!</string>
+		<string name="fox_incremental_ota_res_run">جاري تشغيل عملية OTA_RES...</string>
+		<string name="fox_incremental_ota_bak_run">جاري تشغيل عملية OTA_BAK...</string>
+		<string name="fox_incremental_ota_bak">OTA_BAK -- تم!</string>
+		<string name="fox_internal_fatal_i1">OrangeFox: خطأ فادح! لا يمكنك عمل نسخ احتياطي للتخزين الداخلي على نفسه!</string>
+		<string name="fox_internal_fatal_i2">يجب عليك تغيير وجهة النسخ الاحتياطي إلى MicroSD/USB-OTG.</string>
+		<string name="fox_internal_q1">OrangeFox - التخزين الداخلي - احذر!</string>
+
+		<string name="copy_kernel_log">تم نسخ سجل النواة إلى {1}</string>
+		<string name="copy_logcat">تم نسخ logcat إلى {1}</string>
+
+		<string name="of_run_process">بدء عملية '{1}'</string>
+		<string name="of_run_process_fail">تعذر إنهاء عملية '{1}'</string>
+		<string name="of_run_process_done">تم إنهاء عملية '{1}'</string>
+		<string name="of_dm_verity">تم تصحيح DM-Verity بنجاح</string>
+		<string name="of_dm_verity_off">DM-Verity غير مفعل</string>
+		<string name="of_encryption">تم تصحيح التشفير الإجباري بنجاح</string>
+		<string name="of_encryption_off">التشفير الإجباري غير مفعل</string>
+		<string name="of_fstab">تم الكشف عن fstab: '{1}'</string>
+
+		<string name="install_remlatest">إزالة أحدث</string>
+		
+		<string name="backups_remove_all">كل النسخ الاحتياطية</string>
+		<string name="backups_remove">حذف</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">فك الضغط</string>
+		<string name="repack">إعادة التعبئة</string>
+
+		<string name="fox_save_load_aromafm_config_chk">حفظ/تحميل إعدادات AromaFM</string>
+		<string name="search_help">بحث عن الملفات والمجلدات...</string>
+		
+		<string name="reboot_to_take_effect">إعادة التشغيل لتطبيق التغييرات</string>
+		<string name="fox_modules_hdr">إضافات Fox</string>
+		<string name="fox_modules_inst">تثبيت الإضافة</string>
+		<string name="backup_short_hdr">نسخ احتياطي جديد</string>
+		<string name="backups_wat">أين هي النسخ الاحتياطية?</string>
+		
+		<string name="module_install">تثبيت</string>
+		<string name="module_uninstall">إلغاء التثبيت</string>
+		<string name="remove_of_files">إزالة ملفات OrangeFox</string>
+		<string name="module_initd">تمكين دعم init.d</string>
+		<string name="module_of_set">نسخ احتياطي لإعدادات OrangeFox</string>
+		<string name="module_cam">تمكين Camera2API</string>
+		<string name="module_pass">إزالة كلمة المرور</string>
+		<string name="module_remove_survival">إزالة جميع النصوص البرمجية للبقاء</string>
+		<string name="fox_files_not_exist_1">الملف غير موجود!</string>
+		<string name="fox_files_not_exist_2">الرجاء إعادة فلاش الاسترداد</string>
+		<string name="fox_files_not_exist_3">باستخدام ملف التثبيت ZIP.</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">إظهار تفاصيل أقل أثناء تشغيل تحديثات OTA</string>
+		<string name="fm_icons_simple">جعل أيقونات الملفات أكبر</string>
+		<string name="theme_engine_update">تطبيق التغييرات وإعادة التحميل؟</string>
+		<string name="theme_engine_reset">إعادة تعين السمة وإعادة التحميل؟</string>
+		<string name="apply_btn">تطبيق</string>
+		<string name="theme_hdr">السمة</string>
+		
+		<string name="font_small">صغير</string>
+		<string name="font_norm">عادي</string>
+		<string name="font_big">كبير</string>
+		<string name="font_size">حجم الخط</string>
+		<string name="cust_autoapply">تطبيق السمة بدون تأكيد</string>
+		<string name="cust_expand_list">توسيع القوائم تلقائيًا</string>
+		
+		<string name="status_battery_style">أسلوب البطارية</string>
+		<string name="status_battery_circle">دائرة</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">موقع الساعة</string>
+		<string name="status_clock_left">اليسار</string>
+		<string name="status_clock_center">الوسط</string>
+		<string name="status_clock_right">اليمين</string>
+		<string name="dark_title">جعل العنوان أغمق</string>
+		<string name="separate_status">جعل شريط الحالة أغمق</string>
+		<string name="noshadow_title">إظهار ظل شريط الحالة</string>
+		<string name="hide_notch">إخفاء النوتش</string>
+		<!-- NavBar -->
+		<string name="navbar_title">شريط التنقل</string>
+		<string name="navbar_onscreen">تمكين شريط التنقل</string>
+		<string name="show_slideout">إظهار زر وحدة التحكم</string>
+		<string name="dark_nav">داكن</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">لوحة المفاتيح</string>
+		<string name="keyboard_newstyle">أسلوب مُجدد</string>
+		<string name="keyboard_nums">صف الأرقام</string>
+		<string name="key_swipe">التمرير على لوحة المفاتيح لحذف الكل</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">فك القفل</string>
+		<string name="lockscreen_title">شاشة القفل</string>
+		<string name="lockscreen_style">أسلوب شاشة القفل</string>
+		<string name="lockscreen_clock">الساعة</string>
+		<string name="lockscreen_icon">الأيقونة</string>
+		<string name="lockscreen_btn">استبدال الشريط بزر</string>
+		<string name="lockscreen_info">إظهار معلومات البطارية ومعالج CPU</string>
+		<string name="lockscreen_quicklock">النقر على أيقونة القفل يقفل الشاشة</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">جاري تثبيت OTA...</string>
+		<string name="ota_simple_title">جاري التحديث...</string>
+		<string name="ota_simple_log_btn">سجل</string>
+
+		<string name="battery">البطارية</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">مفتاح الإيماءة</string>
+		<string name="pass_classic">كلمة مرور نصية</string>
+		<string name="pass_dis">تعطيل كلمة المرور</string>
+		<string name="pass_pin">كود PIN</string>
+		
+		<string name="locked_info_1">الاسترداد محمي ضد</string>
+		<string name="locked_info_2">الوصول غير المصرح به.</string>
+		<string name="locked_info_3">لاستخدام ميزات الاسترداد الرئيسية</string>
+		<string name="locked_info_4">تحتاج أولاً إلى إدخال كلمة المرور الخاصة بك.</string>
+		<string name="locked_info_4_gk">تحتاج أولاً إلى رسم مفتاح الإيماءة الخاص بك.</string>
+		
+		<string name="new_pass_info_1">أدخل كلمة مرور جديدة ل</string>
+		<string name="new_pass_info_1_gk">ارسم مفتاح إيماءة جديد لحماية</string>
+		<string name="new_pass_info_2">OrangeFox ضد الوصول غير المصرح به</string>
+		<string name="new_pass_info_3">الوصول.</string>
+		<string name="new_pass_info_4">تحتاج إلى إدخال كلمة المرور مرتين.</string>
+		<string name="new_pass_info_4_gk">تحتاج إلى رسم مفتاح الإيماءة مرتين.</string>
+		<string name="new_pass_info_4_2">أدخل كلمة المرور الخاصة بك مرة أخرى.</string>
+		<string name="new_pass_info_4_2_gk">ارسم مفتاح الإيماءة مرة أخرى.</string>
+		
+		<string name="pass_page_block">طريقة الحظر الحالية</string>
+		<string name="pass_page_block_inf1">يمكنك النوم بشكل أفضل مع العلم</string>
+		<string name="pass_page_block_inf2">أنك محمي.</string>
+		<string name="pass_page_select">اختر نوع كلمة المرور</string>
+		
+		<!-- Utilities -->
+		<string name="more">المزيد...</string>
+		<string name="hide">إخفاء</string>
+		<string name="part_menu_hdr">إدارة الأقسام</string>
+		<string name="run_adb_startup">تشغيل ADB عند بدء التشغيل</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">نشط</string>
+		<string name="mm_module_mount">تخطي التثبيت</string>
+		<string name="mm_modules">الوحدات</string>
+		<string name="mm_ver">إصدار Magisk</string>
+		<string name="mm_mod_ver">إصدار الوحدة</string>
+		<string name="mm_remove">إزالة الوحدة في بدء التشغيل التالي</string>
+		<string name="mm_remove_hint">إعادة التشغيل لبدء تطبيق التغييرات</string>
+		<string name="mm_remove_reboot">إعادة التشغيل</string>
+		<string name="magisk_not_found">لم يتم العثور على Magisk!</string>
+		<string name="magisk_not_found_1">هل تريد الذهاب إلى إضافة Fox</string>
+		<string name="magisk_not_found_2">وتثبيت Magisk الجاهز مسبقًا؟</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">وحدات APatch</string>
+		<string name="ap_ver">إصدار APatch</string>
+		<string name="ksu_modules">وحدات KernelSU</string>
+		<string name="ksu_ver">إصدار KernelSU</string>
+
+		<string name="modules_not_found">لم يتم العثور على وحدات!</string>
+		<string name="modules_not_found_1">الوحدات إما غير مثبتة أو غير قابلة للتثبيت!</string>
+		<string name="modules_not_found_2">غير قادرة على أن تكون مثبتة!</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">إعدادات OTA</string>
+		<string name="fox_miui_ota_on">تمكين OTA</string>
+		<string name="fox_ota_on">تمكين OTA</string>
+		<string name="fox_patch_rom">تصحيح ROM</string>
+		<string name="fox_ota_lite">OTA &amp; ROM</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">المحافظ</string>
+		<string name="abt_fd">مصمم ومؤلف السمة</string>
+		<string name="abt_bork">المدير التنفيذي، الموقع وواجهة المستخدم</string>
+		<string name="abt_dj">نظام البناء، المحافظ الأسطوري</string>
+		<string name="abt_front">مطور الواجهة الأمامية</string>
+		<string name="abt_back">مطور الواجهة الخلفية</string>
+		<string name="abt_device">الجهاز</string>
+		<string name="version_twrp">إصدار OrangeFox</string>
+		<string name="build_type">نوع البناء</string>
+		<string name="abt_credits">الشكر</string>
+		<string name="abt_trans">المترجمون</string>
+		<string name="abt_changes">سجل التغييرات</string>
+		<string name="abt_main_shrt">المحافظ</string>
+		<string name="welcome_msg">مرحبًا بك في OrangeFox!</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">مرحبًا بك في OrangeFox Recovery!</string>
+		<string name="fox_release">[إصدار]   : {1}</string>
+		<string name="fox_variant">[متغير]   : {1}</string>
+		<string name="fox_codebase">[قاعدة الكود]  : {1}, {2}</string>
+		<string name="fox_settings">[الإعدادات]  : {1}</string>
+		<string name="fox_misc">[متعفر]      : {1}</string>
+		<string name="fox_build_date">[تاريخ البناء]: {1}</string>
+		<string name="fox_build_type_unofficial">[نوع البناء]: غير رسمي. لا دعم رسمي للبناء غير الرسمي</string>
+		<string name="fox_build_type">[نوع البناء]: {1}</string>
+		<string name="fox_support">[الدعم]   : {1}</string>
+		<string name="fox_nosupport">[الدعم]   : لا يوجد دعم رسمي للبناء المجهول</string>
+		<string name="fox_websites">مواقع OrangeFox:</string>
+		<string name="fox_downloads">[التنزيلات] : {1}</string>
+		<string name="fox_faq">[الدلائل/الأسئلة الشائعة]: {1}</string>
+		<string name="fox_encrypted">* التخزين مشفر</string>
+		<string name="fox_unencrypted">* التخزين غير مشفر</string>
+		<string name="fox_display">* العرض:    {1}</string>
+		<string name="fox_device">* الجهاز:     {1} ({2})</string>
+		<string name="fox_platform">* المنصة:   {1}</string>
+		<string name="fox_dynamic_yes">* ديناميكي:    نعم</string>
+		<string name="fox_dynamic_no">* ديناميكي:    لا</string>
+		<string name="fox_boot_slot">* فتحة التمهيد:  {1}</string>
+		<string name="fox_vab_yes">* Virtual_AB: نعم</string>
+		<string name="fox_vab_no">* Virtual_AB: لا</string>
+		<string name="fox_kernel">* النواة:     {1}</string>
+		<string name="fox_miui_rom">* ROM MIUI (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* ROM مخصصة (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* بصمة الأصبع: {1}</string>
+		<string name="fox_no_rom">* لا ROM.</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">الرابط إلى المجلد</string>
+		<string name="symlink_file_name">الرابط إلى الملف</string>
+		<string name="symlink_broken_name">رابط معطل</string>
+		<string name="symlink_folder">فتح المجلد الحقيقي</string>
+		<string name="symlink_file">فتح ملف حقيقي</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">إظهار الملفات المخفية</string>
+		<string name="files_auto_open">الكشف التلقائي عن نوع الملف</string>
+		<string name="file_read">قراءة الملف: {1}</string>
+		<string name="file_read_error">تعذر فتح الملف!</string>
+		<string name="file_read_error_size">الملف أكبر من 1.5 ميجابايت!</string>
+		<string name="file_read_error_bin">تعذر قراءة الملف الثنائي!</string>
+		<string name="subs_wipe">مسح طبقات Substratum</string>
+		<string name="sort_ex_all">كل الملفات</string>
+		<string name="sort_ex_img">ملفات IMG</string>
+		<string name="sort_ex_zip">ملفات ZIP</string>
+		<string name="aroma_help">اضغط مرة أخرى لبدء AromaFM...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">تم تركيب التخزين</string>
+		<string name="backups_rw_error_2">كقراءة فقط!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">التطبيقات</string>
+		<string name="appmgr_title">مدير التطبيقات</string>
+
+		<!-- performance -->
+		<string name="perf_title">الأداء</string>
+		<string name="perf_conf_mode">وضع أداء الاستعادة</string>
+		<string name="perf_conf_balance">متوازن</string>
+		<string name="perf_conf_high">أداء عالي</string>
+		<string name="perf_conf_batt">توفير الطاقة</string>
+
+		<string name="fox_led_title">إعدادات LED</string>
+		<string name="fox_use_green_led">استخدام اللون الأخضر للـ LED</string>
+		<string name="fox_boot_fastcharge">إجبار الشحن السريع</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">أنت جاهز لاستقبال التحديثات!</string>
+		<string name="fox_ota_msg_custom">تم تمكين وضع ROM المخصص</string>
+		<string name="fox_ota_msg_reflash">يرجى تثبيت ROM الكامل!</string>
+		<string name="fox_advanced_stock_recovery">تعطيل تفعيل الاستعادة القوة</string>
+		<string name="fox_support_miui_ota_chk">دعم OTA</string>
+		<string name="fox_include_system_survival_chk">تتضمن النظام في بقاء OTA</string>
+		<string name="fox_verify_incremental_ota_signature_chk">التحقق من توقيع OTA التدريجي</string>
+		<string name="fox_dmverity_chk">تعطيل DM-Verity</string>
+		<string name="fox_forced_encryption_chk">تعطيل التشفير الإجباري</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">منع إعادة التشغيل التلقائي بعد تثبيت OTA</string>
+		<string name="of_ota_reboot_disabled">اكتمل تحديث OTA. لقد عطلت إعادة التشغيل التلقائي. إعادة التحكم إليك.</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">ملاحظة: تم نقل تنسيق البيانات إلى</string>
+		<string name="wipe_format_moved_info2">صفحة إدارة الأقسام.</string>
+
+		<!-- R11 -->
+		<string name="gst_title">التنقل بالإيماءات</string>
+		<string name="gst_enable_all">تمكين الإيماءات</string>
+		<string name="gst_back">إيماءة الرجوع</string>
+		<string name="gst_back_left">من اليسار</string>
+		<string name="gst_back_right">من اليمين</string>
+		<string name="gst_console_enable">اسحب من شريط الحالة لفتح الوحدة الطرفية</string>
+		<string name="gst_navbar_error">بعض الإعدادات مخفية.</string>
+		<string name="gst_navbar_error_2">عطل الإيماءات لإظهارها.</string>
+
+		<string name="in">في</string>
+		<string name="con_digest_start">[بدأ إنشاء الملخص]</string>
+		<string name="con_digest_error">قائمة الأقسام فارغة!</string>
+		<string name="con_digest_cancel">جاري الإلغاء...</string>
+		<string name="con_digest_complete">[اكتمل إنشاء الملخص في {1} ثانية]</string>
+		<string name="digest_btn">إنشاء ملخص</string>
+		<string name="digest_creating">جاري إنشاء الملخص...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu ملفات,</string>
+		<string name="size_progress_v2">%llu/%llu ميجابايت (%i%%)</string>
+
+		<string name="navpan_new_design">تصميم لوحة تنقل جديدة</string>
+		<string name="full_partition_list">إظهار أقسام إضافية للنسخ الاحتياطي</string>
+
+		<string name="data_decrypted_reload">تم فك التشفير بنجاح!</string>
+
+		<string name="install_queue_magisk_btn">إضافة Magisk</string>
+		<string name="hint_ffiles_missing">هل فقدت شيئًا ما?</string>
+		<string name="hint_ffiles_missing1">إضافات Fox غير متاحة</string>
+		<string name="hint_ffiles_missing2">لا يستطيع OrangeFox الوصول إلى ملفاته.</string>
+		<string name="hint_ffiles_missing3">حاول تركيب /data أو إعادة التثبيت</string>
+		<string name="hint_ffiles_missing4">OrangeFox إذا تم مسح /data.</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">إخفاء التلميح</string>
+
+		<string name="info_dir_empty">المجلد فارغ</string>
+		<string name="info_dir_empty_hidden">بعض الملفات مخفية</string>
+
+		<string name="navbar_style_line">خط</string>
+		<string name="accent_in_titles">لون نص التأكيد في العنوان</string>
+
+		<string name="backup_quick_info1">سيتم اختيار هذه الأقسام</string>
+		<string name="backup_quick_info2">بعد النقر على زر "نسخ احتياطي سريع"</string>
+		<string name="mbyte">ميجابايت</string>
+		<string name="mbytesec">ميجابايت/ثانية</string>
+		<string name="backup_av_files">ملف</string>
+		<string name="backup_av_img">صورة</string>
+		<string name="backup_exp_size">الحجم المتوقع</string>
+		<string name="time_minute">دقيقة.</string>
+		<string name="backup_av">الوقت المتوسط</string>
+		<string name="backup_av1">هل تريد إعادة تعيين قيم السرعة</string>
+		<string name="backup_av2">إلى الافتراضي؟ الوقت المتوسط</string>
+		<string name="backup_av3">سيكون التنبؤ أقل دقة.</string>
+
+		<string name="cust_line_white">استخدام الخط الأبيض</string>
+		<string name="cust_line_gray">استخدام الخط الرمادي</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">تبديل الفتحات</string>
+		<string name="slot_switch_a">التبديل إلى الفتحة A</string>
+		<string name="slot_switch_b">التبديل إلى الفتحة B</string>
+		<string name="slot_active_a">الفتحة A نشطة</string>
+		<string name="slot_active_b">الفتحة B نشطة</string>
+
+		<string name="theme_font_primary_tab">الرئيسي</string>
+		<string name="theme_font_secondary_tab">الثانوي</string>
+		<string name="theme_font_size_tab">الحجم</string>
+		<string name="theme_font_select">اختيار الخط</string>
+
+		<string name="theme_fweight">وزن الخط</string>
+		<string name="theme_fweight_norm">افتراضي</string>
+		<string name="theme_fweight_reg">عادي</string>
+		<string name="theme_fweight_med">متوسط</string>
+
+		<string name="swipe_up_to_unlock">اسحب لأعلى من أسفل الشاشة لفك القفل</string>
+
+		<string name="spl_background">لون الخلفية</string>
+		<string name="spl_logo">الشعار</string>
+		<string name="spl_white">أبيض</string>
+		<string name="spl_black">أسود</string>
+		<string name="spl_night">ليلي</string>
+		<string name="spl_orange">برتقالي</string>
+		<string name="spl_accent">الطابع</string>
+		<string name="spl_image">صورة الخلفية</string>
+		<string name="spl_del_img">إزالة الصورة</string>
+		<string name="hidden">مخفي</string>
+		<string name="spl_ofr">"تسمية OrangeFox Recovery"</string>
+
+		<string name="batch_selected">%of_batch_count% مختارة</string>
+		<string name="batch_title">إجراءات دفعية</string>
+		<string name="batch_files_folders">الملفات والمجلدات</string>
+
+		<string name="fm_action_folder">إجراءات على هذا المجلد</string>
+
+		<string name="tap_to_generate">انقر هنا للحساب</string>
+		<string name="calc_checksum">جاري الحساب...</string>
+		<string name="cant_access_data">لا يمكن الوصول إلى البيانات. قم بتركيب قسم البيانات يدويًا.</string>
+
+		<string name="backup_pass_wait">جاري تغيير كلمة المرور...</string>
+		<string name="pass_encrypt_error1">لا يمكنك تغيير كلمة المرور</string>
+		<string name="pass_encrypt_error2">عندما تكون البيانات مشفرة!</string>
+
+		<string name="backup_encrypt_data_info">سيتم تشفير قسم البيانات فقط</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">تثبيت Ramdisk</string>
+		<string name="img_type">نوع الصورة</string>
+		<string name="img_select_type">اختر نوع ملف امج</string>
+		<string name="repack_overwrite_warning">إذا كان الجهاز قد تم ترويته سابقًا، فقد تم الكتابة فوق الجذر ويحتاج إلى إعادة التثبيت.</string>		
+
+		<string name="repack_backup_first">قم بنسخ صورة موجودة احتياطيًا أولاً</string>
+
+		<string name="unpack_error">خطأ في فك ضغط الصورة.</string>
+		<string name="repack_error">خطأ في إعادة تعبئة الصورة.</string>
+		<string name="unpacking_image">جاري فك ضغط {1}...</string>
+		<string name="repacking_image">جاريعادة تعبئة {1}...</string>
+		
+		<string name="fix_recovery_loop">إصلاح حلقة إعادة تشغيل الاستعادة</string>
+		<string name="fixing_recovery_loop">جاري إصلاح حلقة إعادة تشغيل الاستعادة...</string>
+		<string name="fix_recovery_loop_complete">اكتمل إصلاح حلقة إعادة تشغيل الاستعادة</string>
+		<string name="fixing_recovery_loop_patch">جاري تصحيح النواة...</string>
+		<string name="fix_recovery_loop_patch_error">خطأ في تصحيح النواة.</string>
+		<string name="try_app">جرب تطبيقنا!</string>
+		<string name="try_app_2">تحقق من تحديثات الاستعادة باستخدام</string>
+		<string name="try_app_3">تطبيقنا الجديد! </string>
+		<string name="try_app_4">رابط التحميل:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">تعديل الملف في nano</string>
+		<string name="fm_open_terminal_btn">فتح الطرفية هنا</string>
+		<string name="batch_progress">التنفيذ</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">الإعدادات المخصصّة لـ %fox_compatibility_fox_device%</string>
+		<string name="custom_settings_title">الإعدادات المخصصّة</string>
+		<string name="tap_to_show">اضغط للعرض</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">تفعيل حزب الإنقاذ في الأندرويد! حلول ممكنة؟ إما:</string>
+		<string name="rescue_party1"> 1. مسح الذاكرة المؤقتة، و/أو</string>
+		<string name="rescue_party2"> 2. توزيع البيانات، و/أو</string>
+		<string name="rescue_party3"> 3. تثبيت ROM من جديد.</string>
+		<string name="rescue_party4">المشكلة المبلغ عنها هي:</string>
+
+		<string name="restore_system_context">تعذر الحصول على السياق الافتراضي لـ {1} -- قد لا يقوم الأندرويد بالتشغيل.</string>
+		
+		<string name="batch_progress">التنفيذ</string>
+		<string name="recovery_busy">الاسترداد مشغول</string>
+		<string name="status_delimeter">فاصل شريط الحالة</string>
+		<string name="status_delimeter_shadow">ظل</string>
+
+		<string name="mount_vab_partitions">قد لا يتم تركيب الأجهزة على سوبر حتى بعد إعادة تشغيل الاسترداد.</string>
+		<string name="merges_snapshots">دمج اللقطات</string>
+		<string name="merging_snapshots">جاري دمج اللقطات...</string>
+		<string name="merging_snapshots_complete">تم دمج اللقطات</string>
+		
+		<string name="unmap_super_devices">إلغاء تعيين أجهزة سوبر</string>
+		<string name="unmapping_super_devices">جاري إلغاء تعيين أجهزة سوبر...</string>
+		<string name="unmap_super_devices_complete">تم إلغاء تعيين جميع أجهزة سوبر</string>
+
+		<string name="auto_reflashtwrp_chk">إعادة تثبيت OrangeFox بعد تثبيت ROM</string>
+		<string name="modified_ramdisk_error">تم تعديل ملفات ramdisk، يتعذر إنشاء ramdisk للتثبيت. fastboot boot OrangeFox وحاول هذا الخيار مرة أخرى أو ارجع إلى الملفات وثبّت ملف img كـ Recovery Ramdisk باستخدام زر Install Ramdisk.</string>
+		<string name="create_ramdisk_error">فشل في إنشاء ramdisk للتثبيت.</string>
+		<string name="reflash_twrp">تثبيت OrangeFox الحالي</string>
+		<string name="reflashing_twrp">جاري تثبيت OrangeFox...</string>
+		<string name="reflash_twrp_complete">تم تثبيت OrangeFox</string>
+
+		<string name="auto_disable_avb2">تعطيل vbmeta AVB2.0 بعد تثبيت ROM</string>
+		<string name="disable_avb2">تعطيل vbmeta AVB2.0</string>
+		<string name="disable_avb2_confirm">تعطيل vbmeta AVB2.0؟</string>
+		<string name="disabling_AVB2">جاري تعطيل vbmeta AVB2.0...</string>
+		<string name="disabling_AVB2_complete">تم تعطيل vbmeta AVB2.0!</string>
+		<string name="disable_avb2_success_msg">تعطيل vbmeta AVB2.0: معالجة '{1}' بنجاح.</string>
+		<string name="disable_avb2_fail_msg">تعطيل vbmeta AVB2.0: فشل في معالجة '{1}'!</string>
+
+		<string name="enable_hw_control">تحكم واجهة المستخدم للأجهزة</string>
+		<string name="enable_hw_control_1">سيتم تمكين الملاحة من خلال</string>
+		<string name="enable_hw_control_2">الواجهة باستخدام أجهزة</string>
+		<string name="enable_hw_control_3">الصدى والتغذية الراجعة.</string>
+		<string name="enable_hw_control_4">ستتم تعطيل الإشارات. المتابعة؟</string>
+	</resources>
+</language>

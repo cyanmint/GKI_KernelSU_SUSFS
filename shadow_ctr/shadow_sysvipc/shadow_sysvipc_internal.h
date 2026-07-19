@@ -13,6 +13,7 @@
 #include <linux/list.h>
 #include <linux/atomic.h>
 #include <linux/hashtable.h>
+#include <linux/wait.h>
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/sem.h>
@@ -30,6 +31,25 @@
 #define SHADOW_SYSVIPC_KEY_HTBITS	8	/* 256 buckets */
 #define SHADOW_SYSVIPC_TGID_HTBITS	8	/* 256 buckets */
 
+/* Per-queue message payload limits (mirrors the real ipc/msg.c defaults). */
+#define SHADOW_SYSVIPC_MSG_MAXSIZE	MSGMAX
+#define SHADOW_SYSVIPC_MSG_MAXQBYTES	MSGMNB
+#define SHADOW_SYSVIPC_MSG_MAXCOUNT	MSGMNB
+
+/*
+ * struct svipc_msg - a single queued message payload (TYPE_MSGQ only).
+ * @node:  linkage in svipc_resource.msgs, oldest-first
+ * @mtype: message type as passed to msgsnd(2)
+ * @len:   length of @data in bytes
+ * @data:  flexible array holding the raw message payload
+ */
+struct svipc_msg {
+	struct list_head	node;
+	long			mtype;
+	size_t			len;
+	char			data[];
+};
+
 /*
  * struct svipc_resource - a single virtual IPC object.
  * @id:        stable id handed to userspace (xa key)
@@ -40,6 +60,11 @@
  * @size:      segment size (TYPE_SHM only)
  * @refcount:  reference count; dropped by each owner reference
  * @key_node:  hash node in the global key table (only when key != PRIVATE)
+ * @msgs:      queued svipc_msg list (TYPE_MSGQ only)
+ * @msgs_lock: serialises @msgs, @msg_count and @msg_qbytes
+ * @msgs_wait: waiters blocked in msgrcv(2) waiting for a matching message
+ * @msg_count: number of messages currently queued
+ * @msg_qbytes: total payload bytes currently queued
  */
 struct svipc_resource {
 	u32			id;
@@ -51,6 +76,11 @@ struct svipc_resource {
 	u64			size;
 	refcount_t		refcount;
 	struct hlist_node	key_node;
+	struct list_head	msgs;
+	struct mutex		msgs_lock;
+	wait_queue_head_t	msgs_wait;
+	u32			msg_count;
+	u64			msg_qbytes;
 };
 
 struct svipc_owned_ref {
@@ -90,5 +120,12 @@ int svipc_tgid_own_current(struct svipc_resource *res);
 int svipc_tgid_destroy_current(u32 type, u32 id);
 void svipc_tgid_release_all(void);
 void svipc_force_free_all_resources(void);
+
+/* shadow_sysvipc_msgq.c: simulated message-queue payload transfer. */
+void svipc_msgq_purge_locked(struct svipc_resource *res);
+long svipc_sys_msgsnd(int msqid, const void __user *umsgp, size_t msgsz,
+		      int msgflg);
+long svipc_sys_msgrcv(int msqid, void __user *umsgp, size_t msgsz,
+		      long msgtyp, int msgflg);
 
 #endif

@@ -1,0 +1,16 @@
+# Override servicemanager configuration for OrangeFox Recovery
+# This file prevents servicemanager auto-start during init to avoid crypto deadlock
+#
+# The servicemanager will be started/stopped programmatically when needed
+
+service servicemanager /system/bin/servicemanager
+    user root
+    group root readproc
+    disabled
+    seclabel u:r:recovery:s0
+    writepid /dev/cpuset/system-background/tasks
+
+# Do not auto-start servicemanager during init
+# This prevents the deadlock with crypto initialization
+# on init
+#     start servicemanager

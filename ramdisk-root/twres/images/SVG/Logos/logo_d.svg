@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 158 228">
+	<defs>
+		<linearGradient id="linearGradient22">
+			<stop stop-color="#606060" stop-opacity="1" offset="0"/>
+			<stop stop-color="#000000" stop-opacity="1" offset="1"/>
+		</linearGradient>
+		<linearGradient id="linearGradient20">
+			<stop stop-color="#606060" stop-opacity="1" offset="0"/>
+			<stop stop-color="#000000" stop-opacity="1" offset="1"/>
+		</linearGradient>
+		<linearGradient id="linearGradient5">
+			<stop stop-color="#000000" stop-opacity="1" offset="0"/>
+			<stop stop-color="#606060" stop-opacity="1" offset="1"/>
+		</linearGradient>
+		<linearGradient xlink:href="#linearGradient5" id="linearGradient6" x1="117.73429" y1="246.44043" x2="156.00842" y2="250.31543" gradientUnits="userSpaceOnUse" spreadMethod="reflect" gradientTransform="translate(-0.25)"/>
+		<linearGradient xlink:href="#linearGradient22" id="linearGradient17" x1="90.96209" y1="166.22096" x2="176.09973" y2="195.36436" gradientUnits="userSpaceOnUse" spreadMethod="reflect"/>
+		<linearGradient xlink:href="#linearGradient20" id="linearGradient21" x1="142.13293" y1="164.98442" x2="234.94824" y2="194.79939" gradientUnits="userSpaceOnUse" spreadMethod="reflect" />
+	</defs>
+	<path fill="none" stroke="url(#linearGradient6)" stroke-dasharray="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="17.41016114598431" d="M 96.9139 177.954 C 96.6539 178.326 98.0534 188.407 98.3779 190.103 C 102.032 209.216 104.115 211.084 106.821 211.034 C 113.607 210.907 114.388 203.146 114.715 197.5 C 114.938 194.252 114.38 180.406 114.566 178.397"/>
+	<path fill="none" paint-order="normal" stroke="url(#linearGradient21)" stroke-dasharray="none" stroke-linecap="round" stroke-linejoin="miter" stroke-width="16.39519592188097" d="M 149.798 210.618 C 149.543 201.877 146.224 195.361 143.552 188.074 C 139.275 175.824 134.044 161.814 129.539 150.104 C 126.764 142.887 128.639 140.19 133.197 136.516 C 136.576 133.767 140.169 131.341 142.958 127.966 C 146.976 123.104 148.514 117.169 148.933 111.049 C 149.381 104.512 148.359 97.6275 146.064 91.4955 C 144.763 88.017 142.946 84.6915 140.816 81.6581 C 132.924 70.4181 121.695 62.2301 114.489 50.5966 C 110.421 44.027 108.207 38.5192 109.656 31.3294 C 111.082 24.2543 112.854 17.1475 114 13.3229 C 116.233 5.86881 110.191 6.56765 96.1489 15.3754 C 90.9782 18.6184 82.3879 27.2283 79.3898 35.5396 C 70.535 60.0826 81.3474 73.6221 94.8723 91.9955 C 100.983 100.296 107.232 109.598 113.01 118.129 C 121.543 130.723 116.118 135.764 103.78 136.127 C 87.6501 136.602 75.1122 128.156 61.2552 119.938 C 57.6396 117.809 43.788 108.811 33.3233 118.459"/>
+	<path fill="none" paint-order="normal" stroke="url(#linearGradient17)" stroke-dasharray="none" stroke-linecap="round" stroke-linejoin="miter" stroke-width="16.39519592188097" d="M 32.7712 118.735 C 32.5078 120.063 33.806 113.337 35.3132 110.402 C 39.492 102.267 44.5995 101.462 56.0031 105.286 C 64.3853 108.096 71.6766 102.848 75.1767 96.98 C 78.5903 91.258 77.3433 86.767 70.663 86.8585 C 62.5518 86.27 55.6006 81.5751 52.4215 74.2046 C 46.8066 60.6311 56.5986 54.5046 49.9601 54.0881 C 47.6184 53.9416 40.3119 58.2321 38.2806 59.8621 C 22.5834 72.4576 13.2972 84.186 9.15682 106.191 C 8.5314 109.514 8.14299 113.818 8.20514 116.975 C 8.4388 128.847 11.7841 140.258 16.0216 151.684 C 22.1535 168.216 19.6153 190.519 21.3035 198.319 C 22.9917 206.119 23.6603 216.833 32.1323 215.976 C 40.3304 215.148 37.4012 191.097 37.9032 182.815 C 38.4203 176.939 38.1599 171.017 44.0395 169.734 C 49.9191 168.452 50.4914 181.12 51.5609 187.306 C 52.984 195.532 53.6745 220.131 62.3388 219.8 C 72.4006 219.416 70.0555 195.054 70.9811 182.78 C 71.6606 173.767 78.2013 169.62 88.3081 168.764 C 94.6328 168.229 101.066 169.99 107.052 172.416 C 120.414 178.767 126.792 195.183 134 207.542 C 137.335 213.261 139.191 216.809 144.007 217.445 C 146.299 217.747 149.885 213.6 149.798 210.618"/>
+</svg>

@@ -32,8 +32,8 @@ static long shadow_ns_hook_unshare(const struct pt_regs *regs)
 	struct shadow_task_group *tg;
 	struct pt_regs regs_copy;
 	unsigned long flags = shadow_ns_sys_arg0(regs);
-	unsigned long shadow_flags = flags & SHADOW_NS_SHADOW_CLONE_FLAGS;
-	unsigned long native_flags = flags & ~SHADOW_NS_SHADOW_CLONE_FLAGS;
+	unsigned long shadow_flags = flags & shadow_ns_clone_flags;
+	unsigned long native_flags = flags & ~shadow_ns_clone_flags;
 	long ret = 0;
 
 	if (!shadow_flags)
@@ -81,14 +81,14 @@ static long shadow_ns_hook_clone(const struct pt_regs *regs)
 	struct shadow_task_group *parent = shadow_ns_current_task_group(false);
 	struct pt_regs regs_copy = *regs;
 	unsigned long flags = shadow_ns_sys_arg0(regs);
-	unsigned long shadow_flags = flags & SHADOW_NS_SHADOW_CLONE_FLAGS;
+	unsigned long shadow_flags = flags & shadow_ns_clone_flags;
 	long ret;
 
 	if (shadow_flags && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
 	if (shadow_flags)
-		shadow_ns_sys_set_arg0(&regs_copy, flags & ~SHADOW_NS_SHADOW_CLONE_FLAGS);
+		shadow_ns_sys_set_arg0(&regs_copy, flags & ~shadow_ns_clone_flags);
 	ret = real_sys_clone(&regs_copy);
 	return shadow_ns_clone_finalize(ret, parent, shadow_flags);
 }
@@ -106,11 +106,11 @@ static long shadow_ns_hook_clone3(const struct pt_regs *regs)
 	if (!uargs || copy_from_user(&orig_flags, uargs, sizeof(orig_flags)))
 		return real_sys_clone3(regs);
 
-	shadow_flags = (unsigned long)(orig_flags & SHADOW_NS_SHADOW_CLONE_FLAGS);
+	shadow_flags = (unsigned long)(orig_flags & shadow_ns_clone_flags);
 	if (shadow_flags && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	native_flags = orig_flags & ~((u64)SHADOW_NS_SHADOW_CLONE_FLAGS);
+	native_flags = orig_flags & ~((u64)shadow_ns_clone_flags);
 	if (shadow_flags) {
 		if (copy_to_user(uargs, &native_flags, sizeof(native_flags)))
 			return -EFAULT;

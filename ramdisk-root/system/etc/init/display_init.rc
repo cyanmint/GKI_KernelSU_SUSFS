@@ -1,0 +1,31 @@
+# Display and Framebuffer Initialization for TWRP Recovery
+# Ensures display drivers are properly loaded before UI initialization
+
+# Early display initialization - runs before post-fs
+on early-init
+    # Enable display backlight early
+    write /sys/class/backlight/panel0-backlight/brightness 400
+    
+    # Ensure display power is on
+    write /sys/class/drm/card0/card0-DSI-1/enabled 1
+    
+    # Initialize framebuffer
+    write /sys/class/graphics/fb0/blank 0
+    
+on init
+    # Set display permissions
+    chmod 0666 /sys/class/backlight/panel0-backlight/brightness
+    chmod 0666 /sys/class/graphics/fb0/blank
+    
+    # Force display refresh
+    write /sys/class/graphics/fb0/blank 1
+    exec - root root -- /system/bin/sleep 0.1
+    write /sys/class/graphics/fb0/blank 0
+
+# Additional display setup after filesystems are mounted
+on post-fs
+    # Ensure backlight is on
+    write /sys/class/backlight/panel0-backlight/brightness 400
+    
+    # Log display status
+    exec - root root -- /system/bin/log -t TWRP "Display initialization completed"

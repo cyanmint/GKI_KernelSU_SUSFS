@@ -1,0 +1,1256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>英語</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">システム</string>
+		<string name="system_image">システムイメージ</string>
+		<string name="vendor">ベンダー</string>
+		<string name="vendor_image">ベンダーイメージ</string>
+		<string name="boot">ブート</string>
+		<string name="recovery">リカバリー</string>
+		<string name="cache">キャッシュ</string>
+		<string name="data">データ</string>
+		<string name="sdcard">SDカード</string>
+		<string name="internal">内部ストレージ</string>
+		<string name="microsd">マイクロSDカード</string>
+		<string name="usb_storage">USBストレージ</string>
+		<string name="android_secure">Androidセキュア</string>
+		<string name="dalvik">Dalvik / ARTキャッシュ</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">SD-EXT</string>
+		<string name="adopted_data">適用されたデータ</string>
+		<string name="adopted_storage">接続されたストレージ</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">OrangeFox %fox_actual_build%</string>
+		<string name="cpu_temp">CPU: %tw_cpu_temp% &#xB0;C</string>
+		<string name="sort_by_name_asc">名前</string>
+		<string name="sort_by_date_asc">データ</string>
+		<string name="sort_by_size_asc">サイズ</string>
+		<string name="sort_by_name_desc">名前</string>
+		<string name="sort_by_date_desc">データ</string>
+		<string name="sort_by_size_desc">サイズ</string>
+		<string name="install_btn">インストール</string>
+		<string name="wipe_btn">削除</string>
+		<string name="backup_btn">バックアップ</string>
+		<string name="restore_btn">リストア</string>
+		<string name="mount_btn">マウント</string>
+		<string name="file_manager_btn">ファイル</string>
+		<string name="advanced_btn">拡張機能</string>
+		<string name="reboot_btn">再起動</string>
+		<string name="copy_log_btn">ログをSD カードにコピー</string>
+		<string name="install_zip_hdr">ZIPをインストール</string>
+		<string name="install_zip_btn">ZIPをインストール</string>
+		<string name="install_image_hdr">イメージファイルをインストール</string>
+		<string name="install_image_btn">イメージファイルをインストール</string>
+		<string name="install_select_file_hdr">ファイルを選択</string>
+		<string name="install_select_file_btn">ファイルを選択</string>
+		<string name="adb_sideload_btn">ADB &amp; Sideload</string>
+		<string name="select_storage_hdr">ストレージを選択</string>
+		<string name="select_storage_btn">ストレージを選択</string>
+		<string name="queue_hdr">キュー</string>
+		<string name="raised_clearqueue_btn">キューをクリア</string>
+		<string name="raised_viewqueue_btn">キューを見る</string>
+		<string name="zip_queue_count">最大10個の内%tw_zip_queue_count%ファイルがキューに追加済み</string>
+		<string name="folder">フォルダ</string>
+		<string name="file">ファイル</string>
+		<string name="zip_sig_chk">ZIP署名の確認</string>
+		<string name="inject_twrp_chk">インストール完了後にOrangeFoxを追加</string>
+		<string name="install_reboot_chk">インストール完了後にリブート</string>
+		<string name="options_hdr">設定</string>
+		<string name="zip_queue">キュー</string>
+		<string name="install_zip_count_hdr">%tw_zip_index% の %tw_zip_queue_count% をインストール中</string>
+		<string name="working">処理中...</string>
+		<string name="failed">失敗しました</string>
+		<string name="successful">成功しました</string>
+		<string name="wipe_cache_btn">キャッシュを消去</string>
+		<string name="reboot_system_btn">システム再起動</string>
+		<string name="reboot_recovery_btn">リカバリーへ再起動</string>
+		<string name="install_sel_target">ターゲットパーティションを選択</string>
+		<string name="flash_image_select">パーティション</string>
+		<string name="flashing_image">イメージをフラッシュ中...</string>
+		<string name="image_flashed">イメージのフラッシュ完了</string>
+		<string name="wipe_cache_dalvik_confirm">キャッシュ &amp; Dalvikを消去</string>
+		<string name="wipe_dalvik_confirm">Dalvik を消去</string>
+		<string name="wiping_cache_dalvik">キャッシュ &amp; Dalvikを消去しています</string>
+		<string name="wipe_cache_dalvik_complete">キャッシュ &amp; Dalvik 消去しました</string>
+		<string name="cache_dalvik_done">キャッシュ &amp; Dalvik 消去しました</string>
+		<string name="swipe_wipe">スワイプして削除</string>
+		<string name="rebooting">再起動しています...</string>
+		<string name="swipe_reboot">スワイプして再起動</string>
+		<string name="confirm_action">操作の確認</string>
+		<string name="cancel_btn">キャンセル</string>
+		<string name="wipe_hdr">削除</string>
+		<string name="factory_reset_hdr">ファクトリーリセット</string>
+		<string name="factory_reset1">データ、キャッシュ、Dalvik を削除</string>
+		<string name="factory_reset2">(内部ストレージは含まない)</string>
+		<string name="factory_reset3">ほとんどの場合は</string>
+		<string name="factory_reset4">これはあなたが必要とする唯一のワイプです。</string>
+		<string name="factory_reset5">（ユーザー/ロック画面を除く）</string>
+		<string name="factory_resetting">工場出荷状態にリセット...</string>
+		<string name="advanced_wipe_hdr">高度な削除</string>
+		<string name="advanced_wipe_btn">高度な削除</string>
+		<string name="wipe_enc_confirm">暗号化されたデータを削除しますか？</string>
+		<string name="formatting_data">初期化しています...</string>
+		<string name="swipe_format_data">スワイプして初期化</string>
+		<string name="factory_reset_complete">工場出荷時の状態にリセットされました</string>
+		<string name="sel_part_hdr">パーティションを選択</string>
+		<string name="wipe_sel_confirm">選択したパーティションを消去しますか？</string>
+		<string name="wiping_part">パーティションを消去しています</string>
+		<string name="wipe_complete">消去しました</string>
+		<string name="format_data_hdr">データを初期化</string>
+		<string name="format_data_btn">データを初期化</string>
+		<string name="format_data_ptr1">データを初期化すると、すべてのアプリが削除されます</string>
+		<string name="format_data_ptr2">写真、動画などのメディアをバックアップ</string>
+		<string name="format_data_ptr3">内部ストレージの暗号化を削除します</string>
+		<string name="format_data_adopted">内部ストレージ化したSDカードも含める</string>
+		<string name="format_data_undo">この操作は元に戻せません.</string>
+		<string name="format_data_complete">データの初期化しました</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">"yes"と入力して続行</string>
+		<string name="part_opt_hdr">パーティション情報</string>
+		<string name="file_sys_opt">パーティションオプション</string>
+		<string name="part_mount_point">マウントポイント</string>
+		<string name="part_curr_fs">ファイルシステム</string>
+		<string name="part_present">現在</string>
+		<string name="part_removable">取り外し可能</string>
+		<string name="part_yes">はい</string>
+		<string name="part_no">いいえ</string>
+		<string name="part_size">サイズ</string>
+		<string name="part_used">使用済み</string>
+		<string name="part_free">空き</string>
+		<string name="part_backup_size">バックアップサイズ</string>
+		<string name="resize_btn">リサイズ FS</string>
+		<string name="resize_confirm">パーティションのリサイズ</string>
+		<string name="resizing">リサイズ中...</string>
+		<string name="resize_complete">リサイズ完了</string>
+		<string name="swipe_resize">スワイプしてリサイズ</string>
+		<string name="repair_btn">ファイルシステムを修復</string>
+		<string name="repair_confirm">パーティションの修復</string>
+		<string name="repairing">修理中...</string>
+		<string name="repair_complete">修復完了</string>
+		<string name="swipe_repair">スワイプして修復</string>
+		<string name="change_fs_btn">FSの変更</string>
+		<string name="change_fs_warn1">いくつかのROM及びカーネルはサポートしていません</string>
+		<string name="change_fs_warn2">一部のファイルシステム 注意して進めてください！</string>
+		<string name="change_fs_confirm">FSの変更</string>
+		<string name="formatting">初期化中...</string>
+		<string name="format_complete">初期化完了</string>
+		<string name="swipe_change_fs">スワイプして変更</string>
+		<string name="back_btn">戻る</string>
+		<string name="wipe_enc_btn">暗号化を消去</string>
+		<string name="swipe_factory_reset">スワイプしてファクトリーリセット</string>
+		<string name="backup_hdr">バックアップ</string>
+		<string name="encryption_hdr">暗号化を有効にする</string>
+		<string name="name">名前</string>
+		<string name="enable_backup_comp_chk">圧縮を有効化</string>
+		<string name="skip_md5_backup_chk">バックアップ中の MD5 生成をスキップ</string>
+		<string name="disable_backup_space_chk">バックアップする前に空き容量が十分か確認する</string>
+		<string name="swipe_backup">スワイプしてバックアップ</string>
+		<string name="backup_name_exists">同じ名前のバックアップが既に存在します!</string>
+		<string name="pass_not_match">パスワードが一致しません</string>
+		<string name="partitions">パーティション</string>
+		<string name="progress">進捗状況</string>
+		<string name="backup_complete">バックアップ完了</string>
+		<string name="restore_hdr">バックアップ</string>
+		<string name="restore_backup_hdr">バックアップから復元</string>
+		<string name="sel_backup_hdr">バックアップを選択</string>
+		<string name="restore_dec_fail">パスワードが間違っています。再試行してください!</string>
+		<string name="del_backup_confirm">バックアップを削除しますか</string>
+		<string name="del_backup_confirm2">この操作は元に戻せません!</string>
+		<string name="deleting_backup">バックアップを削除しています...</string>
+		<string name="backup_deleted">バックアップを削除しました。</string>
+		<string name="swipe_delete">スワイプして削除</string>
+		<string name="restore_backup_date">バックアップの日付</string>
+		<string name="restore_md5_chk">バックアップファイルの MD5 を確認する</string>
+		<string name="restore_enable_md5_chk">バックアップファイルの MD5 検証を有効にする</string>
+		<string name="restore_complete">復元が完了しました</string>
+		<string name="swipe_restore">スワイプして復元する</string>
+		<string name="rename_backup_hdr">バックアップ名を変更する</string>
+		<string name="rename_backup_confirm">バックアップ名を変更する</string>
+		<string name="rename_backup_confirm2">この操作は元に戻せません!</string>
+		<string name="renaming_backup">バックアップ名を変更しています</string>
+		<string name="rename_backup_complete">バックアップ名の変更が完了しました</string>
+		<string name="swipe_to_rename">スワイプして名前変更</string>
+		<string name="mount_hdr">マウント</string>
+		<string name="mount_sys_ro_chk">システムパーティションを読み取り専用でマウント</string>
+		<string name="erofs_is_ro_fs">EROFSは読み取り専用のファイルシステムであり、読み書きモードでマウントできません！</string>
+		<string name="decrypt_data_btn">データを復号する</string>
+		<string name="disable_mtp_btn">MTPを無効にする</string>
+		<string name="enable_mtp_btn">MTPを有効にする</string>
+		<string name="usb_storage_hdr">USBストレージ</string>
+		<string name="usb_storage_btn">USBストレージ</string>
+		<string name="usb_stor_mnt1">USBストレージがマウントされました</string>
+		<string name="usb_stor_mnt2">デバイスを安全に取り外してください</string>
+		<string name="usb_stor_mnt3">マウント解除する前にパソコンから</string>
+		<string name="unmount_btn">マウント解除</string>
+		<string name="rb_system_btn">システム</string>
+		<string name="rb_poweroff_btn">電源OFF</string>
+		<string name="rb_recovery_btn">リカバリー</string>
+		<string name="rb_bootloader_btn">ブートローダー</string>
+		<string name="rb_theme">テーマ</string>
+		<string name="rb_download_btn">ダウンロード</string>
+		<string name="rb_edl_btn">EDL</string>
+		<string name="turning_off">電源を切っています...</string>
+		<string name="swipe_power_off">スワイプして電源をオフにする</string>
+		<string name="sys_ro">システムパーティション</string>
+		<string name="sys_ro_hdr">未変更のシステムパーティション</string>
+		<string name="sys_rop1">OrangeFoxはシステムパーティションを</string>
+		<string name="sys_rop2">変更せずに、官製アップデートを</string>
+		<string name="sys_rop2a">容易に受け取れるようにします。</string>
+		<string name="sys_rop3">OrangeFoxはストックROMが</string>
+		<string name="sys_rop4">OrangeFoxを置き換えるのを防ぐことができません。</string>
+		<string name="sys_rop5">ZIP インストールまたは ADB 操作</string>
+		<string name="sys_rop6">システムパーティションを変更することができます</string>
+		<string name="sys_ro_never_show_chk">この画面を再び表示しない</string>
+		<string name="sys_ro_keep_ro_btn">読み取り専用にする</string>
+		<string name="swipe_allow_mod">スワイプして変更を許可する</string>
+		<string name="settings_hdr">設定</string>
+		<string name="settings_cptn">一般</string>
+		<string name="use_rmrf_chk">初期化する時 rm -rf を使用する</string>
+		<string name="use24clock_chk">時刻の24時間表示</string>
+		<string name="rev_navbar_chk">ナビゲーションバーのレイアウトを反転</string>
+		<string name="simact_chk">テーマテスト用のアクションをシミュレート</string>
+		<string name="simfail_chk">アクションの失敗をシミュレート</string>
+		<string name="sel_tz_list">タイムゾーン</string>
+		<string name="dialog_reset_theme_hdr">初期設定に戻す</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(UTC -11) サモア、ミッドウェイ島</string>
+		<string name="utcm10">(UTC -10) ハワイ</string>
+		<string name="utcm9">(UTC -9) アラスカ</string>
+		<string name="utcm8">(UTC -8) 太平洋標準時</string>
+		<string name="utcm7">(UTC -7) 米国山岳部標準時</string>
+		<string name="utcm6">(UTC -6) 中部標準時</string>
+		<string name="utcm5">(UTC -5) 東部標準時</string>
+		<string name="utcm4">(UTC -4) 大西洋標準時</string>
+		<string name="utcm3">(UTC -3) ブラジル、ブエノスアイレス島</string>
+		<string name="utcm2">（UTC -2）中部大西洋</string>
+		<string name="utcm1">(UTC -1) アゾレス、カーボベルデ</string>
+		<string name="utc0">(UTC  0) ロンドン、ダブリン、リスボン</string>
+		<string name="utcp1">(UTC +1) ベルリン、ブリュッセル、パリ</string>
+		<string name="utcp2">(UTC +2) アテネ, イスタンブール, 南アフリカ</string>
+		<string name="utcp3">(UTC +3) モスクワ、バグダッド</string>
+		<string name="utcp4">(UTC +4) アブダビ、トビリシ、マスカット</string>
+		<string name="utcp5">(UTC +5) エカテリンブルク、イスラマバード</string>
+		<string name="utcp6">(UTC +6) アルマトイ、ダッカ、コロンボ</string>
+		<string name="utcp7">(UTC +7) バンコク、ハノイ、ジャカルタ</string>
+		<string name="utcp8">(UTC +8) 北京、シンガポール、香港</string>
+		<string name="utcp9">(UTC +9) 東京、ソウル、ヤクーツク</string>
+		<string name="utcp10">(UTC +10) 東オーストラリア、グアム</string>
+		<string name="utcp11">(UTC +11) ウラジオストク, ソロモン諸島</string>
+		<string name="utcp12">(UTC +12) オークランド、ウェリントン、フィジー、</string>
+		<string name="tz_offset_hdr">時差</string>	
+		<string name="tz_offset">オフセット</string>
+		<string name="sel_tz_offset">オフセットを選択 (通常は0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">夏時間 (DST) を使用</string>
+		<string name="curr_tz">現在のタイムゾーン: %tw_time_zone%</string>
+		<string name="curr_tz_s">現在のタイムゾーン:</string>
+		<string name="set_tz_btn">タイムゾーンの設定</string>
+		<string name="settings_screen_cptn">画面の設定</string>
+		<string name="settings_screen_timeout_cptn">画面消灯時間</string>
+		<string name="settings_screen_timeout_cptn2">タイムアウト</string>
+		<string name="timeout_unit">秒</string>
+		<string name="enable_timeout_chk">画面の自動オフを有効化</string>
+		<string name="screen_to_na">画面点灯時間制限の設定の使用は不可です</string>
+		<string name="rotation_chk">回転</string>
+		<string name="screen_bright_slider">明るさ: %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">明るさの設定は使用できません</string>
+		<string name="vibration_hdr">振動</string>
+		<string name="button_vibration_hdr">ボタンの振動がオフです</string>
+		<string name="kb_vibration_hdr">キーボードの振動がオフです</string>
+		<string name="act_vibration_hdr">アクションの振動がオフです</string>
+		<string name="button_vibration">ボタンの振動:</string>
+		<string name="kb_vibration">キーボードの振動:</string>
+		<string name="act_vibration">アクションの振動:</string>
+		<string name="advanced_hdr">拡張機能</string>
+		<string name="copy_log_confirm">ログをSDカードにコピーする</string>
+		<string name="copying_log">ログを SD カードにコピー中...</string>
+		<string name="copy_log_complete">ログをコピーしました</string>
+		<string name="terminal_btn">ターミナル</string>
+		<string name="inject_twrp_btn">OrangeFoxをインジェクト</string>
+		<string name="inject_twrp_confirm">OrangeFoxを再インジェクト</string>
+		<string name="injecting_twrp">OrangeFoxを再インジェクト中...</string>
+		<string name="inject_twrp_complete">OrangeFoxインジェクション完了</string>
+		<string name="swipe_to_confirm">スワイプして確認する</string>
+		<string name="part_sd_hdr">SD のパーティション</string>
+		<string name="rem_sd">取り外し可能なストレージ</string>
+		<string name="rem_sd_sel">取り外し可能なデバイスを選択してください！</string>
+		<string name="invalid_partsd_sel">リムーバブルデバイスを選択する必要があります</string>
+		<string name="part_sd_lose">SD カード上の全てのファイルは失われます!</string>
+		<string name="part_sdcard_sel_note_1">パーティション分割はすべてのファイルを</string>
+		<string name="part_sdcard_sel_note_2">SDカードから削除します！</string>
+		<string name="part_sd_undo">この操作は元に戻せません!</string>
+		<string name="part_sd_ext_sz">EXT サイズ:</string>
+		<string name="btn_flat_ext4">EXT4</string>
+		<string name="btn_flat_ext3">EXT3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">スワップサイズ:</string>
+		<string name="file_system">ファイルシステム:</string>
+		<string name="swipe_part_sd">スワイプしてパーティション分割</string>
+		<string name="partitioning_sd">SDカードをパーティション分割中...</string>
+		<string name="partitioning_sd2">数分かかることがあります</string>
+		<string name="part_sd_complete">パーティション分割完了</string>
+		<string name="swipe_to_unlock">スワイプしてロック解除</string>
+		<string name="fm_actions">アクション</string>
+		<string name="fm_hdr">ファイル</string>
+		<string name="fm_sel_file">ファイル又はフォルダの選択</string>
+		<string name="fm_type_folder">フォルダ</string>
+		<string name="fm_type_file">ファイル</string>
+		<string name="fm_copy_btn">コピー</string>
+		<string name="fm_copying">コピーしています...</string>
+		<string name="fm_move_btn">移動</string>
+		<string name="fm_moving">移動しています…</string>
+		<string name="fm_chmod755_btn">755 に設定</string>
+		<string name="fm_chmod755ing">755 に設定</string>
+		<string name="fm_chmod644_btn">644 に設定</string>
+		<string name="fm_chmod644ing">644 に設定</string>
+		<string name="fm_chmod_btn">権限の設定</string>
+		<string name="fm_delete_btn">削除</string>
+		<string name="fm_deleting">削除しています...</string>
+		<string name="fm_rename_btn">名前の変更</string>
+		<string name="fm_renaming">名前を変更中です。。。</string>
+		<string name="fm_sel_dest">保存先フォルダ</string>
+		<string name="fm_rename_hdr">名前の変更</string>
+		<string name="fm_set_perms_hdr">権限の設定</string>
+		<string name="fm_perms">権限</string>
+		<string name="fm_complete">ファイル操作が完了しました</string>
+		<string name="decrypt">復号化</string>
+		<string name="data_part">データパーティション</string>
+		<string name="encrypt_data_part">データパーティションは暗号化されています</string>
+		<string name="sel_encrypt_backup">暗号化されたバックアップを選択しています</string>
+		<string name="decrypt_data_enter_note1">パスワードを入力してください、または</string>
+		<string name="decrypt_data_enter_note1a">パターンを入力してください、または</string>
+		<string name="decrypt_data_enter_note2">戻るボタンを押すとキャンセルします</string>
+		<string name="decrypt_data_enter_pass">パスワードを入力</string>
+		<string name="decrypt_data_failed_pattern">パターンに失敗しました！</string>
+		<string name="decrypt_try_again">もう一度試してください</string>
+		<string name="decrypt_data_enter_pattern">パターンを入力</string>
+		<string name="decrypt_data_trying">復号化しています</string>
+		<string name="term_s_hdr">ターミナル</string>
+		<string name="adb_sideload_hdr">ADB Sideload</string>
+		<string name="sideload_wipe_dalvik_chk">Dalvik キャッシュを消去します</string>
+		<string name="sideload_wipe_cache_chk">キャッシュを消去します</string>
+		<string name="swipe_to_sideload">スワイプしてサイドロードを開始</string>
+		<string name="sideload_confirm">ADB Sideload</string>
+		<string name="sideload_usage">使用方法: ADB SideLoad File.ZIP</string>
+		<string name="sideload_complete">ADBサイドロード完了</string>
+		<string name="fix_contexts_hdr">コンテキストの修正</string>
+		<string name="fix_contexts_confirm">SELinux コンテキストを修正</string>
+		<string name="fix_contexts_note1">注意: 権限の修復の必要性はほとんどありません</string>
+		<string name="fix_contexts_note2">SELinux コンテキストを修正すると</string>
+		<string name="fix_contexts_note3">デバイスが正しく起動しない原因になる可能性があります</string>
+		<string name="swipe_to_fix_contexts">スワイプしてコンテキストを修正</string>
+		<string name="fixing_contexts">コンテキストを修正中...</string>
+		<string name="fix_contexts_complete">コンテキストを修正しました</string>
+		<string name="reboot_hdr">再起動</string>
+		<string name="sel_storage_list">ストレージを選択</string>
+		<string name="ok_btn">OK</string>
+		<string name="install_twrp_ramdisk">リカバリRAMディスクをインストール</string>
+		<string name="install_kernel">カーネルをインストール</string>
+		<string name="repack_backup_first">既存のイメージを最初にバックアップ</string>
+		<string name="installing">インストール中...</string>
+		<string name="install_complete">インストール完了</string>
+		<string name="decrypt_users">ユーザーを復号化</string>
+		<string name="backup_storage_undecrypt_warning">バックアップにはユーザー {1} の一部のファイルが含まれていません。ユーザーが復号化されていないためです。</string>
+		<string name="decrypting_user_fbe">ユーザー {1} のFBEを復号化しています...</string>
+		<string name="decrypt_user_success_fbe">ユーザー {1} を正常に復号化しました</string>
+		<string name="decrypt_user_fail_fbe">ユーザー {1} の復号化に失敗しました</string>
+		<string name="decrypt_data_user">選択されたユーザー</string>
+		<string name="data_users">ユーザー</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">カーネルは SELinux コンテキストを読み取る機能をサポートしていません</string>
+		<string name="full_selinux">完全な SELinux サポートがあります</string>
+		<string name="no_selinux">SELinux はサポートされません (libselinux なし)</string>
+		<string name="mtp_enabled">MTP 有効</string>
+		<string name="mtp_disabled">MTP 無効</string>
+		<string name="mtp_crash">MTP がクラッシュしました。ブート時に MTP を実行していません。</string>
+		<string name="decrypt_success">既定のパスワードで複号化に成功しました</string>
+		<string name="unable_to_decrypt">デフォルトのパスワードで復号できません。 データを初期化する必要があります。</string>
+		<string name="generating_md51">MD5 の生成中</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * MD5 の生成中...</string>
+		<string name="md5_created"> * MD5 を生成しました</string>
+		<string name="md5_error"> * MD5 エラー!</string>
+		<string name="md5_compute_error"> * MD5 の計算エラー</string>
+		<string name="current_date">(現在の日付)</string>
+		<string name="auto_generate">(自動生成)</string>
+		<string name="unable_to_locate_partition">バックアップ計算用に '{1}' パーティションを見つけることができませんでした。</string>
+		<string name="no_partition_selected">バックアップ用のパーティションが選択されていません</string>
+		<string name="total_partitions_backup"> * バックアップするパーティションの総数: {1}</string>
+		<string name="total_backup_size"> * すべてのデータの合計サイズ: {1}MB</string>
+		<string name="available_space"> * 空き容量: {1}MB</string>
+		<string name="unable_locate_storage">ストレージデバイスが見つかりません</string>
+		<string name="no_space">ストレージに空きが不足しています</string>
+		<string name="backup_started">[バックアップ開始]</string>
+		<string name="backup_folder"> * バックアップフォルダ: {1}</string>
+		<string name="fail_backup_folder">バックアップフォルダ作成に失敗しました</string>
+		<string name="avg_backup_fs">ファイルシステムの平均バックアップ速度: {1} MB/秒</string>
+		<string name="avg_backup_img">イメージドライブの平均バックアップ速度: {1} MB/秒</string>
+		<string name="total_backed_size">[合計 {1} MBがバックアップされました]</string>
+		<string name="backup_completed">[ {1} 秒でバックアップしました]</string>
+		<string name="restore_started">[リストア開始]</string>
+		<string name="restore_folder">フォルダを復元: '{1}'</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} 完了 ({2} 秒)]</string>
+		<string name="verifying_md5">MD5 の検証中</string>
+		<string name="skip_md5">ユーザー設定に基づいて MD5 チェックをスキップします</string>
+		<string name="calc_restore">復元の詳細を計算中...</string>
+		<string name="restore_read_only">{1} を復元できません -- 読み取り専用でマウントされています</string>
+		<string name="restore_unable_locate">復元のために'{1}'パーティションが見つかりません</string>
+		<string name="no_part_restore">リストアするパーティションが選択されていません。</string>
+		<string name="restore_part_count">{1} パーティションを復元しています...</string>
+		<string name="total_restore_size">リストアサイズの合計は {1}MB です</string>
+		<string name="updating_system_details">システムの詳細を更新中</string>
+		<string name="restore_completed">[ {1} 秒で復元しました]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">読み込みエラー: '{1}' ({2})</string>
+		<string name="unable_locate_part_backup_name">バックアップ名でパーティションが見つかりません: '{1}'</string>
+		<string name="unable_find_part_path">パス '{1} ' のパーティションが見つかりません</string>
+		<string name="update_part_details">パーティションの詳細を更新中...</string>
+		<string name="update_part_details_done">...完了しました</string>
+		<string name="wiping_dalvik">Dalvikディレクトリを消去しています...</string>
+		<string name="cleaned">クリーンアップ: {1}...</string>
+		<string name="dalvik_done">Dalvik キャッシュ ディレクトリの消去が完了しました!</string>
+		<string name="no_andsec">Android セキュアパーティションが見つかりません</string>
+		<string name="unable_to_locate">{1} が見つかりません</string>
+		<string name="wiping_datamedia">内部ストレージを消去中 -- /data/media...</string>
+		<string name="unable_to_mount">{1} をマウントできません</string>
+		<string name="unable_to_mount_internal">内部ストレージをマウントできません</string>
+		<string name="unable_to_mount_storage">ストレージをマウントできません</string>
+		<string name="fail_decrypt">データの復号に失敗しました</string>
+		<string name="no_crypto_support">このビルドには暗号化サポートがコンパイルされていません。</string>
+		<string name="decrypt_success_dev">データが正常に復号化され、新しいブロックデバイス: '{1}'</string>
+		<string name="done">完了</string>
+		<string name="start_partition_sd">SDカードをパーティション分割中...</string>
+		<string name="partition_sd_locate">パーティションにデバイスが見つかりません</string>
+		<string name="ext_swap_size">EXT + SwapサイズがSDカードサイズよりも大きい。</string>
+		<string name="remove_part_table">パーティションテーブルを削除中...</string>
+		<string name="unable_rm_part">パーティションテーブルを削除できません</string>
+		<string name="create_part">{1} パーティションを作成しています...</string>
+		<string name="unable_to_create_part">{1} パーティションを作成できません</string>
+		<string name="format_sdext_as">sd-extを {1} としてフォーマット中...</string>
+		<string name="part_complete">パーティション分割が完了しました。</string>
+		<string name="unable_to_open">'{1} ' を開けません</string>
+		<string name="mtp_already_enabled">MTP は既に有効です</string>
+		<string name="mtp_fail">MTP を有効にできませんでした</string>
+		<string name="no_mtp">MTP はサポートされていません</string>
+		<string name="mtp_base_path_missing">メディアストレージが見つかりません。 MTPを有効にできません。</string>
+		<string name="image_flash_start">[イメージフラッシュ開始]</string>
+		<string name="img_to_flash">フラッシュするイメージ: '{1}'</string>
+		<string name="flash_unable_locate">フラッシュ用の '{1}' パーティションを見つけることができませんでした。</string>
+		<string name="no_part_flash">フラッシュ用に選択されたパーティションがありません。</string>
+		<string name="too_many_flash">フラッシュ用に選択されているパーティションが多すぎます。</string>
+		<string name="invalid_flash">指定されたフラッシュパーティションが無効です。</string>
+		<string name="flash_done">[イメージフラッシュ完了]</string>
+		<string name="wiping">{1} を消去中</string>
+		<string name="repair_not_exist">{1} は存在しません! 修復できません</string>
+		<string name="repairing_using">{2} を使用して {1} を修復しています...</string>
+		<string name="unable_repair">{1} を修復できません</string>
+		<string name="mount_data_footer">/data をマウントできず、crypto フッターを見つけることができません。</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">'{1}' フォルダを作成できません ({2})</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">'{1}' のマウントに失敗しました ({2})</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">'{1}' のマウントの解除に失敗しました ({2})</string>
+		<string name="cannot_resize">{1} をリサイズできません</string>
+		<string name="repair_resize">サイズを変更する前に {1} を修復しています</string>
+		<string name="unable_resize">{1} をリサイズできません</string>
+		<string name="no_md5_found">'{1}' の md5 ファイルが見つかりません。 復元するにはMD5の検証しないでください。</string>
+		<string name="md5_fail_match">MD5 が '{1}' と一致しませんでした</string>
+		<string name="fail_decrypt_tar">tar ファイル '{1}' の復号に失敗しました</string>
+		<string name="format_data_msg">/data を再度使用するには、リカバリを再起動する必要があるかもしれません</string>
+		<string name="format_data_err">暗号化を解除するためにフォーマットできません</string>
+		<string name="formatting_using">{2} を使用して {1} をフォーマット中...</string>
+		<string name="unable_to_wipe">{1} を消去できません</string>
+		<string name="cannot_wipe">パーティション {1} を消去できません</string>
+		<string name="remove_all">'{1}' 以下のすべてのファイルを削除しています</string>
+		<string name="wiping_data">/data/media を消去せずにデータを消去中 ...</string>
+		<string name="backing_up">{1} をバックアップ中...</string>
+		<string name="backing">バックアップ中</string>
+		<string name="backup_size">'{1}' のバックアップファイルサイズは0バイトです</string>
+		<string name="datamedia_fs_restore">警告: この/data バックアップは {1} ファイルシステムで作成されました! {1} に戻さない限り、バックアップは使えません。</string>
+		<string name="restoring">{1} を復元中...</string>
+		<string name="restoring_hdr">復元中...</string>
+		<string name="recreate_folder_err">{1} フォルダを再作成できません</string>
+		<string name="img_size_err">イメージのサイズがターゲットデバイスより大きいです</string>
+		<string name="flashing">{1} を書き込み中...</string>
+		<string name="backup_folder_set">バックアップフォルダを '{1}' に設定しました</string>
+		<string name="locate_backup_err">バックアップ '{1} ' が見つかりません</string>
+		<string name="set_restore_opt">リストアオプションの設定: '{1}':</string>
+		<string name="md5_check_skip">MD5 チェックのスキップが ON です</string>
+		<string name="ors_encrypt_restore_err">OpenRecoveryScriptを使用して暗号化されたバックアップを復元することができません</string>
+		<string name="mounting">マウント中</string>
+		<string name="unmounting">マウント解除</string>
+		<string name="mounted">'{1}' をマウントしました</string>
+		<string name="unmounted">'{1}' のマウントを解除しました</string>
+		<string name="setting">'{1}' を '{2} ' に設定しています</string>
+		<string name="setting_empty">'{1}' を空に設定しています</string>
+		<string name="making_dir1">ディレクトリを作成中</string>
+		<string name="making_dir2">ディレクトリを作成中: '{1}'</string>
+		<string name="running_command">実行中のコマンド</string>
+		<string name="sideload">ADBサイドロード</string>
+		<string name="start_sideload">ADBサイドロード機能を開始中...</string>
+		<string name="need_new_adb">このデバイスにサイドロードするには、adb 1.0.32以上が必要です。</string>
+		<string name="no_pwd">パスワードが入力されていません</string>
+		<string name="done_ors">スクリプトファイルの処理を完了しました</string>
+		<string name="injecttwrp">ブートイメージにOrangeFoxをインジェクト中...</string>
+		<string name="zip_err">ZIP ファイルのインストールエラー '{1}'</string>
+		<string name="installing_zip">ZIP ファイルのインストール中 '{1}'</string>
+		<string name="select_backup_opt">バックアップオプションの設定:</string>
+		<string name="compression_on">圧縮がオンです</string>
+		<string name="md5_off">MD5生成がオフです</string>
+		<string name="backup_fail">バックアップに失敗しました</string>
+		<string name="backup_clean">バックアップに失敗しました バックアップフォルダのクリーニング中</string>
+		<string name="running_recovery_commands">リカバリコマンドを実行中</string>
+		<string name="recovery_commands_complete">リカバリコマンドが完了しました</string>
+		<string name="running_ors">OpenRecoveryScriptを実行中</string>
+		<string name="ors_complete">OpenRecoveryScriptが完了しました</string>
+		<string name="no_updater_binary">ZIP ファイルに '{1}' が見つかりません</string>
+		<string name="check_for_md5">MD5 ファイルを確認中...</string>
+		<string name="fail_sysmap">ファイル '{1}' をマップできませんでした</string>
+		<string name="verify_zip_sig">ZIP 署名を確認中...</string>
+		<string name="verify_zip_fail">ZIP署名の検証に失敗しました！</string>
+		<string name="verify_zip_done">ZIP署名の検証に成功しました</string>
+		<string name="zip_corrupt">ZIPファイルが破損しています！</string>
+		<string name="no_md5">MD5 チェックをスキップしています: MD5 ファイルが見つかりません</string>
+		<string name="md5_fail">MD5が一致しません</string>
+		<string name="md5_match">MD5 が一致しました</string>
+		<string name="pid_signal">{1} プロセスがシグナル {2} で終了しました</string>
+		<string name="pid_error">{1} プロセスがエラー {2} で終了しました</string>
+		<string name="run_script">{1} スクリプトを実行中...</string>
+		<string name="split_backup">バックアップファイルを複数のアーカイブに分割しています...</string>
+		<string name="backup_error">バックアップの作成中にエラーが発生しました</string>
+		<string name="restore_error">リストア処理中にエラーが発生しました。</string>
+		<string name="split_thread">スレッドID {1} をアーカイブ {2} に分割中</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu / %llu ファイル、%i%%</string>
+		<string name="size_progress">%lluMB / %lluMB、%i%%</string>
+		<string name="decrypt_cmd">コマンドラインを介してデータパーティションを復号化しています。</string>
+		<string name="base_pkg_err">基本パッケージの読み込みに失敗しました</string>
+		<string name="simulating">アクションをシミュレート中</string>
+		<string name="backup_cancel">バックアップがキャンセルされました</string>
+		<string name="config_twrp">OrangeFoxを設定中...</string>
+		<string name="config_twrp_err">このカーネルではOrangeFoxを設定できません。</string>
+		<string name="copy_log">リカバリログを {1} にコピーしました。</string>
+		<string name="max_queue">ZIPキューの上限に達しました！</string>
+		<string name="min_queue">最小ZIPキューに達しました！</string>
+		<string name="screenshot_saved">スクリーンショットを {1} に保存しました</string>
+		<string name="screenshot_err">スクリーンショットの撮影に失敗しました！</string>
+		<string name="zip_wipe_cache">1つ以上の ZIP がキャッシュワイプを要求しました -- キャッシュを消去します</string>
+		<string name="and_sec_wipe_err">Androidセキュアをワイプできません</string>
+		<string name="dalvik_wipe_err">dalvikの消去に失敗しました</string>
+		<string name="auto_gen">(自動生成)</string>
+		<string name="curr_date">(現在の日付)</string>
+		<string name="backup_name_len">バックアップ名が長すぎます</string>
+		<string name="backup_name_invalid">バックアップ名 '{1}' に無効な文字が含まれています: '{1}'</string>
+		<string name="no_real_sdcard">このデバイスには実際のSDカードがありません！ 中断！</string>
+		<string name="cancel_sideload">ADB Sideload をキャンセル中...</string>
+		<string name="change_fs_err">ファイルシステムの変更エラー</string>
+		<string name="change_fs_hdr">ファイルシステムの変更</string>
+		<string name="theme_ver_err">カスタムテーマのバージョンがOrangeFoxのバージョンと一致しません。 ストックテーマを使用しています。</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">色を選択</string>
+		<string name="s_color">色</string>
+		<string name="current_color">ファイルシステム:</string>
+		<string name="show_cpu_temp_bar">CPU温度を表示</string>
+		<string name="ts_inform">情報</string>
+		<string name="sel_splash_png">起動画面を選択する</string>
+		<string name="swipe_to_install">スワイプしてインストール</string>
+		<string name="swipe_to_install_img">スワイプしてイメージをインストール</string>
+		<string name="sel_image_type">イメージタイプを選択してください！</string>
+		<string name="zip_add_queue">キューに追加</string>
+		<string name="part_fs_error_1">パーティションオプションは</string>
+		<string name="part_fs_error_2">このパーティションでは利用できません！</string>
+		<string name="new_file_system">新しいファイルシステム</string>
+		<string name="adb_sideload_opt">サイドロードオプション</string>
+		<string name="about_hdr">について</string>
+		<string name="author">作成者</string>
+		<string name="credits">クレジット</string>
+		<string name="version">バージョン</string>
+		<string name="set_password">パスワードを設定</string>
+		<string name="verifying_pas">パスワードの確認</string>
+		<string name="dialog_offset_note">オフセット値を選択</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">設定</string>
+		<string name="flash_img_confirm">イメージのフラッシュ</string>
+		<string name="also_wipes">同時に消去</string>
+		<string name="confirm_wipe_cptn">消去する</string>
+		<string name="storage_cptn">ストレージ</string>
+		<string name="enter_password_restore">パスワード</string>
+		<string name="enter_password_cptn">セキュリティ</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">Sideoadを開始しています...</string>
+		<string name="fordowns_to">へ</string>
+		<string name="dbg">デバッグ</string>
+		<string name="dbg_active">デバッグメニューを有効化しました!</string>
+		<string name="dbg_act">操作</string>
+		<string name="dbg_func">機能</string>
+		<string name="dbg_set">設定</string>
+		<string name="dbg_page">ページ</string>
+		<string name="dbg_overlay">オーバーレイ</string>
+		<string name="fm_none">なし</string>
+		
+		<string name="cust_navbar_noug">ヌガー</string>
+		<string name="cust_navbar_cls">クラシック</string>
+		<string name="cust_navbar_accent">アクセント</string>
+		<string name="cust_navbar_black">黒</string>
+		<string name="cust_navbar_white">白いボタンを使用</string>
+		<string name="cust_navbar_gray">灰色のボタンを使用</string>
+		
+		<string name="fm_open">次のように開く...</string>
+		<string name="fm_open_text">テキストファイル</string>
+		<string name="fm_open_ZIP">フラッシュ可能なZIP</string>
+		
+		<string name="fm_open_backup">バックアップ</string>
+		<string name="fm_open_makezip">圧縮</string>
+		<string name="fm_open_unpackzip">アーカイブを解凍</string>
+		<string name="fm_open_image">フラッシュ可能なイメージ</string>
+		<string name="arc_type">アーカイブタイプ</string>
+		<string name="arc_lvl">圧縮レベル:</string>
+		<string name="arc_lvl_title">圧縮</string>
+		
+		<string name="bkp_date">日付を追加</string>
+		<string name="bkp_gen">バックアップ名を生成</string>
+		<string name="bkp_gen_whilebkp">バックアップ中にバックアップ名を生成</string>
+		<string name="bkp_quick">クイックバックアップ</string>
+		<string name="bkp_clear">クリア</string>
+		
+		<string name="language_cptn">言語</string>
+		<string name="cust_oth">その他</string>
+		
+		<string name="settings_general">一般</string>
+		<string name="settings_ui">カスタマイズ</string>
+		<string name="settings_screen">ディスプレイ</string>
+		<string name="settings_time">地域</string>
+		
+		<string name="lang_wait">お待ちください...</string>
+		
+		<string name="settings_ui_status">ステータスバー</string>
+		<string name="settings_ui_battery">バッテリアイコンを表示</string>
+		<string name="settings_ui_style">NavBarスタイル</string>
+		<string name="settings_ui_color">NavBarの背景</string>
+		
+		<string name="settings_backup_qbkp_custom">クイックバックアッッパーティション</string>
+		
+		<string name="settings_backup_name">バックアップ名</string>
+		<string name="settings_backup_name_user">変更しない</string>
+		<string name="settings_backup_name_auto">自動的に定義</string>
+		<string name="settings_backup_name_auto_hide">バックアップ中</string>
+		
+		<string name="update_btn">更新</string>
+		<string name="include_kernel_log">カーネルログを含める</string>
+		<string name="include_logcat">Logcatを含める</string>
+		
+		<string name="fm_books">お気に入りのフォルダ</string>
+		<string name="fm_books_desc">長押ししてこのリストを編集</string>
+		<string name="fm_books_edit">このリストを編集...</string>
+		<string name="fm_books_desc_edit">長押ししてアイテムを削除</string>
+		<string name="fm_books_empty">(空)</string>
+		
+		<string name="fm_mkdir">フォルダを作成</string>
+		<string name="fm_mkdir_folder">フォルダ名</string>
+		
+		<string name="fm_path">パスを入力</string>
+		<string name="fm_path2">パス</string>
+		
+		<string name="no_os_title">よろしいですか?</string>
+		<string name="no_os_subtitle">システムパーティションが空です</string>
+		
+		<string name="no_os1">OSがインストールされていません! 本当によろしいですか?</string>
+		<string name="no_osrb">再起動しますか?</string>
+		<string name="no_ospo">シャットダウンしますか?</string>
+		<string name="no_osrb_recovery">リカバリーに再起動しますか?</string>
+		<string name="no_osrb_boot">ブートローダーに再起動しますか?</string>
+		<string name="no_osrb_down">ダウンロードモードに再起動しますか?</string>
+		<string name="no_osrb_edl">EDLモードに再起動しますか?</string>
+		
+		<string name="areb_confirm">再起動の確認ダイアログ</string>
+		<string name="areb_noos">OSがインストールされていない場合</string>
+		<string name="opt_always">常に表示</string>
+		<string name="otp_never">しない</string>
+		
+		<string name="areb_off">オフ</string>
+		
+		<string name="restoredialog_readonly">マウントシステムの読取専用ダイアログを表示しない</string>
+		
+		<string name="offset_wrong">オフセットが正しくありません!</string>
+
+		<string name="new_key">キーボードに新しいスタイルを使用</string>
+		
+		<string name="bkp_nametitle">バックアップ名</string>
+		<string name="bkp_namesub">バックアップ名を入力または生成</string>
+		
+		<string name="goto_storage">ストレージ</string>
+		
+		<string name="theme_apply">テーマをアップデート中...</string>
+		<string name="theme_fonts">フォント</string>
+		<string name="theme_style">スタイル</string>
+		<string name="theme_accent">アクセント</string>
+		<string name="theme_font_sel">主要なフォント</string>
+		<string name="theme_sec_font_sel">補助的なフォント</string>
+		
+		<string name="of">の</string>
+		
+		<string name="sph_sph">起動</string>
+		
+		<string name="real">リアル</string>
+		<string name="info">情報</string>
+		<string name="time_m">修正</string>
+		<string name="time_c">変更</string>
+		<string name="access">アクセス</string>
+		<string name="fm_sums">チェックサム</string>
+		
+		<string name="use_fixed_font">端末内の等幅フォント</string>
+
+		<string name="adb_backup_pc1">このバックアップは</string>
+		<string name="adb_backup_pc2">PCに保存されました</string>
+		
+		<string name="starting_aroma">Aroma File Manegerを起動中...</string>
+		<string name="lang_set_wait">言語を変更中...</string>
+		<string name="installing_theme">テーマをインストール中...</string>
+		
+		<string name="menu_btn">メニュー</string>
+		
+		<string name="data_backup">データ</string>
+		<string name="autostorage">ストレージ</string>
+		<string name="install_reboot">%tw_sleep% 秒後に再起動します</string>
+		<string name="cancel_reboot_btn">再起動をキャンセル</string>
+		<string name="skip_digest_backup_chk" version="2">バックアップ中にDigest生成をスキップ</string>
+		<string name="restore_digest_chk" version="2">バックアップのDigest検証を有効にする</string>
+		<string name="restore_enable_digest_chk" version="2">バックアップのDigest検証を有効にする</string>
+		<string name="decrypt_data_vold_os_missing">vold復号に必要なファイルが不足しています: {1}</string>
+		<string name="generating_digest1" version="2">Digestを生成中</string>
+		<string name="generating_digest2" version="2"> * Digestを生成中...</string>
+		<string name="digest_created" version="2"> * Digestが作成されました。</string>
+		<string name="digest_error" version="2"> * Digestエラー!</string>
+		<string name="digest_compute_error" version="2"> * Digestの計算中にエラーが発生しました。</string>
+		<string name="verifying_digest" version="2">Digestを検証中</string>
+		<string name="skip_digest" version="2">ユーザー設定に基づきDigestチェックをスキップします。</string>
+		<string name="decrypt_success_nodev">データが正常に復号されました</string>
+		<string name="no_digest_found" version="2">'{1}' のDigestファイルが見つかりません。 復元するには、Digest検証を有効にするのチェックを外してください。</string>
+		<string name="digest_fail_match" version="2">'{1}' のDigestが一致しませんでした。</string>
+		<string name="digest_matched" version="2">'{1}' のDigestが一致しました。</string>
+		<string name="digest_check_skip" version="2">Digestチェックスキップがオンです</string>
+		<string name="digest_off" version="2">Digest生成がオフです</string>
+		<string name="invalid_zip_format">無効なzipファイル形式です!</string>
+		<string name="check_for_digest" version="2">Digestファイルを確認中...</string>
+		<string name="no_digest" version="2">Digestファイルが見つからないため、Digestチェックをスキップします</string>
+		<string name="digest_fail" version="2">Digestが一致しません</string>
+		<string name="digest_match" version="2">Digestが一致しました</string>
+		<string name="password">パスワード</string>
+		<string name="boot_slot">ブートスロット</string>
+		<string name="boot_slot_a">スロットA</string>
+		<string name="boot_slot_use_a">スロットAに切り替え</string>
+		<string name="boot_slot_b">スロットB</string>
+		<string name="boot_slot_use_b">スロットBに切り替え</string>
+		<string name="changing_boot_slot">ブートスロットを変更中</string>
+		<string name="changing_boot_slot_complete">ブートスロットの変更が完了しました</string>
+		<string name="unable_set_boot_slot">ブートローダーのブートスロットを {1} に変更中にエラーが発生しました</string>
+		<string name="flash_ab_inactive">非アクティブスロットにA/B zipをフラッシュ中: {1}</string>
+		<string name="flash_ab_reboot">追加のzipをフラッシュするには、更新されたスロットに切り替えるためにリカバリを再起動してください。</string>
+		<string name="flash_ab_both_slots">両方のスロットにフラッシュ</string>
+		<string name="ozip_decrypt_decryption">Ozip復号を開始...</string>
+		<string name="ozip_decrypt_finish">Ozip復号が完了しました!</string>
+		<string name="backup_storage_warning">{1} のバックアップには、内部ストレージの画像やダウンロードなどのファイルは含まれません。</string>
+		<string name="sha2_chk">ハッシュにSHA2を使用</string>
+		<string name="disabled">無効</string>
+		<string name="enabled">有効</string>
+		<string name="keep_storage_data">ストレージを復元する際にワイプをスキップ</string>
+		<string name="zip_compatible_err">Zip Treble互換性エラー!</string>
+
+		<string name="unmount_sys_install">ZIPをインストールする前にシステムをアンマウント</string>
+		<string name="unmount_system">システムをアンマウント中...</string>
+		<string name="unmount_system_err">システムのアンマウントに失敗しました</string>		
+
+		<string name="unmount_vendor_install">ZIPをインストールする前にベンダーをアンマウント</string>
+		<string name="unmount_vendor">ベンダーをアンマウント中...</string>
+		<string name="unmount_vendor_err">ベンダーのアンマウントに失敗しました</string>	
+			
+		<string name="fbe_wipe_msg">警告: {1} がワイプされました。 FBEデバイスは、ワイプ後に初期FBEポリシーを設定するためにリカバリではなくAndroidにブートする必要があります。</string>		
+		<string name="fastboot_button">Fastboot</string>
+		<string name="enable_adb">ADBを有効にする</string>
+		<string name="enable_fastboot">Fastbootを有効にする</string>
+		<string name="fastboot_console_msg">Fastbootモードに入りました...</string>
+		<string name="data_media_fbe_msg">OrangeFoxはFBEデバイスで /data/media を再作成しません。 /data/media を作成するためにromを再起動してください</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">インクリメンタルパッケージ署名を確認中...</string>
+		<string name="fox_incremental_ota_compatibility_false">インクリメンタルパッケージはこのROMと互換性がありません!</string>
+		<string name="fox_incremental_ota_compatibility_true">インクリメンタルパッケージは互換性があります</string>
+		<string name="fox_incremental_ota_status_enabled">インクリメンタルパッケージサポート状態: 有効</string>
+		<string name="fox_incremental_ota_status_disabled">インクリメンタルパッケージサポート状態: 無効</string>
+		<string name="fox_incremental_package_detected">インクリメンタルパッケージ '{1}' を検出しました</string>
+		<string name="fox_survival_does_not_exist">OTAサバイバルが存在しません! まず完全なROMをフラッシュしてください!</string>
+		<string name="fox_install_detecting">現在のパッケージを検出中</string>
+		<string name="fox_install_standard_detected">- 標準パッケージを検出しました</string>
+		<string name="fox_install_miui_detected">- MIUI更新パッケージを検出しました</string>
+		<string name="fox_zip_have_bootloader">警告: ブートローダーの再インストールが '{1}' によって呼び出されました。</string>
+		<string name="fox_no_space_ota_survival">内部ストレージにOTAサバイバルを作成するための十分な空き容量がありません。</string>
+		<string name="fox_incremental_ota_res">OTA_RES -- 完了!</string>
+		<string name="fox_incremental_ota_res_run">OTA_RESプロセスを実行中...</string>
+		<string name="fox_incremental_ota_bak_run">OTA_BAKプロセスを実行中...</string>
+		<string name="fox_incremental_ota_bak">OTA_BAK -- 完了!</string>
+		<string name="fox_internal_fatal_i1">OrangeFox: 致命的なエラー! 内部ストレージを内部ストレージにバックアップすることはできません!</string>
+		<string name="fox_internal_fatal_i2">バックアップ先をMicroSD/USB-OTGに変更する必要があります。</string>
+		<string name="fox_internal_q1">OrangeFox - 内部ストレージ - 注意してください!</string>
+
+		<string name="copy_kernel_log">カーネルログを {1} にコピーしました</string>
+		<string name="copy_logcat">logcatを {1} にコピーしました</string>
+
+		<string name="of_run_process">'{1}' プロセスを開始中</string>
+		<string name="of_run_process_fail">'{1}' プロセスを完了できませんでした</string>
+		<string name="of_run_process_done">'{1}' プロセスが完了しました</string>
+		<string name="of_dm_verity">DM-Verityを正常にパッチしました</string>
+		<string name="of_dm_verity_off">DM-Verityは有効になっていません</string>
+		<string name="of_encryption">強制暗号化を正常にパッチしました</string>
+		<string name="of_encryption_off">強制暗号化は有効になっていません</string>
+		<string name="of_fstab">検出されたfstab: '{1}'</string>
+
+		<string name="install_remlatest">最新を削除</string>
+		
+		<string name="backups_remove_all">すべてのバックアップ</string>
+		<string name="backups_remove">削除</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">解凍</string>
+		<string name="repack">再パック</string>
+
+		<string name="fox_save_load_aromafm_config_chk">AromaFM設定を保存/読み込み</string>
+		<string name="search_help">ファイルとフォルダを検索...</string>
+		
+		<string name="reboot_to_take_effect">変更を有効にするには再起動が必要です</string>
+		<string name="fox_modules_hdr">Foxアドオン</string>
+		<string name="fox_modules_inst">アドオンをインストール</string>
+		<string name="backup_short_hdr">新しいバックアップ</string>
+		<string name="backups_wat">バックアップはどこにありますか?</string>
+		
+		<string name="module_install">インストール</string>
+		<string name="module_uninstall">アンインストール</string>
+		<string name="remove_of_files">OrangeFoxファイルを削除</string>
+		<string name="module_initd">init.dサポートを有効にする</string>
+		<string name="module_of_set">OrangeFox設定をバックアップ</string>
+		<string name="module_cam">Camera2APIを有効にする</string>
+		<string name="module_pass">パスワードを削除</string>
+		<string name="module_remove_survival">すべてのサバイバルスクリプトを削除</string>
+		<string name="fox_files_not_exist_1">ファイルが存在しません!</string>
+		<string name="fox_files_not_exist_2">リカバリを再フラッシュしてください</string>
+		<string name="fox_files_not_exist_3">インストールzipを使用して。</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">OTA更新中に詳細を表示しない</string>
+		<string name="fm_icons_simple">ファイルアイコンを大きくする</string>
+		<string name="theme_engine_update">変更を適用して再読み込みしますか?</string>
+		<string name="theme_engine_reset">テーマをリセットして再読み込みしますか?</string>
+		<string name="apply_btn">適用</string>
+		<string name="theme_hdr">テーマ</string>
+		
+		<string name="font_small">小</string>
+		<string name="font_norm">普通</string>
+		<string name="font_big">大</string>
+		<string name="font_size">フォントサイズ</string>
+		<string name="cust_autoapply">確認なしでテーマを適用</string>
+		<string name="cust_expand_list">リストを自動的に展開</string>
+		
+		<string name="status_battery_style">バッテリースタイル</string>
+		<string name="status_battery_circle">サークル</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">時計の位置</string>
+		<string name="status_clock_left">左</string>
+		<string name="status_clock_center">中央</string>
+		<string name="status_clock_right">右</string>
+		<string name="dark_title">タイトルを暗くする</string>
+		<string name="separate_status">ステータスバーを暗くする</string>
+		<string name="noshadow_title">ステータスバーの影を表示</string>
+		<string name="hide_notch">ノッチを隠す</string>
+		<!-- NavBar -->
+		<string name="navbar_title">ナビゲーションバー</string>
+		<string name="navbar_onscreen">NavBarを有効にする</string>
+		<string name="show_slideout">コンソールボタンを表示</string>
+		<string name="dark_nav">ダーク</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">キーボード</string>
+		<string name="keyboard_newstyle">リフレッシュスタイル</string>
+		<string name="keyboard_nums">数字行</string>
+		<string name="key_swipe">キーボードでスワイプして全て削除</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">ロック解除</string>
+		<string name="lockscreen_title">ロック画面</string>
+		<string name="lockscreen_style">ロック画面スタイル</string>
+		<string name="lockscreen_clock">時計</string>
+		<string name="lockscreen_icon">アイコン</string>
+		<string name="lockscreen_btn">スライダーをボタンに置き換え</string>
+		<string name="lockscreen_info">バッテリーとCPU情報を表示</string>
+		<string name="lockscreen_quicklock">ロックアイコンをタップして画面をロック</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">OTAをインストール中...</string>
+		<string name="ota_simple_title">更新中...</string>
+		<string name="ota_simple_log_btn">ログ</string>
+
+		<string name="battery">バッテリー</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">ジェスチャーキー</string>
+		<string name="pass_classic">テキストパスワード</string>
+		<string name="pass_dis">パスワードを無効にする</string>
+		<string name="pass_pin">PINコード</string>
+		
+		<string name="locked_info_1">リカバリは次に対して保護されています</string>
+		<string name="locked_info_2">未承認アクセス。</string>
+		<string name="locked_info_3">メインのリカバリ機能を使用するには</string>
+		<string name="locked_info_4">まずパスワードを入力する必要があります。</string>
+		<string name="locked_info_4_gk">まずジェスチャーキーを描く必要があります。</string>
+		
+		<string name="new_pass_info_1">新しいパスワードを入力して</string>
+		<string name="new_pass_info_1_gk">新しいジェスチャーキーを描いて保護</string>
+		<string name="new_pass_info_2">OrangeFoxを未承認</string>
+		<string name="new_pass_info_3">アクセスから保護します。</string>
+		<string name="new_pass_info_4">パスワードを2回入力する必要があります。</string>
+		<string name="new_pass_info_4_gk">ジェスチャーキーを2回描く必要があります。</string>
+		<string name="new_pass_info_4_2">パスワードをもう一度入力してください。</string>
+		<string name="new_pass_info_4_2_gk">ジェスチャーキーをもう一度描いてください。</string>
+		
+		<string name="pass_page_block">現在のブロッキング方法</string>
+		<string name="pass_page_block_inf1">あなたが保護されていることを知って安心して眠れます。</string>
+		<string name="pass_page_block_inf2">あなたが保護されていること。</string>
+		<string name="pass_page_select">パスワードタイプを選択</string>
+		
+		<!-- Utilities -->
+		<string name="more">もっと...</string>
+		<string name="hide">隠す</string>
+		<string name="part_menu_hdr">パーティションを管理</string>
+		<string name="run_adb_startup">起動時にADBを実行</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">アクティブ</string>
+		<string name="mm_module_mount">マウントをスキップ</string>
+		<string name="mm_modules">モジュール</string>
+		<string name="mm_ver">Magiskバージョン</string>
+		<string name="mm_mod_ver">モジュールバージョン</string>
+		<string name="mm_remove">次回起動時にモジュールを削除</string>
+		<string name="mm_remove_hint">変更を有効にするために再起動</string>
+		<string name="mm_remove_reboot">再起動</string>
+		<string name="magisk_not_found">Magiskが見つかりません！</string>
+		<string name="magisk_not_found_1">Fox Addonsに行って</string>
+		<string name="magisk_not_found_2">事前に構築されたMagiskをインストールしますか？</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">APatchモジュール</string>
+		<string name="ap_ver">APatchバージョン</string>
+		<string name="ksu_modules">KernelSUモジュール</string>
+		<string name="ksu_ver">KernelSUバージョン</string>
+
+		<string name="modules_not_found">モジュールが見つかりません！</string>
+		<string name="modules_not_found_1">モジュールはインストールされていないか、マウントできません！</string>
+		<string name="modules_not_found_2">インストールされていないか、マウントできません！</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">OTA設定</string>
+		<string name="fox_miui_ota_on">OTAを有効にする</string>
+		<string name="fox_ota_on">OTAを有効にする</string>
+		<string name="fox_patch_rom">ROMをパッチ</string>
+		<string name="fox_ota_lite">OTA＆ROM</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">メンテナー</string>
+		<string name="abt_fd">テーマクリエーター＆デザイナー</string>
+		<string name="abt_bork">CEO、サイト＆UI</string>
+		<string name="abt_dj">ビルドシステム、レジェンドメンテナー</string>
+		<string name="abt_front">フロントエンド開発者</string>
+		<string name="abt_back">バックエンド開発者</string>
+		<string name="abt_device">デバイス</string>
+		<string name="version_twrp">OrangeFoxバージョン</string>
+		<string name="build_type">ビルドタイプ</string>
+		<string name="abt_credits">クレジット</string>
+		<string name="abt_trans">翻訳者</string>
+		<string name="abt_changes">変更ログ</string>
+		<string name="abt_main_shrt">メンテナー</string>
+		<string name="welcome_msg">OrangeFoxへようこそ！</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">OrangeFox Recoveryへようこそ！</string>
+		<string name="fox_release">[リリース]   : {1}</string>
+		<string name="fox_variant">[バリアント]   : {1}</string>
+		<string name="fox_codebase">[コードベース]  : {1}, {2}</string>
+		<string name="fox_settings">[設定]  : {1}</string>
+		<string name="fox_misc">[その他]      : {1}</string>
+		<string name="fox_build_date">[ビルド日]: {1}</string>
+		<string name="fox_build_type_unofficial">[ビルドタイプ]: 公式以外。 公式以外のビルドには公式サポートはありません</string>
+		<string name="fox_build_type">[ビルドタイプ]: {1}</string>
+		<string name="fox_support">[サポート]   : {1}</string>
+		<string name="fox_nosupport">[サポート]   : 未知のビルドには公式サポートはありません</string>
+		<string name="fox_websites">OrangeFoxウェブサイト:</string>
+		<string name="fox_downloads">[ダウンロード] : {1}</string>
+		<string name="fox_faq">[ガイド/FAQ]: {1}</string>
+		<string name="fox_encrypted">* ストレージは暗号化されています</string>
+		<string name="fox_unencrypted">* ストレージは暗号化されていません</string>
+		<string name="fox_display">* ディスプレイ:    {1}</string>
+		<string name="fox_device">* デバイス:     {1} ({2})</string>
+		<string name="fox_platform">* プラットフォーム:   {1}</string>
+		<string name="fox_dynamic_yes">* ダイナミック:    はい</string>
+		<string name="fox_dynamic_no">* ダイナミック:    いいえ</string>
+		<string name="fox_boot_slot">* ブートスロット:  {1}</string>
+		<string name="fox_vab_yes">* Virtual_AB: はい</string>
+		<string name="fox_vab_no">* Virtual_AB: いいえ</string>
+		<string name="fox_kernel">* カーネル:     {1}</string>
+		<string name="fox_miui_rom">* MIUI ROM (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* カスタムROM (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* フィンガープリント: {1}</string>
+		<string name="fox_no_rom">* ROMなし。</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">フォルダへのリンク</string>
+		<string name="symlink_file_name">ファイルへのリンク</string>
+		<string name="symlink_broken_name">壊れたリンク</string>
+		<string name="symlink_folder">実際のフォルダを開く</string>
+		<string name="symlink_file">実際のファイルを開く</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">隠しファイルを表示</string>
+		<string name="files_auto_open">ファイルタイプを自動検出</string>
+		<string name="file_read">ファイルを読み取っています: {1}</string>
+		<string name="file_read_error">ファイルを開けません！</string>
+		<string name="file_read_error_size">ファイルが1.5MBを超えています！</string>
+		<string name="file_read_error_bin">バイナリファイルを読み取れません！</string>
+		<string name="subs_wipe">Substratumオーバーレイをワイプ</string>
+		<string name="sort_ex_all">すべてのファイル</string>
+		<string name="sort_ex_img">IMGファイル</string>
+		<string name="sort_ex_zip">ZIPファイル</string>
+		<string name="aroma_help">もう一度押してAromaFMを開始...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">ストレージがマウントされました</string>
+		<string name="backups_rw_error_2">読み取り専用として!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">アプリ</string>
+		<string name="appmgr_title">アプリマネージャー</string>
+
+		<!-- performance -->
+		<string name="perf_title">パフォーマンス</string>
+		<string name="perf_conf_mode">リカバリパフォーマンスモード</string>
+		<string name="perf_conf_balance">バランス</string>
+		<string name="perf_conf_high">高パフォーマンス</string>
+		<string name="perf_conf_batt">電力節約</string>
+
+		<string name="fox_led_title">LED設定</string>
+		<string name="fox_use_green_led">緑色のLEDを使用</string>
+		<string name="fox_boot_fastcharge">高速充電を強制</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">更新を受け取る準備ができています!</string>
+		<string name="fox_ota_msg_custom">カスタムROMモードが有効になりました</string>
+		<string name="fox_ota_msg_reflash">フルROMをフラッシュしてください!</string>
+		<string name="fox_advanced_stock_recovery">攻撃的なストックリカバリ無効化</string>
+		<string name="fox_support_miui_ota_chk">OTAをサポート</string>
+		<string name="fox_include_system_survival_chk">OTAサバイバルにシステムを含める</string>
+		<string name="fox_verify_incremental_ota_signature_chk">増分OTA署名検証</string>
+		<string name="fox_dmverity_chk">DM-Verityを無効にする</string>
+		<string name="fox_forced_encryption_chk">強制暗号化を無効にする</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">OTAインストール後の自動再起動を防ぐ</string>
+		<string name="of_ota_reboot_disabled">OTA更新が完了しました。 自動再起動を無効にしました。 制御を返します。</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">注: データのフォーマットが移動されました</string>
+		<string name="wipe_format_moved_info2">パーティション管理</string>
+
+		<!-- R11 -->
+		<string name="gst_title">ジェスチャーナビゲーション</string>
+		<string name="gst_enable_all">ジェスチャーを有効にする</string>
+		<string name="gst_back">戻るジェスチャー</string>
+		<string name="gst_back_left">左から</string>
+		<string name="gst_back_right">右から</string>
+		<string name="gst_console_enable">ステータスバーからスワイプしてコンソールを開く</string>
+		<string name="gst_navbar_error">一部の設定が非表示です。</string>
+		<string name="gst_navbar_error_2">表示するにはジェスチャーを無効にしてください。</string>
+
+		<string name="in">に</string>
+		<string name="con_digest_start">[ダイジェスト作成開始]</string>
+		<string name="con_digest_error">パーティションリストが空です!</string>
+		<string name="con_digest_cancel">キャンセル中...</string>
+		<string name="con_digest_complete">[ダイジェスト作成が{1}秒で完了しました]</string>
+		<string name="digest_btn">ダイジェストを作成</string>
+		<string name="digest_creating">ダイジェストを作成中...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu ファイル,</string>
+		<string name="size_progress_v2">%llu/%llu MB (%i%%)</string>
+
+		<string name="navpan_new_design">新しいナビゲーションパネルデザイン</string>
+		<string name="full_partition_list">バックアップする追加のパーティションを表示</string>
+
+		<string name="data_decrypted_reload">正常に復号化されました!</string>
+
+		<string name="install_queue_magisk_btn">Magiskを追加</string>
+		<string name="hint_ffiles_missing">何かを失いましたか?</string>
+		<string name="hint_ffiles_missing1">Foxアドオンが利用できません</string>
+		<string name="hint_ffiles_missing2">OrangeFoxは自分のファイルにアクセスできません。</string>
+		<string name="hint_ffiles_missing3">/dataをマウントするか再インストールしてください</string>
+		<string name="hint_ffiles_missing4">/dataがワイプされた場合はOrangeFoxを再インストールしてください。</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">ヒントを非表示</string>
+
+		<string name="info_dir_empty">フォルダは空です</string>
+		<string name="info_dir_empty_hidden">一部のファイルが非表示です</string>
+
+		<string name="navbar_style_line">線</string>
+		<string name="accent_in_titles">タイトルのアクセントテキスト色</string>
+
+		<string name="backup_quick_info1">これらのパーティションが選択されます</string>
+		<string name="backup_quick_info2">「クイックバックアップ」ボタンをタップした後</string>
+		<string name="mbyte">MB</string>
+		<string name="mbytesec">MB/秒</string>
+		<string name="backup_av_files">ファイル</string>
+		<string name="backup_av_img">画像</string>
+		<string name="backup_exp_size">予想サイズ</string>
+		<string name="time_minute">分.</string>
+		<string name="backup_av">平均時間</string>
+		<string name="backup_av1">速度値をデフォルトにリセットしますか?</string>
+		<string name="backup_av2">デフォルトに? 平均時間</string>
+		<string name="backup_av3">予測が lesión 正確になります。</string>
+
+		<string name="cust_line_white">白い線を使用</string>
+		<string name="cust_line_gray">灰色の線を使用</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">スロットを切り替え</string>
+		<string name="slot_switch_a">スロットAに切り替え</string>
+		<string name="slot_switch_b">スロットBに切り替え</string>
+		<string name="slot_active_a">スロットAがアクティブです</string>
+		<string name="slot_active_b">スロットBがアクティブです</string>
+
+		<string name="theme_font_primary_tab">プライマリ</string>
+		<string name="theme_font_secondary_tab">セカンダリ</string>
+		<string name="theme_font_size_tab">サイズ</string>
+		<string name="theme_font_select">フォントを選択</string>
+
+		<string name="theme_fweight">フォントの太さ</string>
+		<string name="theme_fweight_norm">デフォルト</string>
+		<string name="theme_fweight_reg">レギュラー</string>
+		<string name="theme_fweight_med">ミディアム</string>
+
+		<string name="swipe_up_to_unlock">画面の下から上にスワイプして解除</string>
+
+		<string name="spl_background">背景色</string>
+		<string name="spl_logo">ロゴ</string>
+		<string name="spl_white">白</string>
+		<string name="spl_black">黒</string>
+		<string name="spl_night">夜</string>
+		<string name="spl_orange">オレンジ</string>
+		<string name="spl_accent">アクセント</string>
+		<string name="spl_image">背景画像</string>
+		<string name="spl_del_img">画像を削除</string>
+		<string name="hidden">非表示</string>
+		<string name="spl_ofr">「OrangeFox Recovery」ラベル</string>
+
+		<string name="batch_selected">%of_batch_count% 選択済み</string>
+		<string name="batch_title">バッチ操作</string>
+		<string name="batch_files_folders">ファイルとフォルダ</string>
+
+		<string name="fm_action_folder">このフォルダでの操作</string>
+
+		<string name="tap_to_generate">ここをタップして計算</string>
+		<string name="calc_checksum">計算中...</string>
+		<string name="cant_access_data">データにアクセスできません。 データパーティションを手動でマウントしてください。</string>
+
+		<string name="backup_pass_wait">パスワードを変更中...</string>
+		<string name="pass_encrypt_error1">パスワードを変更できません</string>
+		<string name="pass_encrypt_error2">データが暗号化されているとき!</string>
+
+		<string name="backup_encrypt_data_info">データパーティションのみが暗号化されます</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">Ramdiskをインストール</string>
+		<string name="img_type">画像タイプ</string>
+		<string name="img_select_type">画像タイプを選択</string>
+		<string name="repack_overwrite_warning">デバイスが以前にルート化されていた場合、ルートは上書きされ、再インストールが必要になります。</string>		
+
+		<string name="repack_backup_first">既存の画像を最初にバックアップ</string>
+
+		<string name="unpack_error">画像の解凍中にエラーが発生しました。</string>
+		<string name="repack_error">画像の再パック中にエラーが発生しました。</string>
+		<string name="unpacking_image">{1}を解凍中...</string>
+		<string name="repacking_image">{1}を再パック中...</string>
+		
+		<string name="fix_recovery_loop">リカバリブートループを修正</string>
+		<string name="fixing_recovery_loop">リカバリブートループを修正中...</string>
+		<string name="fix_recovery_loop_complete">リカバリブートループ修正完了</string>
+		<string name="fixing_recovery_loop_patch">カーネルをパッチ中...</string>
+		<string name="fix_recovery_loop_patch_error">カーネルのパッチ中にエラーが発生しました。</string>
+		<string name="try_app">アプリを試してみてください!</string>
+		<string name="try_app_2">新しいアプリを使用してリカバリ更新を確認</string>
+		<string name="try_app_3">新しいアプリ! </string>
+		<string name="try_app_4">ダウンロードリンク:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">nanoでファイルを編集</string>
+		<string name="fm_open_terminal_btn">ここでターミナルを開く</string>
+		<string name="batch_progress">進捗状況</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">%fox_compatibility_fox_device%のカスタム設定</string>
+		<string name="custom_settings_title">カスタム設定</string>
+		<string name="tap_to_show">タップして表示</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">Android Rescue Partyトリガー! 可能な解決策? どちらか:</string>
+		<string name="rescue_party1"> 1. キャッシュを消去、および/または</string>
+		<string name="rescue_party2"> 2. データをフォーマット、および/または</string>
+		<string name="rescue_party3"> 3. ROMをクリーンフラッシュします。</string>
+		<string name="rescue_party4">報告された問題は：</string>
+
+		<string name="restore_system_context">{1} のデフォルトコンテキストを取得できません - Androidが起動しない可能性があります。</string>
+		
+		<string name="batch_progress">進捗状況</string>
+		<string name="recovery_busy">リカバリがビジー状態です</string>
+		<string name="status_delimeter">ステータスバーの区切り</string>
+		<string name="status_delimeter_shadow">影</string>
+
+		<string name="mount_vab_partitions">スーパーデバイス上のデバイスは、リカバリを再起動するまでマウントされない場合があります。</string>
+		<string name="merges_snapshots">スナップショットをマージ</string>
+		<string name="merging_snapshots">スナップショットをマージしています...</string>
+		<string name="merging_snapshots_complete">スナップショットをマージしました</string>
+		
+		<string name="unmap_super_devices">スーパーデバイスのアンマップ</string>
+		<string name="unmapping_super_devices">スーパーデバイスのアンマッピング...</string>
+		<string name="unmap_super_devices_complete">すべてのスーパーデバイスのアンマップが完了しました</string>
+
+		<string name="auto_reflashtwrp_chk">ROMをフラッシュした後にOrangeFoxを再フラッシュ</string>
+		<string name="modified_ramdisk_error">ramdiskファイルが変更されており、ramdiskを作成してフラッシュすることができません。 fastboot boot OrangeFoxを実行し、このオプションを再度試すか、ファイルに戻り、Install Ramdiskボタンを使用してimgファイルをRecovery Ramdiskとしてインストールしてください。</string>
+		<string name="create_ramdisk_error">ramdiskの作成に失敗しました。</string>
+		<string name="reflash_twrp">現在のOrangeFoxをフラッシュ</string>
+		<string name="reflashing_twrp">OrangeFoxをフラッシュしています...</string>
+		<string name="reflash_twrp_complete">OrangeFoxのフラッシュが完了しました</string>
+
+		<string name="auto_disable_avb2">ROMフラッシュ後にvbmeta AVB2.0を無効化</string>
+		<string name="disable_avb2">vbmeta AVB2.0を無効化</string>
+		<string name="disable_avb2_confirm">vbmeta AVB2.0を無効化しますか？</string>
+		<string name="disabling_AVB2">vbmeta AVB2.0を無効化しています...</string>
+		<string name="disabling_AVB2_complete">vbmeta AVB2.0が無効化されました！</string>
+		<string name="disable_avb2_success_msg">vbmeta AVB2.0を無効化: '{1}' の処理に成功しました。</string>
+		<string name="disable_avb2_fail_msg">vbmeta AVB2.0を無効化: '{1}' の処理に失敗しました！</string>
+
+		<string name="enable_hw_control">ハードウェアGUIコントロール</string>
+		<string name="enable_hw_control_1">これにより、ハードウェアの</string>
+		<string name="enable_hw_control_2">ボリュームおよび電源ボタンを使用して</string>
+		<string name="enable_hw_control_3">インターフェースをナビゲートできるようになります。</string>
+		<string name="enable_hw_control_4">ジェスチャーは無効になります。 続行しますか？</string>
+	</resources>
+</language>

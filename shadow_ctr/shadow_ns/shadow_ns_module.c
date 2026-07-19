@@ -37,11 +37,11 @@
  * shadow_ns fixes this by only ever simulating a namespace type that this
  * kernel build genuinely lacks (checked via IS_ENABLED(CONFIG_*_NS), which
  * reflects the actual .config this module is built against — see
- * SHADOW_NS_BUILTIN_FLAGS below). Every namespace flag bit the kernel really
+ * SHADOW_NS_BUILTIN_FLAGS_COMPILETIME below). Every namespace flag bit the kernel really
  * supports is left completely untouched in the arguments passed to the real
  * unshare()/setns()/clone()/clone3() syscalls, so the kernel's own real,
  * fully-conformant namespace subsystem does the actual isolation work, with
- * shadow_ns getting out of the way entirely (see SHADOW_NS_SHADOW_CLONE_FLAGS
+ * shadow_ns getting out of the way entirely (see shadow_ns_clone_flags
  * — on the expected production build it evaluates to 0, and every hook below
  * degenerates into a transparent passthrough). Extracting/duplicating the
  * real kernel/pid_namespace.c, kernel/user_namespace.c, kernel/utsname.c,
@@ -98,7 +98,7 @@
  * would conflict with the compiled-in stack and cannot be done safely here.
  * CGROUP is included here too: on a kernel built with CONFIG_CGROUPS=n (rare
  * -- every GKI defconfig sets it, but not guaranteed by any other Kconfig
- * relationship), CLONE_NEWCGROUP drops out of SHADOW_NS_BUILTIN_FLAGS and
+ * relationship), CLONE_NEWCGROUP drops out of SHADOW_NS_BUILTIN_FLAGS_COMPILETIME and
  * shadow_ns transparently falls back to the exact same generic, no-special-
  * payload bookkeeping object (id/parent/refcount only, see shadow_ns_alloc())
  * used for IPC/NET -- no separate code path is needed, since the alloc/clone/
@@ -113,7 +113,7 @@
  * CONFIG_NAMESPACES itself (the parent menuconfig, "default !EXPERT" i.e.
  * effectively always on) as MNT's builtin gate instead, purely as a
  * defensive fallback: on CONFIG_NAMESPACES=n, CLONE_NEWNS drops out of
- * SHADOW_NS_BUILTIN_FLAGS and MNT gets the exact same bookkeeping-only
+ * SHADOW_NS_BUILTIN_FLAGS_COMPILETIME and MNT gets the exact same bookkeeping-only
  * treatment as IPC/NET/CGROUP above. This does not disable or replace the
  * real, always-compiled-in mount-namespace machinery in fs/namespace.c
  * (which keeps running regardless of CONFIG_NAMESPACES); it only means
@@ -124,7 +124,7 @@
  * CONFIG_UTS_NS/IPC_NS/USER_NS/PID_NS/NET_NS inside
  * "menuconfig NAMESPACES ... if NAMESPACES ... endif", so turning the parent
  * off forces every one of those five children off as well) is handled by
- * the exact same mechanism: SHADOW_NS_BUILTIN_FLAGS is computed per-type from
+ * the exact same mechanism: SHADOW_NS_BUILTIN_FLAGS_COMPILETIME is computed per-type from
  * IS_ENABLED(CONFIG_*_NS), so it automatically evaluates to "none of these
  * five builtin" and shadow_ns transparently falls back to real PID/USER
  * isolation plus IPC/NET bookkeeping for all of them — no separate code path
@@ -137,11 +137,72 @@
  */
 #include "shadow_ns_internal.h"
 
+unsigned long shadow_ns_clone_flags;
+
+/*
+ * shadow_ns_compute_clone_flags - determine, from the kernel actually
+ * running (not the one this module was compiled against), which CLONE_NEW*
+ * namespace types genuinely need shadow_ns's own simulation.
+ *
+ * Rationale / bug this fixes: this module is typically compiled once by a
+ * fixed-KMI DDK container matching the production/containerd-enabled
+ * kernel build (CONFIG_UTS_NS=y, CONFIG_IPC_NS=y, CONFIG_PID_NS=y,
+ * CONFIG_USER_NS=y, CONFIG_NET_NS=y — see the file header), but the
+ * resulting .ko can equally be loaded into a stock/unmodified GKI kernel
+ * that lacks some of those. Deciding what to simulate purely from this
+ * module's own compile-time IS_ENABLED(CONFIG_*_NS) (i.e.
+ * SHADOW_NS_BUILTIN_FLAGS_COMPILETIME) silently assumes build-time and
+ * run-time configs always match; when they don't (e.g. CONFIG_IPC_NS=y at
+ * build time but absent on the stock kernel actually booted), a namespace
+ * type gets wrongly left "untouched" as builtin, so the real syscall fails
+ * (e.g. unshare(CLONE_NEWIPC) => -EINVAL) and shadow_ns's fallback never
+ * kicks in.
+ *
+ * Fixed here by re-checking, at module load time, whether each namespace
+ * type's own kernel object is actually linked into the *running* vmlinux —
+ * via shadow_hook_resolve() (kallsyms-based lookup, safe regardless of
+ * EXPORT_SYMBOL/CONFIG_TRIM_UNUSED_KSYMS) of a canary symbol that only
+ * exists when the corresponding obj-$(CONFIG_*_NS) object is compiled in:
+ *
+ *   CONFIG_UTS_NS  -> copy_utsname()   (kernel/utsname.c,        obj-$(CONFIG_UTS_NS)  += utsname.o,        kernel/Makefile)
+ *   CONFIG_IPC_NS  -> copy_ipcs()      (ipc/namespace.c,         obj-$(CONFIG_IPC_NS)  += namespace.o,      ipc/Makefile)
+ *   CONFIG_PID_NS  -> copy_pid_ns()    (kernel/pid_namespace.c,  obj-$(CONFIG_PID_NS)  += pid_namespace.o,  kernel/Makefile)
+ *   CONFIG_USER_NS -> create_user_ns() (kernel/user_namespace.c, obj-$(CONFIG_USER_NS) += user_namespace.o, kernel/Makefile)
+ *   CONFIG_NET_NS  -> copy_net_ns()    (net/core/net_namespace.c)
+ *
+ * MNT (CLONE_NEWNS) and CGROUP (CLONE_NEWCGROUP) are left as compile-time
+ * checks (CONFIG_NAMESPACES / CONFIG_CGROUPS respectively): both are
+ * effectively always-on for every kernel this module targets and neither
+ * has been observed to differ between build-time and run-time the way
+ * IPC/UTS/PID/USER/NET did, so no canary lookup is needed for them.
+ */
+unsigned long shadow_ns_compute_clone_flags(void)
+{
+	unsigned long builtin = 0;
+
+	if (shadow_hook_resolve("copy_utsname"))
+		builtin |= CLONE_NEWUTS;
+	if (shadow_hook_resolve("copy_ipcs"))
+		builtin |= CLONE_NEWIPC;
+	if (shadow_hook_resolve("copy_pid_ns"))
+		builtin |= CLONE_NEWPID;
+	if (shadow_hook_resolve("create_user_ns"))
+		builtin |= CLONE_NEWUSER;
+	if (shadow_hook_resolve("copy_net_ns"))
+		builtin |= CLONE_NEWNET;
+	if (IS_ENABLED(CONFIG_NAMESPACES))
+		builtin |= CLONE_NEWNS;
+	if (IS_ENABLED(CONFIG_CGROUPS))
+		builtin |= CLONE_NEWCGROUP;
+
+	return SHADOW_NS_ALL_FLAGS & ~builtin;
+}
+
 bool shadow_ns_type_simulated(u32 type)
 {
 	if (type >= SHADOW_NS_TYPE_MAX)
 		return false;
-	return (SHADOW_NS_SHADOW_CLONE_FLAGS & shadow_ns_type_to_clone_flag(type)) != 0;
+	return (shadow_ns_clone_flags & shadow_ns_type_to_clone_flag(type)) != 0;
 }
 EXPORT_SYMBOL_GPL(shadow_ns_type_simulated);
 
@@ -166,9 +227,13 @@ static int __init shadow_ns_init(void)
 	int hooked;
 
 	pr_info("shadow_ns: init starting (version %s)\n", SHADOW_NS_VERSION);
-	pr_info("shadow_ns: builtin namespace flags 0x%lx; simulated (fallback) flags 0x%lx\n",
-		(unsigned long)SHADOW_NS_BUILTIN_FLAGS,
-		(unsigned long)SHADOW_NS_SHADOW_CLONE_FLAGS);
+
+	shadow_ns_clone_flags = shadow_ns_compute_clone_flags();
+
+	pr_info("shadow_ns: builtin namespace flags 0x%lx (compiled against 0x%lx); simulated (fallback) flags 0x%lx\n",
+		SHADOW_NS_ALL_FLAGS & ~shadow_ns_clone_flags,
+		(unsigned long)SHADOW_NS_BUILTIN_FLAGS_COMPILETIME,
+		(unsigned long)shadow_ns_clone_flags);
 
 	hooked = shadow_hook_install_all(shadow_ns_core_hooks, "shadow_ns");
 	if (hooked < 0) {
@@ -178,7 +243,7 @@ static int __init shadow_ns_init(void)
 	}
 	pr_info("shadow_ns: init: %d core hook(s) installed\n", hooked);
 
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS) {
+	if (shadow_ns_clone_flags & CLONE_NEWUTS) {
 		hooked = shadow_hook_install_all(shadow_ns_uts_hooks, "shadow_ns_uts");
 		if (hooked < 0) {
 			ret = hooked;
@@ -193,13 +258,13 @@ static int __init shadow_ns_init(void)
 		pr_info("shadow_ns: CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched\n");
 	}
 
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID) {
+	if (shadow_ns_clone_flags & CLONE_NEWPID) {
 		hooked = shadow_hook_install_all(shadow_ns_pid_hooks, "shadow_ns_pid");
 		if (hooked < 0) {
 			ret = hooked;
 			pr_err("shadow_ns: init: PID shadow_hook_install_all() failed: %d\n",
 			       ret);
-			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+			if (shadow_ns_clone_flags & CLONE_NEWUTS)
 				shadow_hook_remove_all(shadow_ns_uts_hooks);
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
@@ -210,15 +275,15 @@ static int __init shadow_ns_init(void)
 		pr_info("shadow_ns: CONFIG_PID_NS builtin; getpid/getppid/kill/wait4 left untouched\n");
 	}
 
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUSER) {
+	if (shadow_ns_clone_flags & CLONE_NEWUSER) {
 		hooked = shadow_hook_install_all(shadow_ns_user_hooks, "shadow_ns_user");
 		if (hooked < 0) {
 			ret = hooked;
 			pr_err("shadow_ns: init: USER shadow_hook_install_all() failed: %d\n",
 			       ret);
-			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID)
+			if (shadow_ns_clone_flags & CLONE_NEWPID)
 				shadow_hook_remove_all(shadow_ns_pid_hooks);
-			if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+			if (shadow_ns_clone_flags & CLONE_NEWUTS)
 				shadow_hook_remove_all(shadow_ns_uts_hooks);
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
@@ -243,11 +308,11 @@ static void __exit shadow_ns_exit(void)
 	unsigned long id;
 
 	pr_info("shadow_ns: exit: removing syscall hooks\n");
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUSER)
+	if (shadow_ns_clone_flags & CLONE_NEWUSER)
 		shadow_hook_remove_all(shadow_ns_user_hooks);
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWPID)
+	if (shadow_ns_clone_flags & CLONE_NEWPID)
 		shadow_hook_remove_all(shadow_ns_pid_hooks);
-	if (SHADOW_NS_SHADOW_CLONE_FLAGS & CLONE_NEWUTS)
+	if (shadow_ns_clone_flags & CLONE_NEWUTS)
 		shadow_hook_remove_all(shadow_ns_uts_hooks);
 	shadow_hook_remove_all(shadow_ns_core_hooks);
 

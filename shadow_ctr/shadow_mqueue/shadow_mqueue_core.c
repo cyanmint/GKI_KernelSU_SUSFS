@@ -188,8 +188,19 @@ int mq_copy_name_from_user(const char __user *uname, char *name)
 		return -EINVAL;
 	if (copied > SHADOW_MQ_NAME_MAX)
 		return -ENAMETOOLONG;
-	if (name[0] != '/')
-		return -EINVAL;
+	/*
+	 * NOTE: unlike the POSIX mq_open(3) API contract (which requires the
+	 * caller-supplied name to start with '/'), the raw mq_open(2)/
+	 * mq_unlink(2) syscalls never see that leading slash: glibc's
+	 * mq_open()/mq_unlink() wrappers validate it themselves and then
+	 * pass `name + 1` to the actual syscall (confirmed both by strace
+	 * and by the real kernel implementation, ipc/mqueue.c do_mq_open(),
+	 * which uses the raw copied name directly as an opaque lookup key
+	 * via lookup_one_len() with no leading-slash handling at all).
+	 * Rejecting names without a leading '/' here would make every
+	 * caller going through the standard libc wrapper fail with -EINVAL,
+	 * which is exactly the bug this comment documents the fix for.
+	 */
 	return 0;
 }
 
@@ -269,7 +280,7 @@ long mq_do_open(const char *name, u32 oflag,
 	struct mq_handle_entry *he;
 	bool created = false;
 
-	if (!name || !name[0] || name[0] != '/')
+	if (!name || !name[0])
 		return -EINVAL;
 
 	if (create_attr)

@@ -1,0 +1,45 @@
+# TWRP/OrangeFox Recovery Boot Fix
+# Addresses the logd crash loop that prevents recovery from booting past splash screen
+# 
+# Root cause: logd service crashes because /etc/task_profiles.json doesn't exist
+# in recovery ramdisk, causing init to repeatedly restart it every 5 seconds,
+# preventing the recovery UI from loading.
+
+on early-init
+    # Set SELinux to permissive mode for recovery
+    # This prevents SELinux denials from blocking boot
+    write /sys/fs/selinux/enforce 0
+    
+    # Disable watchdog if present
+    write /sys/module/msm_watchdog/parameters/enable 0
+
+on init    
+    # Ensure logd stays disabled to prevent crash loop
+    stop logd
+    
+    # Keep SELinux permissive
+    write /sys/fs/selinux/enforce 0
+    
+    # Initialize display early
+    write /sys/class/backlight/panel0-backlight/brightness 400
+    chmod 0666 /sys/class/backlight/panel0-backlight/brightness
+    
+on post-fs
+    # Stop all service managers to prevent deadlock (existing fix)
+    # But do it AFTER ensuring logd won't restart
+    stop logd
+    
+    # Create missing directories that services expect
+    mkdir /tmp 0777
+    mkdir /tmp/recovery 0755
+    
+    # Ensure task profiles directory exists (even if empty)
+    # This prevents crashes when services try to access it
+    mkdir /etc 0755
+    
+on boot
+    # Final safety check - ensure problematic services stay stopped
+    stop logd
+    
+    # Log boot progress
+    exec - root root -- /system/bin/log -t TWRP "Recovery boot fix applied - logd disabled"

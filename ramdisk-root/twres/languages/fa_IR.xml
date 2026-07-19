@@ -1,0 +1,1257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>انگلیسی</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">سیستم</string>
+		<string name="system_image">فایل ایمیج سیستم</string>
+		<string name="vendor">وندور</string>
+		<string name="vendor_image">فایل ایمیج وندور</string>
+		<string name="boot">راه اندازی</string>
+		<string name="recovery">ریکاوری</string>
+		<string name="cache">کش</string>
+		<string name="data">اطلاعات</string>
+		<string name="sdcard">کارت حافظه</string>
+		<string name="internal">حافظه داخلی</string>
+		<string name="microsd">کارت حافظه میکرو</string>
+		<string name="usb_storage">حافظه USB</string>
+		<string name="android_secure">اندروید امن است</string>
+		<string name="dalvik">دالویک / آرت کش</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">حافظه داخلی</string>
+		<string name="adopted_data">اطلاعات استفاده شده</string>
+		<string name="adopted_storage">حافظه استفاده شده</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">OrangeFoxریکاوری %fox_actual_build%</string>
+		<string name="cpu_temp">پردازنده: %tw_cpu_temp% &#xB0;C</string>
+		<string name="sort_by_name_asc">نام</string>
+		<string name="sort_by_date_asc">تاریخ</string>
+		<string name="sort_by_size_asc">اندازه</string>
+		<string name="sort_by_name_desc">نام</string>
+		<string name="sort_by_date_desc">تاریخ</string>
+		<string name="sort_by_size_desc">اندازه</string>
+		<string name="install_btn">نصب</string>
+		<string name="wipe_btn">پاک کردن</string>
+		<string name="backup_btn">پشتیبان گیری ها</string>
+		<string name="restore_btn">بازگرداندن</string>
+		<string name="mount_btn">مانوت</string>
+		<string name="file_manager_btn">فایل ها</string>
+		<string name="advanced_btn">پیشرفته</string>
+		<string name="reboot_btn">راه اندازی مجدد</string>
+		<string name="copy_log_btn">کپی گزارشات به کارت حافظه</string>
+		<string name="install_zip_hdr">نصب فایل زیپ</string>
+		<string name="install_zip_btn">نصب فایل زیپ</string>
+		<string name="install_image_hdr">نصب فایل ایمیج</string>
+		<string name="install_image_btn">نصب فایل ایمیج</string>
+		<string name="install_select_file_hdr">انتخاب فایل</string>
+		<string name="install_select_file_btn">انتخاب فایل</string>
+		<string name="adb_sideload_btn">ADB &amp; سایدلود</string>
+		<string name="select_storage_hdr">انتخاب محل ذخیره سازی</string>
+		<string name="select_storage_btn">انتخاب محل ذخیره سازی</string>
+		<string name="queue_hdr">صف</string>
+		<string name="raised_clearqueue_btn">خالی کردن صف</string>
+		<string name="raised_viewqueue_btn">مشاهده صف</string>
+		<string name="zip_queue_count">%tw_zip_queue_count% حداکثر 10 فایل در صف</string>
+		<string name="folder">پوشه</string>
+		<string name="file">فایل</string>
+		<string name="zip_sig_chk">تأیید امضای فایل زیپ</string>
+		<string name="inject_twrp_chk">ریکاوریOrangeFox را بعدش نصب کنید</string>
+		<string name="install_reboot_chk">بعد از اتمام نصب راه اندازی مجدد کنید</string>
+		<string name="options_hdr">گزینه ها</string>
+		<string name="zip_queue">صف</string>
+		<string name="install_zip_count_hdr">نصب فایل %tw_zip_index% از %tw_zip_queue_count%</string>
+		<string name="working">در حال انجام...</string>
+		<string name="failed">ناموفق</string>
+		<string name="successful">موفقیت آمیز</string>
+		<string name="wipe_cache_btn">پاک کردن کش ها</string>
+		<string name="reboot_system_btn">راه اندازی مجدد به سیستم</string>
+		<string name="reboot_recovery_btn">راه اندازی مجدد به ریکاوری</string>
+		<string name="install_sel_target">پارتیشن هدف را انتخاب کنید</string>
+		<string name="flash_image_select">پارتیشن</string>
+		<string name="flashing_image">در حال فلش کردن فایل ایمیج...</string>
+		<string name="image_flashed">فایل ایمیج فلش شد</string>
+		<string name="wipe_cache_dalvik_confirm">پاک کردن کش &amp; دالویک</string>
+		<string name="wipe_dalvik_confirm">پاک کردن دالویک</string>
+		<string name="wiping_cache_dalvik">پاک کردن کش &amp; دالویک...</string>
+		<string name="wipe_cache_dalvik_complete">کش &amp; پاک کردن دالویک انجام شد</string>
+		<string name="cache_dalvik_done">کش &amp; پاک کردن دالویک انجام شد</string>
+		<string name="swipe_wipe">برای پاک کردن انگشت خود را بکشید</string>
+		<string name="rebooting">در حال راه اندازی مجدد...</string>
+		<string name="swipe_reboot">برای راه اندازی مجدد انگشت خود را بکشید</string>
+		<string name="confirm_action">تأیید عملکرد</string>
+		<string name="cancel_btn">لغو کردن</string>
+		<string name="wipe_hdr">پاک کردن</string>
+		<string name="factory_reset_hdr">تنظیم مجدد به کارخانه</string>
+		<string name="factory_reset1">پاک کردن اطلاعات, کش, و دالویک</string>
+		<string name="factory_reset2">(حافظه داخلی شامل نمی شود)</string>
+		<string name="factory_reset3">بیشتر اوقات این است</string>
+		<string name="factory_reset4">فقط نیاز به پاک کردن دارید.</string>
+		<string name="factory_reset5">(بدون شامل کاربران/قفل صفحه)</string>
+		<string name="factory_resetting">بازنشانی کارخانه...</string>
+		<string name="advanced_wipe_hdr">پاک کردن پیشرفته</string>
+		<string name="advanced_wipe_btn">پاک کردن پیشرفته</string>
+		<string name="wipe_enc_confirm">پاک کردن رمزگذاری از اطلاعات</string>
+		<string name="formatting_data">در حال فرمت کردن اطلاعات...</string>
+		<string name="swipe_format_data">برای فرمت اطلاعات انگشت خود را بکشید</string>
+		<string name="factory_reset_complete">تنظیم مجدد به کارخانه انجام شد</string>
+		<string name="sel_part_hdr">انتخاب پارتیشن‌ها</string>
+		<string name="wipe_sel_confirm">پاک کردن پارتیشن های انتخاب شده</string>
+		<string name="wiping_part">در حال پاک کردن پارتیشن ها...</string>
+		<string name="wipe_complete">پاک کردن انجام شد</string>
+		<string name="format_data_hdr">فرمت اطلاعات</string>
+		<string name="format_data_btn">فرمت اطلاعات</string>
+		<string name="format_data_ptr1">فرمت کردن اطلاعات تمامی برنامه های شما را پاک خواهد کرد</string>
+		<string name="format_data_ptr2">پشتیبان گیری ها ، تصاویر ، ویدیو ها ، رسانه ها و</string>
+		<string name="format_data_ptr3">رمزگذاری روی حافظه داخلی را حذف می کند.</string>
+		<string name="format_data_adopted">از جمله فضای ذخیره سازی استفاده شده</string>
+		<string name="format_data_undo">این قابل بازگشت نیست.</string>
+		<string name="format_data_complete">فرمت اطلاعات کامل شد</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">برای تأیید "yes" را تایپ کنید.</string>
+		<string name="part_opt_hdr">اطلاعات پارتیشن</string>
+		<string name="file_sys_opt">گزینه های پارتیشن</string>
+		<string name="part_mount_point">نقطه مانوت</string>
+		<string name="part_curr_fs">فایل سیستم</string>
+		<string name="part_present">حاضر</string>
+		<string name="part_removable">قابل جدا شدن</string>
+		<string name="part_yes">بله</string>
+		<string name="part_no">نه</string>
+		<string name="part_size">اندازه</string>
+		<string name="part_used">استفاده شده</string>
+		<string name="part_free">آزاد</string>
+		<string name="part_backup_size">حجم پشتیبان گیری</string>
+		<string name="resize_btn">تغییر اندازه FS</string>
+		<string name="resize_confirm">تغییر اندازه پارتیشن</string>
+		<string name="resizing">در حال تغییر اندازه...</string>
+		<string name="resize_complete">تغییر اندازه انجام شد</string>
+		<string name="swipe_resize">برای تغییر اندازه صفحه را بکشید</string>
+		<string name="repair_btn">تعمیر FS</string>
+		<string name="repair_confirm">تعمیر پارتیشن‌</string>
+		<string name="repairing">در حال تعمیر...</string>
+		<string name="repair_complete">تعمیر انجام شد</string>
+		<string name="swipe_repair">برای تعمیر، صفحه را بکشید</string>
+		<string name="change_fs_btn">تغییر FS</string>
+		<string name="change_fs_warn1">برخی از رام ها یا کرنل ها ممکن است پشتیبانی نشوند</string>
+		<string name="change_fs_warn2">برخی از فایل های سیستمی. با هوشیاری پیش بروید!</string>
+		<string name="change_fs_confirm">تغییر FS به</string>
+		<string name="formatting">در حال فرمت کردن...</string>
+		<string name="format_complete">فرمت انجام شد</string>
+		<string name="swipe_change_fs">برای تغییر صفحه را بکشید</string>
+		<string name="back_btn">بازگشت</string>
+		<string name="wipe_enc_btn">پاک کردن رمزگذاری</string>
+		<string name="swipe_factory_reset">برای تنظیم مجدد به کارخانه صفحه را بکشید</string>
+		<string name="backup_hdr">پشتیبان گیری</string>
+		<string name="encryption_hdr">رمزگذاری را فعال کنید</string>
+		<string name="name">نام</string>
+		<string name="enable_backup_comp_chk">فعال کردن فشرده سازی</string>
+		<string name="skip_md5_backup_chk">در حین تهیه نسخه پشتیبان ، از تولید MD5 صرف نظر کنید</string>
+		<string name="disable_backup_space_chk">قبل از تهیه نسخه پشتیبان ، بررسی فضای آزاد را غیرفعال کنید</string>
+		<string name="swipe_backup">برای پشتیبان گیری صفحه را بکشید</string>
+		<string name="backup_name_exists">نسخه پشتیبان با آن نام در حال حاضر وجود دارد!</string>
+		<string name="pass_not_match">رمزهای ورود مطابقت ندارند!</string>
+		<string name="partitions">پارتیشن ها</string>
+		<string name="progress">پردازش</string>
+		<string name="backup_complete">پشتیبان گیری انجام شد</string>
+		<string name="restore_hdr">پشتیبان گیری ها</string>
+		<string name="restore_backup_hdr">بازگرداندن نسخه پشتیبان</string>
+		<string name="sel_backup_hdr">انتخاب نسخه پشتیبان</string>
+		<string name="restore_dec_fail">رمز عبور اشتباه بود ، لطفاً دوباره امتحان کنید!</string>
+		<string name="del_backup_confirm">حذف پشتیبان گیری</string>
+		<string name="del_backup_confirm2">این قابل بازگشت نیست!</string>
+		<string name="deleting_backup">در حال حذف پشتیبان گیری...</string>
+		<string name="backup_deleted">پشتیبان گیری حذف شد</string>
+		<string name="swipe_delete">برای حذف کردن صفحه را بکشید</string>
+		<string name="restore_backup_date">پشتیبان گیری اطلاعات</string>
+		<string name="restore_md5_chk">فایل های MD5 برای نسخه پشتیبان را بررسی کنید</string>
+		<string name="restore_enable_md5_chk">تأیید MD5 فایلهای پشتیبان را فعال کنید</string>
+		<string name="restore_complete">بازگرداندن انجام شد</string>
+		<string name="swipe_restore">برای بازگرداندن صفحه را بکشید</string>
+		<string name="rename_backup_hdr">تغییر نام نسخه پشتیبان گیری</string>
+		<string name="rename_backup_confirm">تغییر نام نسخه پشتیبان گیری</string>
+		<string name="rename_backup_confirm2">این قابل بازگشت نیست!</string>
+		<string name="renaming_backup">در حال تغییر نام نسخه پشتیبان...</string>
+		<string name="rename_backup_complete">تغییر نام نسخه پشتیبان گیری انجام شد</string>
+		<string name="swipe_to_rename">برای تغییر نام صفحه را بکشید</string>
+		<string name="mount_hdr">مانوت</string>
+		<string name="mount_sys_ro_chk">مونت کردن پارتیشن‌های سیستم فقط خواندنی</string>
+		<string name="erofs_is_ro_fs">EROFS یک سیستم فایل فقط خواندنی است و نمی‌تواند در حالت خواندن/نوشتن مونت شود!</string>
+		<string name="decrypt_data_btn">رمزگشایی اطلاعات</string>
+		<string name="disable_mtp_btn">پروتکل انتقال رسانه را غیر فعال کنید</string>
+		<string name="enable_mtp_btn">پروتکل انتقال رسانه را فعال کنید</string>
+		<string name="usb_storage_hdr">محل ذخیره سازی USB</string>
+		<string name="usb_storage_btn">محل ذخیره سازی USB</string>
+		<string name="usb_stor_mnt1">محل ذخیره سازیUSB مانوت شد</string>
+		<string name="usb_stor_mnt2">مطمئن شوید که دستگاه خود را ایمن جدا می کنید</string>
+		<string name="usb_stor_mnt3">از کامپیوتر شما قبل از غیر فعال شدن مانوت!</string>
+		<string name="unmount_btn">غیر فعال کردن مانوت</string>
+		<string name="rb_system_btn">سیستم</string>
+		<string name="rb_poweroff_btn">خاموش کردن</string>
+		<string name="rb_recovery_btn">ریکاوری</string>
+		<string name="rb_bootloader_btn">بوت لودر</string>
+		<string name="rb_theme">تم</string>
+		<string name="rb_download_btn">بارگیری</string>
+		<string name="rb_edl_btn">حالت Edl</string>
+		<string name="turning_off">در حال خاموش شدن...</string>
+		<string name="swipe_power_off">برای خاموش کردن صفحه را بکشید</string>
+		<string name="sys_ro">پارتیشن سیستم</string>
+		<string name="sys_ro_hdr">غیر فعال کردن مانوت پارتیشن سیستم</string>
+		<string name="sys_rop1">ریکاوری OrangeFox می تواند پارتیشن سیستم شما را ترک کند</string>
+		<string name="sys_rop2">اصلاح نشده، تا کار را برای شما راحت تر کند</string>
+		<string name="sys_rop2a">اخبار رسمی را دریافت کنید.</string>
+		<string name="sys_rop3">ریکاوری OrangeFox قادر به جلوگیری از این امر نخواهد بود</string>
+		<string name="sys_rop4">رام اصلی برای جایگزینی ریکاوری OrangeFox.</string>
+		<string name="sys_rop5">نصب فایل زیپ یا عملیات ADB</string>
+		<string name="sys_rop6">ممکن است هنوز پارتیشن سیستم را تغییر دهد.</string>
+		<string name="sys_ro_never_show_chk">دیگر هرگز این صفحه نمایش داده نشود</string>
+		<string name="sys_ro_keep_ro_btn">فقط برای خواندن نگه دارید</string>
+		<string name="swipe_allow_mod">برای مجاز کردن تغییرات ، صفحه را بکشید</string>
+		<string name="settings_hdr">تنظیمات</string>
+		<string name="settings_cptn">عمومی</string>
+		<string name="use_rmrf_chk">به جای فرمت کردن از rm -rf استفاده کنید</string>
+		<string name="use24clock_chk">از ساعت 24 ساعته استفاده کنید</string>
+		<string name="rev_navbar_chk">طرح نوار ناوبری برعکس</string>
+		<string name="simact_chk">شبیه سازی اقدامات برای آزمایش تم</string>
+		<string name="simfail_chk">شکست در انجام را برای اقدامات شبیه سازی کنید</string>
+		<string name="sel_tz_list">منطقه زمانی</string>
+		<string name="dialog_reset_theme_hdr">به حالت پیش فرض بازگردانید</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(UTC -11) ساموآ ، جزیره میدوی</string>
+		<string name="utcm10">(UTC -10) هاوایی</string>
+		<string name="utcm9">(UTC -9) آلاسکا</string>
+		<string name="utcm8">(UTC -8) زمان اقیانوسیه</string>
+		<string name="utcm7">(UTC -7) زمان مناطق کوهستانی</string>
+		<string name="utcm6">(UTC -6) زمان مرکزی</string>
+		<string name="utcm5">(UTC -5) زمان شرقی</string>
+		<string name="utcm4">(UTC -4) زمان آتلانتیک</string>
+		<string name="utcm3">(UTC -3) برزیل ، بوینس آیرس</string>
+		<string name="utcm2">(UTC -2) میانه آتلانتیک</string>
+		<string name="utcm1">(UTC -1) آزورس ، کیپ ورد</string>
+		<string name="utc0">(UTC  0) لندن ، دوبلین ، لیسبون</string>
+		<string name="utcp1">(UTC +1) برلین ، بروکسل ، پاریس</string>
+		<string name="utcp2">(UTC +2) آتن ، استانبول ، آفریقای جنوبی</string>
+		<string name="utcp3">(UTC +3) مسکو ، بغداد</string>
+		<string name="utcp4">(UTC +4) ابوظبی ، تفلیس ، مسقط</string>
+		<string name="utcp5">(UTC +5) یکاترینبورگ ، اسلام آباد</string>
+		<string name="utcp6">(UTC +6) آلماتی ، داکا ، کلمبو</string>
+		<string name="utcp7">(UTC +7) بانکوک ، هانوی ، جاکارتا</string>
+		<string name="utcp8">(UTC +8) پکن ، سنگاپور ، هنگ کنگ</string>
+		<string name="utcp9">(UTC +9) توکیو ، سئول ، یاکوتسک</string>
+		<string name="utcp10">(UTC +10) شرق استرالیا ، گوام</string>
+		<string name="utcp11">(UTC +11) ولادیوستوک ، جزایر سلیمان</string>
+		<string name="utcp12">(UTC +12) اوکلند ، ولینگتون ، فیجی</string>
+		<string name="tz_offset_hdr">انحراف زمانی</string>	
+		<string name="tz_offset">انحراف</string>
+		<string name="sel_tz_offset">انتخاب انحراف (معمولاً 0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">استفاده از زمان صرفه جویی در روز (DST)</string>
+		<string name="curr_tz">منطقه زمانی کنونی: %tw_time_zone%</string>
+		<string name="curr_tz_s">منطقه زمانی کنونی:</string>
+		<string name="set_tz_btn">تنظیم منطقه زمانی کنونی</string>
+		<string name="settings_screen_cptn">تنظیمات صفحه</string>
+		<string name="settings_screen_timeout_cptn">مهلت زمانی خاموش شدن، غیر فعال است</string>
+		<string name="settings_screen_timeout_cptn2">خاموش شدن:</string>
+		<string name="timeout_unit">ثانیه</string>
+		<string name="enable_timeout_chk">زمان خاموشی صفحه را فعال کنید</string>
+		<string name="screen_to_na">تنظیم زمان خاموشی صفحه در دسترس نیست</string>
+		<string name="rotation_chk">چرخش</string>
+		<string name="screen_bright_slider">روشنایی: %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">تنظیم روشنایی در دسترس نیست</string>
+		<string name="vibration_hdr">لرزش</string>
+		<string name="button_vibration_hdr">دکمه لرزش خاموش است</string>
+		<string name="kb_vibration_hdr">لرزش در صفحه کلید خاموش است</string>
+		<string name="act_vibration_hdr">لرزش خاموش است</string>
+		<string name="button_vibration">دکمه لرزش:</string>
+		<string name="kb_vibration">لرزش صفحه کلید:</string>
+		<string name="act_vibration">عمل لرزش:</string>
+		<string name="advanced_hdr">پیشرفته</string>
+		<string name="copy_log_confirm">کپی کردن گزارشات در کارت حافظه</string>
+		<string name="copying_log">در حال کپی کردن گزارشات در کارت حافظه...</string>
+		<string name="copy_log_complete">گزارشات کپی شدند</string>
+		<string name="terminal_btn">پایانه</string>
+		<string name="inject_twrp_btn">ریکاوری OrangeFox را نصب کنید</string>
+		<string name="inject_twrp_confirm">نصب مجدد ریکاوری OrangeFox</string>
+		<string name="injecting_twrp">در حال نصب مجدد ‌‌‌‌ریکاوریOrangeFox...</string>
+		<string name="inject_twrp_complete">نصب ریکاوری Orangefox انجام شد</string>
+		<string name="swipe_to_confirm">برای تأیید صفحه را بکشید</string>
+		<string name="part_sd_hdr">پارتیشن کارت حافظه</string>
+		<string name="rem_sd">محل ذخیره سازی قابل جابجایی</string>
+		<string name="rem_sd_sel">دستگاه قابل جابجایی را انتخاب کنید!</string>
+		<string name="invalid_partsd_sel">شما باید یک دستگاه قابل جابجایی را انتخاب کنید</string>
+		<string name="part_sd_lose">تمام فایل های موجود در کارت حافظه خود را از دست خواهید داد!</string>
+		<string name="part_sdcard_sel_note_1">پارتیشن بندی، تمام فایل ها را حذف می کند</string>
+		<string name="part_sdcard_sel_note_2">در کارت حافظه شما!</string>
+		<string name="part_sd_undo">این عمل قابل برگشت نیست!</string>
+		<string name="part_sd_ext_sz">اندازه حافظه:</string>
+		<string name="btn_flat_ext4">حافظه4</string>
+		<string name="btn_flat_ext3">حافظه3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">اندازه مبادله:</string>
+		<string name="file_system">فایل سیستم:</string>
+		<string name="swipe_part_sd">برای پارتیشن بندی صفحه را بکشید</string>
+		<string name="partitioning_sd">در حال پارتیشن بندی کارت حافظه...</string>
+		<string name="partitioning_sd2">این چند دقیقه زمان خواهد برد.</string>
+		<string name="part_sd_complete">پارتیشن بندی به پایان رسید</string>
+		<string name="swipe_to_unlock">برای باز کردن صفحه را بکشید</string>
+		<string name="fm_actions">عمل ها</string>
+		<string name="fm_hdr">فایل ها</string>
+		<string name="fm_sel_file">یک فایل یا پوشه را انتخاب کنید</string>
+		<string name="fm_type_folder">پوشه</string>
+		<string name="fm_type_file">فایل</string>
+		<string name="fm_copy_btn">کپی</string>
+		<string name="fm_copying">در حال کپی کردن</string>
+		<string name="fm_move_btn">انتقال</string>
+		<string name="fm_moving">در حال انتقال دادن</string>
+		<string name="fm_chmod755_btn">تنظیم 755</string>
+		<string name="fm_chmod755ing">تنظیم 755</string>
+		<string name="fm_chmod644_btn">تنظیم 644</string>
+		<string name="fm_chmod644ing">تنظیم 644</string>
+		<string name="fm_chmod_btn">مجوزها را تنظیم کنید</string>
+		<string name="fm_delete_btn">حذف</string>
+		<string name="fm_deleting">در حال حذف شدن</string>
+		<string name="fm_rename_btn">تغییر نام</string>
+		<string name="fm_renaming">در حال تغییر نام</string>
+		<string name="fm_sel_dest">پوشه مقصد</string>
+		<string name="fm_rename_hdr">تغییر نام</string>
+		<string name="fm_set_perms_hdr">مجوزها را تنظیم کنید</string>
+		<string name="fm_perms">مجوز ها</string>
+		<string name="fm_complete">عملیات فایل به پایان رسید</string>
+		<string name="decrypt">رمزگشایی</string>
+		<string name="data_part">اطلاعات پارتیشن</string>
+		<string name="encrypt_data_part">پارتیشن اطلاعات رمزگذاری شده است</string>
+		<string name="sel_encrypt_backup">پشتیبان گیری رمزگذاری شده را انتخاب کرده اید.</string>
+		<string name="decrypt_data_enter_note1">لطفاً رمز ورود را وارد کنید یا</string>
+		<string name="decrypt_data_enter_note1a">لطفاً الگو را وارد کنید یا</string>
+		<string name="decrypt_data_enter_note2">برای لغو دکمه برگشت را فشار دهید.</string>
+		<string name="decrypt_data_enter_pass">وارد کردن رمز</string>
+		<string name="decrypt_data_failed_pattern">الگوی اشتباه!</string>
+		<string name="decrypt_try_again">لطفاً از دوباره امتحان کنید.</string>
+		<string name="decrypt_data_enter_pattern">وارد کردن الگو.</string>
+		<string name="decrypt_data_trying">تلاش برای رمزگشایی</string>
+		<string name="term_s_hdr">پایانه</string>
+		<string name="adb_sideload_hdr">ADB سایدلود</string>
+		<string name="sideload_wipe_dalvik_chk">پاک کردن دالویک کش</string>
+		<string name="sideload_wipe_cache_chk">پاک کردن کش</string>
+		<string name="swipe_to_sideload">برای سایدلود کردن صفحه را بکشید</string>
+		<string name="sideload_confirm">ADB سایدلود</string>
+		<string name="sideload_usage">استفاده کنید از: ADB سایدلود فایل با فرمت زیپ</string>
+		<string name="sideload_complete">ADB سایدلود تمام شد</string>
+		<string name="fix_contexts_hdr">رفع زمینه ها</string>
+		<string name="fix_contexts_confirm">زمینه های SELinux را برطرف کنید</string>
+		<string name="fix_contexts_note1">توجه: به ندرت به اصلاح زمینه ها نیاز است.</string>
+		<string name="fix_contexts_note2">ممکن است باعث رفع زمینه های SELinux شود</string>
+		<string name="fix_contexts_note3">دستگاه شما به درستی راه اندازی نشده است.</string>
+		<string name="swipe_to_fix_contexts">برای برطرف کردن زمینه ها ، صفحه را بکشید</string>
+		<string name="fixing_contexts">در حال رفع زمینه ها...</string>
+		<string name="fix_contexts_complete">رفع زمینه انجام شد</string>
+		<string name="reboot_hdr">راه اندازی مجدد</string>
+		<string name="sel_storage_list">انتخاب محل ذخیره سازی</string>
+		<string name="ok_btn">تایید</string>
+		<string name="install_twrp_ramdisk">نصب Ramdisk بازیابی</string>
+		<string name="install_kernel">نصب هسته</string>
+		<string name="repack_backup_first">ابتدا از ایمیج موجود نسخه پشتیبان تهیه کنید</string>
+		<string name="installing">در حال نصب...</string>
+		<string name="install_complete">نصب کامل شد</string>
+		<string name="decrypt_users">رمزگشایی کاربران</string>
+		<string name="backup_storage_undecrypt_warning">پشتیبانی از برخی فایل‌های کاربر {1} شامل نمی‌شود، زیرا کاربر رمزگشایی نشده است.</string>
+		<string name="decrypting_user_fbe">در حال تلاش برای رمزگشایی FBE برای کاربر {1}...</string>
+		<string name="decrypt_user_success_fbe">کاربر {1} با موفقیت رمزگشایی شد</string>
+		<string name="decrypt_user_fail_fbe">رمزگشایی کاربر {1} شکست خورد</string>
+		<string name="decrypt_data_user">کاربر انتخاب شده</string>
+		<string name="data_users">کاربران</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">کرنل از خواندن زمینه های SELinux پشتیبانی نمی کند.</string>
+		<string name="full_selinux">پشتیبانی کامل SELinux موجود است.</string>
+		<string name="no_selinux">بدون پشتیبانی SELinux (بدون libselinux).</string>
+		<string name="mtp_enabled">پروتکل انتقال رسانه فعال شده است</string>
+		<string name="mtp_disabled">پروتکل انتقال رسانه غیر فعال شده است</string>
+		<string name="mtp_crash">پروتکل انتقال رسانه خراب شد، پروتکل انتقال رسانه راه اندازی نشد.</string>
+		<string name="decrypt_success">با رمز پیش فرض، با موفقیت رمزگشایی شد.</string>
+		<string name="unable_to_decrypt">با رمز پیش فرض رمزگشایی نمی شود. ممکن است لازم باشد فرمت اطلاعات را انجام دهید.</string>
+		<string name="generating_md51">تولید MD5</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * در حال تولید md5...</string>
+		<string name="md5_created"> * MD5 ساخته شد.</string>
+		<string name="md5_error"> * خطا MD5!</string>
+		<string name="md5_compute_error"> * خطا در محاسبه MD5.</string>
+		<string name="current_date">(تاریخ فعلی)</string>
+		<string name="auto_generate">(تولید خودکار)</string>
+		<string name="unable_to_locate_partition">مکان یابی پارتیشن '{1}' برای انجام محاسبات امکان پذیر نیست.</string>
+		<string name="no_partition_selected">هیچ پارتیشنی برای پشتیبان گیری انتخاب نشده است.</string>
+		<string name="total_partitions_backup"> * تعداد کل پارتیشن ها برای پشتیبان گیری: {1}</string>
+		<string name="total_backup_size"> * اندازه کل اطلاعات: {1} مگابایت</string>
+		<string name="available_space"> * حافظه در دسترس {1} مگابایت</string>
+		<string name="unable_locate_storage">پیدا کردن دستگاه ذخیره سازی امکان پذیر نیست.</string>
+		<string name="no_space">فضای آزاد کافی برای ذخیره سازی وجود ندارد.</string>
+		<string name="backup_started">[پشتیبان گیری شروع شد]</string>
+		<string name="backup_folder"> * پوشه پشتیبان گیری: {1}</string>
+		<string name="fail_backup_folder">ایجاد پوشه پشتیبان انجام نشد.</string>
+		<string name="avg_backup_fs">میانگین سرعت پشتیبان گیری برای فایل های سیستم: {1} مگ/ثانیه</string>
+		<string name="avg_backup_img">میانگین سرعت پشتیبان گیری از درایوهای ایمیج: {1} مگ/ثانیه</string>
+		<string name="total_backed_size">[{1} مگابایت در کل پشتیبان گیری شده]</string>
+		<string name="backup_completed">[پشتیبان گیری انجام شد در {1} ثانیه]</string>
+		<string name="restore_started">[بازگرداندن شروع شد]</string>
+		<string name="restore_folder">پوشه بازگرداندنی: '{1}'</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} انجام شده ({2} ثانیه)]</string>
+		<string name="verifying_md5">در حال تأیید MD5</string>
+		<string name="skip_md5">نادیده گرفتن بررسی MD5 بر اساس تنظیمات کاربر.</string>
+		<string name="calc_restore">محاسبه جزئیات بازگرداندن...</string>
+		<string name="restore_read_only">بازیابی نمی شود {1} -- فقط خواندنی مانوت شده.</string>
+		<string name="restore_unable_locate">پیدا کردن پارتیشن '{1}' برای بازیابی ممکن نیست.</string>
+		<string name="no_part_restore">هیچ پارتیشن برای بازیابی انتخاب نشده است.</string>
+		<string name="restore_part_count">بازگرداندنی {1} پارتیشن ها...</string>
+		<string name="total_restore_size">اندازه کل بازگردانی {1} مگابایت است</string>
+		<string name="updating_system_details">بروز رسانی جزئیات سیستم</string>
+		<string name="restore_completed">[بازگردانی‌ انجام شد در {1} ثانیه]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">خطا در هنگام باز کردن: '{1}' ({2})</string>
+		<string name="unable_locate_part_backup_name">نمی توان پارتیشن را با نام پشتیبان پیدا کرد: '{1}'</string>
+		<string name="unable_find_part_path">نمی توان پارتیشن را برای پچ کردن پیدا کرد '{1}'</string>
+		<string name="update_part_details">در حال بروز رسانی جزئیات پارتیشن...</string>
+		<string name="update_part_details_done">...انجام</string>
+		<string name="wiping_dalvik">پاک کردن پوشه های دالویک...</string>
+		<string name="cleaned">پاک شد: {1}...</string>
+		<string name="dalvik_done">پاک کردن پوشه های دالویک انجام شد!</string>
+		<string name="no_andsec">هیچ پارتیشن ایمن اندرویدی یافت نشد.</string>
+		<string name="unable_to_locate">نمی توان پیدا کرد {1}.</string>
+		<string name="wiping_datamedia">پاک کردن حافظه داخلی -- /اطلاعات /رسانه...</string>
+		<string name="unable_to_mount">نمی توان مانوت کرد {1}</string>
+		<string name="unable_to_mount_internal">نمی توان حافظه داخلی را مانوت کرد</string>
+		<string name="unable_to_mount_storage">نمی توان حافظه را مانوت کرد</string>
+		<string name="fail_decrypt">رمزگشایی اطلاعات ناموفق بود.</string>
+		<string name="no_crypto_support">هیچ پشتیبان گیری رمزنگاری شده ای در این نسخه گنجانده نشده است.</string>
+		<string name="decrypt_success_dev">رمز گشایی اطلاعات با موفقیت انجام شد, دستگاه جدید مسدود شده: '{1}'</string>
+		<string name="done">انجام</string>
+		<string name="start_partition_sd">در حال پارتیشن بندی کارت حافظه...</string>
+		<string name="partition_sd_locate">پیدا کردن دستگاه برای پارتیشن بندی امکان پذیر نیست.</string>
+		<string name="ext_swap_size">داخلی + اندازه مبادله بزرگتر از اندازه کارت حافظه است.</string>
+		<string name="remove_part_table">در حال حذف جدول پارتیشن بندی...</string>
+		<string name="unable_rm_part">حذف جدول پارتیشن بندی امکان پذیر نیست.</string>
+		<string name="create_part">در حال ساخت {1} پارتیشن...</string>
+		<string name="unable_to_create_part">نمی توان پارتیشن {1} را ساخت.</string>
+		<string name="format_sdext_as">در حال فرمت کردن کارت حافظه مانند {1}...</string>
+		<string name="part_complete">پارتیشن بندی به پایان رسید.</string>
+		<string name="unable_to_open">نمی توان باز کرد '{1}'.</string>
+		<string name="mtp_already_enabled">پروتکل انتقال رسانه قبلاً فعال شده است</string>
+		<string name="mtp_fail">فعال کردن پروتکل انتقال رسانه ناموفق بود</string>
+		<string name="no_mtp">پشتیبانی از پروتکل انتقال رسانه گنجانده نشده است</string>
+		<string name="mtp_base_path_missing">حافظه رسانه یافت نشد. قادر به فعال‌سازی MTP نیست.</string>
+		<string name="image_flash_start">[فلش کردن فایل ایمیج شروع شد]</string>
+		<string name="img_to_flash">ایمیج برای فلش: '{1}'</string>
+		<string name="flash_unable_locate">نمی توان پارتیشن '{1}' را برای فلش کردن پیدا کرد.</string>
+		<string name="no_part_flash">هیچ پارتیشنی برای فلش زدن انتخاب نشده است.</string>
+		<string name="too_many_flash">پارتیشن های زیادی برای فلش زدن انتخاب شده اند.</string>
+		<string name="invalid_flash">پارتیشن فلش نامعتبر، پیدا شده است.</string>
+		<string name="flash_done">[فلش فایل ایمیج انجام شد]</string>
+		<string name="wiping">در حال پاک کردن {1}</string>
+		<string name="repair_not_exist">{1} وجود ندارد! نمی توان تعمیر کرد!</string>
+		<string name="repairing_using">درحال تعمیر {1} استفاده شده {2}...</string>
+		<string name="unable_repair">نمی توان تعمیر کرد {1}.</string>
+		<string name="mount_data_footer">مانوت/اطلاعات و یافتن سند رمزنگاری امکان پذیر نیست.</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">نمی توان ایجاد کرد '{1}' پوشه ({2}).</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">مانوت ناموفق بود '{1}' ({2})</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">غیر فعال کردن مانوت ناموفق بود '{1}' ({2})</string>
+		<string name="cannot_resize">نمی توان تغییر اندازه داد {1}.</string>
+		<string name="repair_resize">تعمیر کردن {1} قبل از تغییر اندازه.</string>
+		<string name="unable_resize">نمی توان اندازه را تغییر داد {1}.</string>
+		<string name="no_md5_found">هیچ فایل md5 پیدا نشد برای '{1}'. لطفاً برای بازیابی ، فعال کردن تأیید MD5 را لغو کنید.</string>
+		<string name="md5_fail_match">MD5 مطابقت نداشت '{1}'.</string>
+		<string name="fail_decrypt_tar">رمزگشایی فایل tar انجام نشد '{1}'</string>
+		<string name="format_data_msg">ممکن است لازم باشد دوباره به ریکاوری راه اندازی کنید تا بتوانید دوباره از /اطلاعات استفاده کنید.</string>
+		<string name="format_data_err">فرمت کردن برای حذف رمزگذاری امکان پذیر نیست.</string>
+		<string name="formatting_using">در حال فرمت کردن {1} استفاده شده {2}...</string>
+		<string name="unable_to_wipe">نمی توان پاک کرد {1}.</string>
+		<string name="cannot_wipe">پارتیشن {1} نمی تواند پاک شود.</string>
+		<string name="remove_all">در حال حذف همه ی فایل های زیرمجموعه '{1}'</string>
+		<string name="wiping_data">پاک کردن اطلاعات بدون پاک کردن /اطلاعات /رسانه ...</string>
+		<string name="backing_up">درحال پشتیبان گیری {1}...</string>
+		<string name="backing">پشتیبان گیری</string>
+		<string name="backup_size">اندازه فایل پشتیبان برای '{1}' 0 بایت است.</string>
+		<string name="datamedia_fs_restore">هشدار: این/پشتیبان گیری از اطلاعات با استفاده {1} فایل سیستمی انجام شده! ممکن است پشتیبان گیری، راه اندازی نشود مگر اینکه دوباره آن را تغییر دهید {1}.</string>
+		<string name="restoring">در حال بازگردانی {1}...</string>
+		<string name="restoring_hdr">بازگردانی...</string>
+		<string name="recreate_folder_err">ساخت دوباره پوشه {1} امکان پذیر نیست.</string>
+		<string name="img_size_err">اندازه فایل ایمیج بزرگتر از دستگاه هدف است</string>
+		<string name="flashing">در حال فلش کردن {1}...</string>
+		<string name="backup_folder_set">پوشه پشتیبان گیری تنظیم شده است روی '{1}'</string>
+		<string name="locate_backup_err">پیدا کردن فایل پشتیبان گیری امکان پذیر نیست '{1}'</string>
+		<string name="set_restore_opt">تنظیم گزینه های بازگردانی: '{1}':</string>
+		<string name="md5_check_skip">رد شدن، از چک کردن MD5 روشن است</string>
+		<string name="ors_encrypt_restore_err">برای بازگرداندن پشتیبان گیری رمزگذاری شده نمی توان از OpenRecoveryاسکریپت استفاده کرد.</string>
+		<string name="mounting">در حال مانوت کردن</string>
+		<string name="unmounting">در حال غیر فعال کردن مانوت</string>
+		<string name="mounted">مانوت شد '{1}'</string>
+		<string name="unmounted">مانوت غیر فعال شد '{1}'</string>
+		<string name="setting">تنظیمات '{1}' به '{2}'</string>
+		<string name="setting_empty">تنظیمات '{1}' خالی است</string>
+		<string name="making_dir1">در حال ساخت پوشه</string>
+		<string name="making_dir2">ساخت پوشه: '{1}'</string>
+		<string name="running_command">اجرای فرمان</string>
+		<string name="sideload">ADB سایدلود</string>
+		<string name="start_sideload">ویژگی ADB سایدلود شروع شد...</string>
+		<string name="need_new_adb">شما به adb نسخه 1.0.32 یا جدیدتر برای سایدلود کردن این دستگاه نیاز دارید.</string>
+		<string name="no_pwd">رمز ورود ارائه نشده است.</string>
+		<string name="done_ors">پردازش فایل اسکریپت انجام شد</string>
+		<string name="injecttwrp">در حال نصب OrangeFox در بوت فایل ایمیج...</string>
+		<string name="zip_err">خطا در نصب فایل زیپ '{1}'</string>
+		<string name="installing_zip">نصب فایل زیپ '{1}'</string>
+		<string name="select_backup_opt">تنظیم گزینه های پشتیبان گیری:</string>
+		<string name="compression_on">فشرده سازی روشن است</string>
+		<string name="md5_off">نسخه های MD5 خاموش است</string>
+		<string name="backup_fail">پشتیبان گیری ناموفق بود</string>
+		<string name="backup_clean">پشتیبان گیری ناموفق بود. پاک کردن پوشه پشتیبان.</string>
+		<string name="running_recovery_commands">اجرای دستورات ریکاوری</string>
+		<string name="recovery_commands_complete">دستورات ریکاوری انجام شد</string>
+		<string name="running_ors">اجرای OpenRecoveryاسکریپت</string>
+		<string name="ors_complete">OpenRecoveryاسکریپت انجام شد</string>
+		<string name="no_updater_binary">پیدا نشد '{1}' در این فایل زیپ.</string>
+		<string name="check_for_md5">در حال بررسی فایل MD5...</string>
+		<string name="fail_sysmap">نقشه نگاری فایل ناموفق بود '{1}'</string>
+		<string name="verify_zip_sig">در حال تأیید امضای فایل زیپ...</string>
+		<string name="verify_zip_fail">تأیید امضای فایل زیپ ناموفق بود!</string>
+		<string name="verify_zip_done">امضای زیپ با موفقیت تأیید شد.</string>
+		<string name="zip_corrupt">فایل زیپ خراب است!</string>
+		<string name="no_md5">رد شدن از بررسی MD5: هیچ فایل MD5 یافت نشد</string>
+		<string name="md5_fail">MD5 مطابقت ندارد</string>
+		<string name="md5_match">MD5‌ مطابقت دارد</string>
+		<string name="pid_signal">{1} روند با سیگنال به پایان رسید: {2}</string>
+		<string name="pid_error">{1} روند با خطا به پایان رسید: {2}</string>
+		<string name="run_script">در حال اجرا است {1} اسکریپت...</string>
+		<string name="split_backup">تقسیم کردن فایل پشتیبان به چندین فایل فشرده...</string>
+		<string name="backup_error">خطا در ایجاد نسخه پشتیبان.</string>
+		<string name="restore_error">خطا در حین فرایند بازیابی.</string>
+		<string name="split_thread">تقسیم شناسه موضوع {1} در فایل فشرده {2}</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu از %llu فایل ها, %i%%</string>
+		<string name="size_progress">%lluمگابایت از %lluمگابایت, %i%%</string>
+		<string name="decrypt_cmd">تلاش برای رمزگشایی پارتیشن اطلاعات از طریق خط فرمان.</string>
+		<string name="base_pkg_err">بارگیری بسته های اصلی ناموفق بود.</string>
+		<string name="simulating">اقدامات شبیه سازی</string>
+		<string name="backup_cancel">پشتیبان گیری لغو شد</string>
+		<string name="config_twrp">پیکربندی OrangeFox...</string>
+		<string name="config_twrp_err">نمی توان OrangeFox را با این کرنل پیکربندی کرد.</string>
+		<string name="copy_log">گزارشات ریکاوری کپی شد در {1}.</string>
+		<string name="max_queue">به حداکثر صف فایل زیپ رسیده است!</string>
+		<string name="min_queue">به حداقل صف فایل زیپ رسیده است!</string>
+		<string name="screenshot_saved">عکس از صفحه ذخیره شد در {1}</string>
+		<string name="screenshot_err">گرفتن عکس از صفحه ناموفق بود!</string>
+		<string name="zip_wipe_cache">یک یا چند فایل زیپ درخواست پاک کردن حافظه پنهان کردند -- پاک کردن حافظه پنهان همین الان.</string>
+		<string name="and_sec_wipe_err">پاک کردن امنیت اندروید امکان پذیر نیست</string>
+		<string name="dalvik_wipe_err">پاک کردن دالویک ناموفق بود</string>
+		<string name="auto_gen">(تولید خودکار)</string>
+		<string name="curr_date">(تاریخ فعلی)</string>
+		<string name="backup_name_len">نام فایل پشتیبان خیلی طولانی است.</string>
+		<string name="backup_name_invalid">نام فایل پشتیبان '{1}' حاوی نویسه نامعتبر است: '{1}'</string>
+		<string name="no_real_sdcard">این دستگاه کارت حافظه واقعی ندارد! جدا کردن!</string>
+		<string name="cancel_sideload">در حال لغو کردن سایدلود...</string>
+		<string name="change_fs_err">خطا در تغییر فایل سیستم.</string>
+		<string name="change_fs_hdr">تغییر فایل سیستم</string>
+		<string name="theme_ver_err">نسخه تم سفارشی با نسخه ریکاوری OrangeFox مطابقت ندارد. استفاده از تم اصلی.</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">انتخاب رنگ</string>
+		<string name="s_color">رنگ</string>
+		<string name="current_color">فایل سیستم:</string>
+		<string name="show_cpu_temp_bar">نمایش دمای پردازنده</string>
+		<string name="ts_inform">اطلاعات</string>
+		<string name="sel_splash_png">انتخاب عکس صفحه معرفی</string>
+		<string name="swipe_to_install">برای نصب صفحه را بکشید</string>
+		<string name="swipe_to_install_img">برای نصب فایل ایمیج صفحه را بکشید</string>
+		<string name="sel_image_type">نوع فایل ایمیج را انتخاب کنید!</string>
+		<string name="zip_add_queue">اضافه کردن به صف</string>
+		<string name="part_fs_error_1">گزینه های پارتیشن نیستند</string>
+		<string name="part_fs_error_2">برای این پارتیشن موجود است!</string>
+		<string name="new_file_system">فایل سیستم جدید</string>
+		<string name="adb_sideload_opt">گزینه های سایدلود</string>
+		<string name="about_hdr">درباره</string>
+		<string name="author">نویسنده</string>
+		<string name="credits">سازندگان</string>
+		<string name="version">نسخه</string>
+		<string name="set_password">تنظیم رمزعبور</string>
+		<string name="verifying_pas">تائید رمز عبور</string>
+		<string name="dialog_offset_note">مقدار انحراف شده را انتخاب کنید</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">گزینه ها</string>
+		<string name="flash_img_confirm">فلش کردن فایل ایمیج</string>
+		<string name="also_wipes">همچنین پاک سازی</string>
+		<string name="confirm_wipe_cptn">تایید پاک کردن</string>
+		<string name="storage_cptn">ذخیره سازی</string>
+		<string name="enter_password_restore">رمز عبور</string>
+		<string name="enter_password_cptn">امنیت</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">سایدلود شروع شد...</string>
+		<string name="fordowns_to">به</string>
+		<string name="dbg">اشکال زدایی</string>
+		<string name="dbg_active">منوی اشکال زدایی فعال شد!</string>
+		<string name="dbg_act">عمل</string>
+		<string name="dbg_func">عملکرد</string>
+		<string name="dbg_set">تنظیم</string>
+		<string name="dbg_page">صفحه</string>
+		<string name="dbg_overlay">هم پوشانی</string>
+		<string name="fm_none">هیچ یک</string>
+		
+		<string name="cust_navbar_noug">نوقا</string>
+		<string name="cust_navbar_cls">کلاسیک</string>
+		<string name="cust_navbar_accent">لهجه</string>
+		<string name="cust_navbar_black">سیاه</string>
+		<string name="cust_navbar_white">از دکمه های سفید استفاده کنید</string>
+		<string name="cust_navbar_gray">از دکمه های خاکستری استفاده کنید</string>
+		
+		<string name="fm_open">باز کردن به عنوان...</string>
+		<string name="fm_open_text">فایل متنی</string>
+		<string name="fm_open_ZIP">فایل زیپ قابل فلش شدن</string>
+		
+		<string name="fm_open_backup">پشتیبان گیری</string>
+		<string name="fm_open_makezip">فشرده سازی</string>
+		<string name="fm_open_unpackzip">استخراج فایل فشرده</string>
+		<string name="fm_open_image">فایل ایمیج قابل فلش شدن</string>
+		<string name="arc_type">نوع فایل فشرده</string>
+		<string name="arc_lvl">سطح فشرده سازی:</string>
+		<string name="arc_lvl_title">فشرده سازی</string>
+		
+		<string name="bkp_date">تاریخ را اضافه کنید</string>
+		<string name="bkp_gen">ایجاد نام نسخه پشتیبان</string>
+		<string name="bkp_gen_whilebkp">هنگام ساخت نسخه پشتیبان ، نام پشتیبان را بنویسید</string>
+		<string name="bkp_quick">پشتیبان گیری سریع</string>
+		<string name="bkp_clear">پاک کردن</string>
+		
+		<string name="language_cptn">زبان</string>
+		<string name="cust_oth">دیگر</string>
+		
+		<string name="settings_general">عمومی</string>
+		<string name="settings_ui">سفارشی سازی</string>
+		<string name="settings_screen">نمایش</string>
+		<string name="settings_time">منطقه ای</string>
+		
+		<string name="lang_wait">لطفاً صبر کنید...</string>
+		
+		<string name="settings_ui_status">نوار وضعیت</string>
+		<string name="settings_ui_battery">نمایش نماد باتری</string>
+		<string name="settings_ui_style">سبک ناوبری</string>
+		<string name="settings_ui_color">پس زمینه ناوبری</string>
+		
+		<string name="settings_backup_qbkp_custom">پارتیشن های پشتیبان گیری سریع</string>
+		
+		<string name="settings_backup_name">نام پشتیبان گیری</string>
+		<string name="settings_backup_name_user">تغییر نده</string>
+		<string name="settings_backup_name_auto">به صورت خودکار تعریف می شود</string>
+		<string name="settings_backup_name_auto_hide">در حالی که پشتیبان گیری می شود</string>
+		
+		<string name="update_btn">بروزرسانی</string>
+		<string name="include_kernel_log">گزارشات کرنل شامل شود</string>
+		<string name="include_logcat">شامل Logcat</string>
+		
+		<string name="fm_books">پوشه های مورد علاقه</string>
+		<string name="fm_books_desc">برای ویرایش این فهرست فشار طولانی دهید</string>
+		<string name="fm_books_edit">این لیست را ویرایش کنید...</string>
+		<string name="fm_books_desc_edit">فشار طولانی برای حذف مورد</string>
+		<string name="fm_books_empty">(خالی)</string>
+		
+		<string name="fm_mkdir">ساخت پوشه</string>
+		<string name="fm_mkdir_folder">نام پوشه</string>
+		
+		<string name="fm_path">وارد کردن پچ</string>
+		<string name="fm_path2">پچ</string>
+		
+		<string name="no_os_title">آیا مطمئن هستید?</string>
+		<string name="no_os_subtitle">پارتیشن سیستم خالی است</string>
+		
+		<string name="no_os1">سیستم عامل نصب نشده است! آیا مطمئن هستید</string>
+		<string name="no_osrb">مایل به راه اندازی مجدد هستید?</string>
+		<string name="no_ospo">مایل به خاموش کردن هستید?</string>
+		<string name="no_osrb_recovery">مایل به راه اندازی مجدد به ریکاوری هستید?</string>
+		<string name="no_osrb_boot">مایل به راه اندازی مجدد به بوت لودر هستید?</string>
+		<string name="no_osrb_down">مایل به راه اندازی مجدد به حالت دانلودینگ هستید?</string>
+		<string name="no_osrb_edl">مایل به راه اندازی مجدد به حالت EDL هستید?</string>
+		
+		<string name="areb_confirm">پیام راه اندازی مجدد</string>
+		<string name="areb_noos">وقتی سیستم عامل نصب نشده است</string>
+		<string name="opt_always">همیشه</string>
+		<string name="otp_never">هیچ وقت</string>
+		
+		<string name="areb_off">خاموش</string>
+		
+		<string name="restoredialog_readonly">هیچ وقت پیام، مانوت سیستم فقط برای خواندن را نشان ندهید</string>
+		
+		<string name="offset_wrong">انحراف اشتباه!</string>
+
+		<string name="new_key">از سبک جدید برای صفحه کلید استفاده کنید</string>
+		
+		<string name="bkp_nametitle">نام پشتیبان گیری</string>
+		<string name="bkp_namesub">نام پشتیبان را تایپ یا ایجاد کنید</string>
+		
+		<string name="goto_storage">ذخیره سازی</string>
+		
+		<string name="theme_apply">در حال بروز رسانی تم...</string>
+		<string name="theme_fonts">فونت ها</string>
+		<string name="theme_style">سبک</string>
+		<string name="theme_accent">لهجه</string>
+		<string name="theme_font_sel">فونت اصلی</string>
+		<string name="theme_sec_font_sel">فونت ثانویه</string>
+		
+		<string name="of">از</string>
+		
+		<string name="sph_sph">معرفی</string>
+		
+		<string name="real">واقعی</string>
+		<string name="info">اطلاعات</string>
+		<string name="time_m">تغییر</string>
+		<string name="time_c">تغییر</string>
+		<string name="access">دسترسی</string>
+		<string name="fm_sums">چک کردن</string>
+		
+		<string name="use_fixed_font">فونت،تک فضا، در پایانه</string>
+
+		<string name="adb_backup_pc1">این نسخه پشتیبان خواهد بود</string>
+		<string name="adb_backup_pc2">در رایانه شما ذخیره می شود</string>
+		
+		<string name="starting_aroma">راه اندازی AromaFM...</string>
+		<string name="lang_set_wait">در حال تغییر زبان...</string>
+		<string name="installing_theme">در حال نصب تم...</string>
+		
+		<string name="menu_btn">فهرست</string>
+		
+		<string name="data_backup">اطلاعات</string>
+		<string name="autostorage">ذخیره سازی</string>
+		<string name="install_reboot">راه اندازی مجدد در %tw_sleep% ثانیه</string>
+		<string name="cancel_reboot_btn">لغو راه اندازی مجدد</string>
+		<string name="skip_digest_backup_chk" version="2">در حین پشتیبان گیری از تولید خلاصه کار صرف نظر کنید</string>
+		<string name="restore_digest_chk" version="2">تأیید خلاصه کار برای پشتیبان گیری را فعال کنید</string>
+		<string name="restore_enable_digest_chk" version="2">تأیید خلاصه کار برای پشتیبان گیری را فعال کنید</string>
+		<string name="decrypt_data_vold_os_missing">فایل‌ها مفقود شده برای رمزگشایی ولد مورد نیاز است: {1}</string>
+		<string name="generating_digest1" version="2">تولید خلاصه</string>
+		<string name="generating_digest2" version="2"> *در حال تولید خلاصه...</string>
+		<string name="digest_created" version="2"> * خلاصه ساخته شد.</string>
+		<string name="digest_error" version="2"> *خطا در ساخت خلاصه!</string>
+		<string name="digest_compute_error" version="2"> * خطا در محاسبه خلاصه.</string>
+		<string name="verifying_digest" version="2">تأیید خلاصه</string>
+		<string name="skip_digest" version="2">جستجوی خلاصه را بر اساس تنظیمات کاربر رد می کنید.</string>
+		<string name="decrypt_success_nodev">اطلاعات با موفقیت رمزگشایی شد</string>
+		<string name="no_digest_found" version="2">هیچ فایل خلاصه ای برای آن یافت نشد '{1}'. لطفاً گزینه فعال کردن تأیید خلاصه را برای بازگرداندن لغو کنید.</string>
+		<string name="digest_fail_match" version="2">تطبیق خلاصه با آن ناموفق بود '{1}'.</string>
+		<string name="digest_matched" version="2">تایید خلاصه موفق بود برای '{1}'.</string>
+		<string name="digest_check_skip" version="2">رد شدن از خلاصه روشن است</string>
+		<string name="digest_off" version="2">ساخت خلاصه خاموش است</string>
+		<string name="invalid_zip_format">فرمت فایل زیپ نامعتبر است!</string>
+		<string name="check_for_digest" version="2">در حال بررسی فایل خلاصه...</string>
+		<string name="no_digest" version="2">رد شدن از فایل خلاصه: فایل خلاصه یافت نشد</string>
+		<string name="digest_fail" version="2">فایل خلاصه مطابقت نداشت</string>
+		<string name="digest_match" version="2">فایل خلاصه مطابقت دارد</string>
+		<string name="password">رمز عبور</string>
+		<string name="boot_slot">اسلات بوت</string>
+		<string name="boot_slot_a">اسلات A</string>
+		<string name="boot_slot_use_a">تعویض به اسلات A</string>
+		<string name="boot_slot_b">اسلات B</string>
+		<string name="boot_slot_use_b">تعویض به اسلاتB</string>
+		<string name="changing_boot_slot">تغییر اسلات بوت</string>
+		<string name="changing_boot_slot_complete">تغییر اسلات بوت انجام شد</string>
+		<string name="unable_set_boot_slot">خطا در تغییر اسلات بوتِ بوت لودر به {1}</string>
+		<string name="flash_ab_inactive">فلش کردن زیپ A/B به اسلات غیر فعال: {1}</string>
+		<string name="flash_ab_reboot">برای فلش کردن زیپ‌های اضافی، لطفاً بازیابی را مجدداً راه‌اندازی کنید تا به اسلات به‌روزرسانی شده تغییر دهید.</string>
+		<string name="flash_ab_both_slots">فلش به هر دو اسلات</string>
+		<string name="ozip_decrypt_decryption">شروع رمزگشایی Ozip...</string>
+		<string name="ozip_decrypt_finish">رمزگشایی Ozip به پایان رسید!</string>
+		<string name="backup_storage_warning">پشتیبان گیری از {1} شامل هیچ فایلی در حافظه داخلی مانند عکس یا بارگیری نیست.</string>
+		<string name="sha2_chk">برای تقسیم کردن از SHA2 استفاده کنید</string>
+		<string name="disabled">غیرفعال شد</string>
+		<string name="enabled">فعال شد</string>
+		<string name="keep_storage_data">رد کردن پاک‌سازی هنگام بازیابی ذخیره‌سازی</string>
+		<string name="zip_compatible_err">خطای سازگاری سه برابر زیپ!</string>
+
+		<string name="unmount_sys_install">سیستم را قبل از نصب فایل آن مانوت کنید</string>
+		<string name="unmount_system">در حال غیر فعال کردن مانوت سیستم...</string>
+		<string name="unmount_system_err">غیر فعال کردن مانوت سیستم ناموفق بود</string>		
+
+		<string name="unmount_vendor_install">قبل از نصب فایل زیپ ، وندور را آن مانوت کنید</string>
+		<string name="unmount_vendor">در حال غیر فعال کردن وندور...</string>
+		<string name="unmount_vendor_err">غیر فعال کردن وندور ناموفق بود</string>	
+			
+		<string name="fbe_wipe_msg">اخطار: {1} پاک شد. دستگاه FBE باید در اندروید بوت شود نه ریکاوری، برای تنظیم سیاست اولیه FBE پس از پاک کردن.</string>		
+		<string name="fastboot_button">فست بوت</string>
+		<string name="enable_adb">فعال کردن ADB</string>
+		<string name="enable_fastboot">فعال کردن فست بوت</string>
+		<string name="fastboot_console_msg">وارد حالت فست بوت شد...</string>
+		<string name="data_media_fbe_msg">OrangeFox /data/media را روی دستگاه FBE دوباره ایجاد نمی‌کند. لطفاً به روم خود بوت کنید تا /data/media ایجاد شود</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">در حال تأیید امضای بسته افزایشی...</string>
+		<string name="fox_incremental_ota_compatibility_false">بسته افزایشی با این رام سازگار نیست!</string>
+		<string name="fox_incremental_ota_compatibility_true">بسته افزایشی سازگار است</string>
+		<string name="fox_incremental_ota_status_enabled">پشتیبانی از وضعیت بسته افزایشی: فعال است</string>
+		<string name="fox_incremental_ota_status_disabled">پشتیبانی از وضعیت بسته افزایشی: غیرفعال است</string>
+		<string name="fox_incremental_package_detected">بسته افزایشی «{1}» شناسایی شد</string>
+		<string name="fox_survival_does_not_exist">بسته OTA وجود ندارد! لطفاً ابتدا یک رام کامل را فلش کنید!</string>
+		<string name="fox_install_detecting">تشخیص بسته فعلی</string>
+		<string name="fox_install_standard_detected">- بسته استاندارد شناسایی شده</string>
+		<string name="fox_install_miui_detected">- بسته بروز رسانی MIUI شناسایی شد</string>
+		<string name="fox_zip_have_bootloader">هشدار: نصب مجدد بوت لودر که توسط "{1}" فراخوانی شده ، شناسایی شد.</string>
+		<string name="fox_no_space_ota_survival">فضای آزاد کافی در حافظه داخلی برای ایجاد بسته OTA وجود ندارد.</string>
+		<string name="fox_incremental_ota_res">بازگرداندن OTA-- انجام شد!</string>
+		<string name="fox_incremental_ota_res_run">در حال اجرای OTA_RES پردازش...</string>
+		<string name="fox_incremental_ota_bak_run">در حال اجرای OTA_BAKو پردازش آن...</string>
+		<string name="fox_incremental_ota_bak">بازگرداندنOTA -- انجام شد!</string>
+		<string name="fox_internal_fatal_i1">ریکاوریOrangeFox: خطای مهلک! شما نمی توانید از حافظه داخلی پشتیبان بگیرید!</string>
+		<string name="fox_internal_fatal_i2">شما باید مقصد پشتیبان را به کارت حافظه/USB-OTG تغییر دهید.</string>
+		<string name="fox_internal_q1">OrangeFox - حافظه داخلی - مراقب باشید!</string>
+
+		<string name="copy_kernel_log">گزارشات کرنل کپی شد در {1}</string>
+		<string name="copy_logcat">Logcat کپی شد به {1}</string>
+
+		<string name="of_run_process">شروع شد '{1}' در حال پردازش</string>
+		<string name="of_run_process_fail">نمی توان به پایان رساند '{1}' در حال انجام</string>
+		<string name="of_run_process_done">تمام شد '{1}' در حال پردازش</string>
+		<string name="of_dm_verity">فایل های ضمیمه DM-Verity با موفقیت نصب شد</string>
+		<string name="of_dm_verity_off">DM-Verity فعال نشده</string>
+		<string name="of_encryption">رمزگذاری اجباری با موفقیت پچ شد</string>
+		<string name="of_encryption_off">رمزگذاری اجباری فعال نیست</string>
+		<string name="of_fstab">شناسایی شد fstab: '{1}'</string>
+
+		<string name="install_remlatest">حذف آخرین</string>
+		
+		<string name="backups_remove_all">همه نسخه های پشتیبان</string>
+		<string name="backups_remove">حذف</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">استخراج</string>
+		<string name="repack">دوباره فشرده کنید</string>
+
+		<string name="fox_save_load_aromafm_config_chk">ذخیره/بارگذاری تنظیمات AromaFM</string>
+		<string name="search_help">جستجوی فایل ها و پوشه ها...</string>
+		
+		<string name="reboot_to_take_effect">راه‌اندازی مجدد کنید تا تغییرات اعمال شوند</string>
+		<string name="fox_modules_hdr">افزونه های روباه</string>
+		<string name="fox_modules_inst">نصب افزونه</string>
+		<string name="backup_short_hdr">پشتیبان گیری جدید</string>
+		<string name="backups_wat">نسخه های پشتیبان کجا هستند؟</string>
+		
+		<string name="module_install">نصب</string>
+		<string name="module_uninstall">حذف نصب</string>
+		<string name="remove_of_files">حذف فایل های OrangeFox</string>
+		<string name="module_initd">فعال کردن پشتیبانی از init.d</string>
+		<string name="module_of_set">پشتیبان گیری از تنظیمات ریکاوری</string>
+		<string name="module_cam">فعال کردن دوربین2API</string>
+		<string name="module_pass">حذف رمز عبور</string>
+		<string name="module_remove_survival">حذف همه اسکریپت های باقی مانده</string>
+		<string name="fox_files_not_exist_1">فایل وجود ندارد!</string>
+		<string name="fox_files_not_exist_2">لطفاً ریکاوری را از دوباره فلش کنید</string>
+		<string name="fox_files_not_exist_3">استفاده از نصب کردن فایل زیپ.</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">هنگام اجرای بروزرسانی های OTA جزئیات کمتری نشان دهید</string>
+		<string name="fm_icons_simple">نمادهای فایل را بزرگتر کنید</string>
+		<string name="theme_engine_update">اعمال تغییرات و بارگذاری مجدد?</string>
+		<string name="theme_engine_reset">تم بازنشانی و از دوباره بارگذاری شود?</string>
+		<string name="apply_btn">اعمال</string>
+		<string name="theme_hdr">تم</string>
+		
+		<string name="font_small">کوچک</string>
+		<string name="font_norm">معمولی</string>
+		<string name="font_big">بزرگ</string>
+		<string name="font_size">اندازه فونت</string>
+		<string name="cust_autoapply">تم را بدون تأیید اعمال کنید</string>
+		<string name="cust_expand_list">به طور خودکار لیست ها را گسترش دهید</string>
+		
+		<string name="status_battery_style">سبک باتری</string>
+		<string name="status_battery_circle">دایره</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">موقعیت ساعت</string>
+		<string name="status_clock_left">چپ</string>
+		<string name="status_clock_center">وسط</string>
+		<string name="status_clock_right">راست</string>
+		<string name="dark_title">عنوان را تیره تر کنید</string>
+		<string name="separate_status">نوار وضعیت را تیره تر کنید</string>
+		<string name="noshadow_title">نمایش سایه نوار وضعیت</string>
+		<string name="hide_notch">پنهان کردن ناچ</string>
+		<!-- NavBar -->
+		<string name="navbar_title">نوار ناوبری</string>
+		<string name="navbar_onscreen">فعال کردن نوار ناوبری</string>
+		<string name="show_slideout">نمایش دکمه کنسول</string>
+		<string name="dark_nav">تیره</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">صفحه کلید</string>
+		<string name="keyboard_newstyle">سبک تجدید شده</string>
+		<string name="keyboard_nums">ردیف اعداد</string>
+		<string name="key_swipe">برای حذف همه موارد ، صفحه کلید را بکشید</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">باز کردن قفل</string>
+		<string name="lockscreen_title">صفحه قفل</string>
+		<string name="lockscreen_style">سبک صفحه قفل</string>
+		<string name="lockscreen_clock">ساعت</string>
+		<string name="lockscreen_icon">نماد</string>
+		<string name="lockscreen_btn">اسلایدر را با دکمه جایگزین کنید</string>
+		<string name="lockscreen_info">نمایش اطلاعات باتری و پردازنده</string>
+		<string name="lockscreen_quicklock">ضربه زدن روی نماد قفل، صفحه را قفل می کند</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">در حال نصب OTA...</string>
+		<string name="ota_simple_title">در حال بروزرسانی...</string>
+		<string name="ota_simple_log_btn">گزارش</string>
+
+		<string name="battery">باتری</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">کلید اشاره</string>
+		<string name="pass_classic">رمز عبور متنی</string>
+		<string name="pass_dis">رمز عبور را غیرفعال کنید</string>
+		<string name="pass_pin">پین کد</string>
+		
+		<string name="locked_info_1">ریکاوری محافظت می شود در برابر</string>
+		<string name="locked_info_2">دسترسی غیرمجاز.</string>
+		<string name="locked_info_3">برای استفاده از ویژگی های ریکاوری اصلی</string>
+		<string name="locked_info_4">ابتدا باید گذرواژه خود را وارد کنید.</string>
+		<string name="locked_info_4_gk">ابتدا باید کلید اشاره خود را بکشید.</string>
+		
+		<string name="new_pass_info_1">رمز جدید را وارد کنید</string>
+		<string name="new_pass_info_1_gk">برای محافظت ، کلید حرکت جدیدی بکشید</string>
+		<string name="new_pass_info_2">OrangeFox محافظت می شود در برابر غیر مجاز</string>
+		<string name="new_pass_info_3">دسترسی.</string>
+		<string name="new_pass_info_4">شما باید رمز عبور خود را دوبار وارد کنید.</string>
+		<string name="new_pass_info_4_gk">شما باید دو بار کلید حرکت را بکشید.</string>
+		<string name="new_pass_info_4_2">رمز عبور خود را دوباره وارد کنید.</string>
+		<string name="new_pass_info_4_2_gk">دوباره کلید حرکت را بکشید.</string>
+		
+		<string name="pass_page_block">روش مسدود کردن فعلی</string>
+		<string name="pass_page_block_inf1">می توانید بهتر بخوابید با دانستن اینکه</string>
+		<string name="pass_page_block_inf2">شما محافظت می شوید.</string>
+		<string name="pass_page_select">نوع رمز را انتخاب کنید</string>
+		
+		<!-- Utilities -->
+		<string name="more">بیشتر...</string>
+		<string name="hide">پنهان شدن</string>
+		<string name="part_menu_hdr">مدیریت پارتیشن ها</string>
+		<string name="run_adb_startup">هنگام راه اندازی ADB را اجرا کنید</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">فعال</string>
+		<string name="mm_module_mount">رد کردن مونت</string>
+		<string name="mm_modules">ماژول ها</string>
+		<string name="mm_ver">نسخه مجیسک</string>
+		<string name="mm_mod_ver">نسخه ماژول</string>
+		<string name="mm_remove">ماژول بوت بعدی را حذف کنید</string>
+		<string name="mm_remove_hint">راه‌اندازی مجدد کنید تا تغییرات اعمال شوند</string>
+		<string name="mm_remove_reboot">راه اندازی مجدد</string>
+		<string name="magisk_not_found">مجیسک پیدا نشد!</string>
+		<string name="magisk_not_found_1">آیا می خواهید به افزونه های روباه بروید</string>
+		<string name="magisk_not_found_2">و مجیسک از پیش ساخته شده را نصب کنید؟</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">ماژول‌های APatch</string>
+		<string name="ap_ver">نسخه APatch</string>
+		<string name="ksu_modules">ماژول‌های KernelSU</string>
+		<string name="ksu_ver">نسخه KernelSU</string>
+
+		<string name="modules_not_found">هیچ ماژولی یافت نشد!</string>
+		<string name="modules_not_found_1">ماژول‌ها یا نصب نشده‌اند یا نمی‌توانند مونت شوند!</string>
+		<string name="modules_not_found_2">نصب شده یا نمی‌توانند مونت شوند!</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">تنظیمات OTA</string>
+		<string name="fox_miui_ota_on">فعال کردنOTA</string>
+		<string name="fox_ota_on">فعال کردنOTA</string>
+		<string name="fox_patch_rom">پچ کردن رام</string>
+		<string name="fox_ota_lite">OTA &amp; رام</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">سازنده</string>
+		<string name="abt_fd">سازنده تم &amp; طراح</string>
+		<string name="abt_bork">CEO, سایت &amp; طراحی</string>
+		<string name="abt_dj">ساخت سیستم ، سازنده افسانه ای</string>
+		<string name="abt_front">پیش نمای توسعه دهنده</string>
+		<string name="abt_back">باطن توسعه دهنده</string>
+		<string name="abt_device">دستگاه</string>
+		<string name="version_twrp">نسخه OrangeFox</string>
+		<string name="build_type">نوع ساخت</string>
+		<string name="abt_credits">سازندگان</string>
+		<string name="abt_trans">مترجمان</string>
+		<string name="abt_changes">تغییر گزارش</string>
+		<string name="abt_main_shrt">سازنده</string>
+		<string name="welcome_msg">به ریکاوری روباه نارنجی خوش آمدید!</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">به OrangeFox Recovery خوش آمدید!</string>
+		<string name="fox_release">[انتشار]   : {1}</string>
+		<string name="fox_variant">[ورژن]   : {1}</string>
+		<string name="fox_codebase">[پایه کد]  : {1}, {2}</string>
+		<string name="fox_settings">[تنظیمات]  : {1}</string>
+		<string name="fox_misc">[متفرقه]      : {1}</string>
+		<string name="fox_build_date">[تاریخ ساخت]: {1}</string>
+		<string name="fox_build_type_unofficial">[نوع ساخت]: غیر رسمی. پهشتیبانی رسمی برای ساخت‌های غیر رسمی وجود ندارد</string>
+		<string name="fox_build_type">[نوع ساخت]: {1}</string>
+		<string name="fox_support">[پشتیبانی]   : {1}</string>
+		<string name="fox_nosupport">[پشتیبانی]   : هیچ پشتیبانی رسمی برای ساخت‌های ناشناخته وجود ندارد</string>
+		<string name="fox_websites">وبسایت‌های OrangeFox:</string>
+		<string name="fox_downloads">[دانلودها] : {1}</string>
+		<string name="fox_faq">[راهنما/سوالات متداول]: {1}</string>
+		<string name="fox_encrypted">* ذخیره‌سازی رمزگذاری شده است</string>
+		<string name="fox_unencrypted">* ذخیره‌سازی رمزگذاری نشده است</string>
+		<string name="fox_display">* نمایش:    {1}</string>
+		<string name="fox_device">* دستگاه:     {1} ({2})</string>
+		<string name="fox_platform">* پلتفرم:   {1}</string>
+		<string name="fox_dynamic_yes">* پویا:    بله</string>
+		<string name="fox_dynamic_no">* پویا:    خیر</string>
+		<string name="fox_boot_slot">* اسلات بوت:  {1}</string>
+		<string name="fox_vab_yes">* Virtual_AB: بله</string>
+		<string name="fox_vab_no">* Virtual_AB: خیر</string>
+		<string name="fox_kernel">* هسته:     {1}</string>
+		<string name="fox_miui_rom">* روم MIUI (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* روم سفارشی (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* اثر انگشت: {1}</string>
+		<string name="fox_no_rom">* هیچ رومی.</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">پیوند به پوشه</string>
+		<string name="symlink_file_name">پیوند به فایل</string>
+		<string name="symlink_broken_name">پیوند اشتباه</string>
+		<string name="symlink_folder">باز کردن پوشه واقعی</string>
+		<string name="symlink_file">باز کردن فایل واقعی</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">نمایش فایلهای مخفی</string>
+		<string name="files_auto_open">تشخیص خودکار نوع فایل</string>
+		<string name="file_read">خواندن فایل: {1}</string>
+		<string name="file_read_error">فایل باز نمی شود!</string>
+		<string name="file_read_error_size">فایل بزرگتر از 1.5MB است!</string>
+		<string name="file_read_error_bin">نمی‌توان فایل باینری را خواند!</string>
+		<string name="subs_wipe">سطوح زیرین را پاک کنید</string>
+		<string name="sort_ex_all">تمام فایل ها</string>
+		<string name="sort_ex_img">فایل های IMG</string>
+		<string name="sort_ex_zip">فایل های ZIP</string>
+		<string name="aroma_help">برای شروع AromaFM دوباره فشار دهید...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">ذخیره سازی نصب شده است</string>
+		<string name="backups_rw_error_2">فقط برای خواندن!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">برنامه ها</string>
+		<string name="appmgr_title">مدیریت برنامه ها</string>
+
+		<!-- performance -->
+		<string name="perf_title">عملکرد</string>
+		<string name="perf_conf_mode">حالت عملکرد ریکاوری</string>
+		<string name="perf_conf_balance">متعادل</string>
+		<string name="perf_conf_high">کارایی زیاد</string>
+		<string name="perf_conf_batt">ذخیره باتری</string>
+
+		<string name="fox_led_title">تنظیمات نور LED</string>
+		<string name="fox_use_green_led">از رنگ سبز در Led استفاده کنید</string>
+		<string name="fox_boot_fastcharge">شارژ سریع اجباری</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">شما آماده دریافت بروز رسانی ها هستید!</string>
+		<string name="fox_ota_msg_custom">حالت رام سفارشی را فعال شد</string>
+		<string name="fox_ota_msg_reflash">لطفاً رام کامل را فلش کنید!</string>
+		<string name="fox_advanced_stock_recovery">غیرفعال سازی اجباری ریکاوری اصلی</string>
+		<string name="fox_support_miui_ota_chk">پشتیبانی OTA</string>
+		<string name="fox_include_system_survival_chk">شامل سیستم در OTA</string>
+		<string name="fox_verify_incremental_ota_signature_chk">تأیید افزایشی امضای OTA</string>
+		<string name="fox_dmverity_chk">غیر فعال کردن DM-Verity</string>
+		<string name="fox_forced_encryption_chk">غیر فعال کردن رمزگذاری اجباری</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">پس از نصب OTA از راه اندازی مجدد خودکار جلوگیری کنید</string>
+		<string name="of_ota_reboot_disabled">بروز رسانی OTA تکمیل شد. راه اندازی مجدد خودکار را غیرفعال کردید. بازگشت کنترل به شما.</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">توجه: فرمت داده ها به</string>
+		<string name="wipe_format_moved_info2">مدیریت صفحه پارتیشن ها.</string>
+
+		<!-- R11 -->
+		<string name="gst_title">ناوبری با اشاره</string>
+		<string name="gst_enable_all">حرکات را فعال کنید</string>
+		<string name="gst_back">حرکت پشت</string>
+		<string name="gst_back_left">از چپ</string>
+		<string name="gst_back_right">از راست</string>
+		<string name="gst_console_enable">برای باز کردن کنسول ، نوار وضعیت را بکشید</string>
+		<string name="gst_navbar_error">برخی از تنظیمات مخفی هستند.</string>
+		<string name="gst_navbar_error_2">نشان دادن حرکات را غیرفعال کنید.</string>
+
+		<string name="in">در</string>
+		<string name="con_digest_start">[ایجاد خلاصه آغاز شد]</string>
+		<string name="con_digest_error">لیست پارتیشن خالی است!</string>
+		<string name="con_digest_cancel">لغو...</string>
+		<string name="con_digest_complete">[ تولید خلاصه در {1} ثانیه] تکمیل شد</string>
+		<string name="digest_btn">تولید خلاصه</string>
+		<string name="digest_creating">در حال تولید خلاصه...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu فایل ها,</string>
+		<string name="size_progress_v2">%llu/%llu مگابایت (%i%%)</string>
+
+		<string name="navpan_new_design">طراحی جدید پنل ناوبری</string>
+		<string name="full_partition_list">نمایش پارتیشن های اضافی برای پشتیبان گیری</string>
+
+		<string name="data_decrypted_reload">با موفقیت رمزگشایی شد!</string>
+
+		<string name="install_queue_magisk_btn">اضافه کردن مجیسک</string>
+		<string name="hint_ffiles_missing">آیا چیزی را از دست داده اید?</string>
+		<string name="hint_ffiles_missing1">افزونه‌های Fox در دسترس نیستند</string>
+		<string name="hint_ffiles_missing2">OrangeFox نمی‌تواند به فایل‌های خود دسترسی پیدا کند.</string>
+		<string name="hint_ffiles_missing3">سعی کنید /data را مونت کنید یا دوباره نصب کنید</string>
+		<string name="hint_ffiles_missing4">ریکاوری OrangeFox اگر/اطلاعات پاک شد.</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">پنهان کردن نکته</string>
+
+		<string name="info_dir_empty">پوشه خالی است</string>
+		<string name="info_dir_empty_hidden">برخی از فایل ها مخفی هستند</string>
+
+		<string name="navbar_style_line">خط</string>
+		<string name="accent_in_titles">رنگ متن لهجه در عنوان</string>
+
+		<string name="backup_quick_info1">این پارتیشن ها انتخاب خواهند شد</string>
+		<string name="backup_quick_info2">پس از ضربه زدن روی دکمه "پشتیبان گیری سریع"</string>
+		<string name="mbyte">مگابایت</string>
+		<string name="mbytesec">مگ/ثانیه</string>
+		<string name="backup_av_files">فایل</string>
+		<string name="backup_av_img">ایمیج</string>
+		<string name="backup_exp_size">اندازه مورد انتظار</string>
+		<string name="time_minute">دقیقه.</string>
+		<string name="backup_av">زمان متوسط</string>
+		<string name="backup_av1">آیا می خواهید مقادیر سرعت را بازنشانی کنید</string>
+		<string name="backup_av2">به پیش فرض? زمان متوسط</string>
+		<string name="backup_av3">پیش بینی ها دقت کمتری خواهند داشت.</string>
+
+		<string name="cust_line_white">از خط سفید استفاده کنید</string>
+		<string name="cust_line_gray">از خط خاکستری استفاده کنید</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">تعویض اسلات ها</string>
+		<string name="slot_switch_a">تعویض به اسلات A</string>
+		<string name="slot_switch_b">تعویض به اسلات B</string>
+		<string name="slot_active_a">اسلات A فعال است</string>
+		<string name="slot_active_b">اسلات B فعال است</string>
+
+		<string name="theme_font_primary_tab">اولیه</string>
+		<string name="theme_font_secondary_tab">ثانوی</string>
+		<string name="theme_font_size_tab">اندازه</string>
+		<string name="theme_font_select">فونت را انتخاب کنید</string>
+
+		<string name="theme_fweight">وزن قلم</string>
+		<string name="theme_fweight_norm">پیش فرض</string>
+		<string name="theme_fweight_reg">منظم</string>
+		<string name="theme_fweight_med">متوسط</string>
+
+		<string name="swipe_up_to_unlock">برای باز کردن قفل ، صفحه را از پایین به بالا بکشید</string>
+
+		<string name="spl_background">رنگ پس زمینه</string>
+		<string name="spl_logo">لوگو</string>
+		<string name="spl_white">سفید</string>
+		<string name="spl_black">سیاه</string>
+		<string name="spl_night">شب</string>
+		<string name="spl_orange">نارنجی</string>
+		<string name="spl_accent">لهجه</string>
+		<string name="spl_image">تصویر پس زمینه</string>
+		<string name="spl_del_img">حذف تصویر</string>
+		<string name="hidden">مخفی</string>
+		<string name="spl_ofr">برچسب "ریکاوری OrangeFox"</string>
+
+		<string name="batch_selected">%of_batch_count% انتخاب شده</string>
+		<string name="batch_title">اقدامات دسته ای</string>
+		<string name="batch_files_folders">فایل ها &amp; پوشه ها</string>
+
+		<string name="fm_action_folder">اقدامات روی این پوشه</string>
+
+		<string name="tap_to_generate">برای محاسبه اینجا ضربه بزنید</string>
+		<string name="calc_checksum">در حال محاسبه...</string>
+		<string name="cant_access_data">دسترسی به اطلاعات امکان پذیر نیست. پارتیشن اطلاعات را به صورت دستی نصب کنید.</string>
+
+		<string name="backup_pass_wait">در حال تغییر رمز عبور...</string>
+		<string name="pass_encrypt_error1">نمی توانید رمز عبور را تغییر دهید</string>
+		<string name="pass_encrypt_error2">وقتی اطلاعات رمزگذاری می شوند!</string>
+
+		<string name="backup_encrypt_data_info">فقط پارتیشن اطلاعات رمزگذاری می شود</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">نصب Ramdisk</string>
+		<string name="img_type">نوع ایمیج</string>
+		<string name="img_select_type">انتخاب نوع ایمیج</string>
+		<string name="repack_overwrite_warning">اگر دستگاه قبلاً روت شده بود، روت بازنویسی شده و نیاز به نصب مجدد دارد.</string>		
+
+		<string name="repack_backup_first">ابتدا از ایمیج موجود نسخه پشتیبان تهیه کنید</string>
+
+		<string name="unpack_error">خطا در استخراج ایمیج.</string>
+		<string name="repack_error">خطا در فشرده سازی مجدد فایل ایمیج.</string>
+		<string name="unpacking_image">در حال استخراج {1}...</string>
+		<string name="repacking_image">درحال بسته بندی مجدد {1}...</string>
+		
+		<string name="fix_recovery_loop">رفع مشکل بوت لوپ ریکاوری</string>
+		<string name="fixing_recovery_loop">در حال رفع مشکل بوت لوپ ریکاوری...</string>
+		<string name="fix_recovery_loop_complete">رفع مشکل بوت لوپ ریکاوری انجام شد</string>
+		<string name="fixing_recovery_loop_patch">در حال پچ کردن کرنل...</string>
+		<string name="fix_recovery_loop_patch_error">خطا در پچ کردن کرنل.</string>
+		<string name="try_app">برنامه ما را امتحان کنید!</string>
+		<string name="try_app_2">با استفاده از برنامه جدید ما بروزرسانی های ریکاوری را</string>
+		<string name="try_app_3">برنامه جدید! </string>
+		<string name="try_app_4">لینک بارگیری:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">ویرایش فایل به صورت نانو</string>
+		<string name="fm_open_terminal_btn">پایانه را اینجا باز کنید</string>
+		<string name="batch_progress">پردازش</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">تنظیمات سفارشی برای
+%fox_compatibility_fox_device%</string>
+		<string name="custom_settings_title">تنظیمات سفارشی</string>
+		<string name="tap_to_show">برای نمایش ضربه بزنید</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">ماشه مهمانی نجات اندروید! راه حل های ممکن? یا:</string>
+		<string name="rescue_party1"> 1. پاک کردن حافظه پنهان ، و/یا</string>
+		<string name="rescue_party2"> 2. پاک کردن حافظه پنهان ، و/یا</string>
+		<string name="rescue_party3"> 3. رام خود را تمیز فلش کنید.</string>
+		<string name="rescue_party4">مشکل گزارش شده این است:</string>
+
+		<string name="restore_system_context">امکان دریافت زمینه پیش فرض برای {1} وجود ندارد - ممکن است اندروید بوت نشود.</string>
+		
+		<string name="batch_progress">پردازش</string>
+		<string name="recovery_busy">ریکاوری مشغول است</string>
+		<string name="status_delimeter">جدا کننده نوار وضعیت</string>
+		<string name="status_delimeter_shadow">سایه</string>
+
+		<string name="mount_vab_partitions">دستگاه‌های روی سوپر ممکن است تا پس از راه‌اندازی مجدد بازیابی مونت نشوند.</string>
+		<string name="merges_snapshots">ادغام اسنپ‌شات‌ها</string>
+		<string name="merging_snapshots">در حال ادغام اسنپ‌شات‌ها...</string>
+		<string name="merging_snapshots_complete">اسنپ‌شات‌ها ادغام شدند</string>
+		
+		<string name="unmap_super_devices">حذف مپ سوپر دستگاه‌ها</string>
+		<string name="unmapping_super_devices">در حال حذف مپ سوپر دستگاه‌ها...</string>
+		<string name="unmap_super_devices_complete">همه سوپر دستگاه‌ها حذف مپ شدند</string>
+
+		<string name="auto_reflashtwrp_chk">پس از فلش کردن روم، OrangeFox را دوباره فلش کنید</string>
+		<string name="modified_ramdisk_error">فایل‌های ramdisk تغییر کرده‌اند، نمی‌توان ramdisk را برای فلش ایجاد کرد. fastboot boot OrangeFox و دوباره این گزینه را امتحان کنید یا به فایل‌ها برگردید و فایل img را به عنوان Recovery Ramdisk با استفاده از دکمه Install Ramdisk نصب کنید.</string>
+		<string name="create_ramdisk_error">نشست در ایجاد ramdisk برای فلش.</string>
+		<string name="reflash_twrp">فلش OrangeFox فعلی</string>
+		<string name="reflashing_twrp">در حال فلش کردن OrangeFox...</string>
+		<string name="reflash_twrp_complete">فلش کردن OrangeFox انجام شد</string>
+
+		<string name="auto_disable_avb2">غیر فعال کردن vbmeta AVB2.0 پس از فلش روم</string>
+		<string name="disable_avb2">غیر فعال کردن vbmeta AVB2.0</string>
+		<string name="disable_avb2_confirm">غیر فعال کردن vbmeta AVB2.0؟</string>
+		<string name="disabling_AVB2">در حال غیر فعال کردن vbmeta AVB2.0...</string>
+		<string name="disabling_AVB2_complete">vbmeta AVB2.0 غیر فعال شده است!</string>
+		<string name="disable_avb2_success_msg">غیر فعال کردن vbmeta AVB2.0: پردازش '{1}' با موفقیت انجام شد.</string>
+		<string name="disable_avb2_fail_msg">غیر فعال کردن vbmeta AVB2.0: پردازش '{1}' شکست خورد!</string>
+
+		<string name="enable_hw_control">کنترل GUI سخت‌افزاری</string>
+		<string name="enable_hw_control_1">این امکان پیمایش از طریق</string>
+		<string name="enable_hw_control_2">اینترفیس با استفاده از سخت‌افزار</string>
+		<string name="enable_hw_control_3">دکمه‌های حجم و قدرت.</string>
+		<string name="enable_hw_control_4">حرکات غیرفعال خواهند شد. ادامه دهیم؟</string>
+	</resources>
+</language>

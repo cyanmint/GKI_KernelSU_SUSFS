@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<recovery>
+	<variables>
+		<variable name="navbar_disable" value="#NAVBAR_DISABLE#"/>
+		<variable name="navbar_disable_add" value="#NAVBAR_DISABLE_ADD#"/>
+		<variable name="screen_h" value="#SCREEN_H#"/>
+		<variable name="real_gestures_enable" value="#RGE#"/>
+	</variables>
+</recovery>

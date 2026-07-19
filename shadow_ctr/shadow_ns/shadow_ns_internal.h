@@ -28,11 +28,32 @@
 #define SHADOW_NS_MAX_NS		65536
 
 /*
- * SHADOW_NS_BUILTIN_FLAGS - the CLONE_NEW* bits this kernel build already
- * implements for real, evaluated from the same CONFIG_* symbols the kernel
+ * SHADOW_NS_BUILTIN_FLAGS_COMPILETIME - the CLONE_NEW* bits this module was
+ * *compiled* against, evaluated from the same CONFIG_* symbols the kernel
  * build system generates for this module (i.e. this module's own
  * include/generated/autoconf.h, which matches the vmlinux it is built
  * against — see ../shadow_ctr_checker for the same IS_ENABLED() pattern).
+ *
+ * IMPORTANT: this is only ever used as the *compile-time* half of the real,
+ * runtime-computed shadow_ns_clone_flags (see shadow_ns_module.c's
+ * shadow_ns_compute_clone_flags()), never on its own to decide what to
+ * simulate. The module this file's build produces is routinely loaded into
+ * a kernel whose actual running .config differs from the one it was built
+ * against (e.g. this module family is built once via a fixed-KMI DDK
+ * container matching the production/containerd-enabled kernel, but is also
+ * tested against, and may be loaded into, a stock/unmodified GKI kernel that
+ * lacks CONFIG_IPC_NS/CONFIG_POSIX_MQUEUE-derived namespace support). Using
+ * IS_ENABLED(CONFIG_IPC_NS) alone to decide whether to simulate CLONE_NEWIPC
+ * previously caused a real bug: it wrongly assumed IPC namespaces were
+ * builtin (matching the DDK build config) and left unshare(CLONE_NEWIPC)
+ * completely untouched, so on a stock kernel that genuinely lacks
+ * CONFIG_IPC_NS the real syscall failed with -EINVAL and shadow_ns never
+ * fell back to its own simulation. shadow_ns_compute_clone_flags() fixes
+ * this by re-checking each type's real availability *at module load time*,
+ * against the kernel actually running, via shadow_hook_resolve() lookups of
+ * a canary symbol that only exists when the corresponding obj-$(CONFIG_*_NS)
+ * kernel object is actually linked into the running vmlinux (see
+ * shadow_ns_module.c for the exact symbol list and citations).
  *
  * CLONE_NEWNS (mount namespaces) has no dedicated per-type Kconfig gate
  * anywhere in mainline Linux (unlike UTS/IPC/USER/PID/NET, which each have
@@ -45,17 +66,22 @@
  * `default !EXPERT`, i.e. effectively always on, so this is a defensive
  * fallback for a hypothetical/non-standard build with CONFIG_NAMESPACES=n
  * rather than something expected to ever trigger in practice. If it is off,
- * MNT drops out of SHADOW_NS_BUILTIN_FLAGS and gets exactly the same
+ * MNT drops out of the builtin set and gets exactly the same
  * reference-counted bookkeeping-only fallback as IPC/NET/CGROUP below (the
  * alloc/unshare/clone/setns machinery is already fully generic over "type",
  * so no MNT-specific payload/code path is needed) -- it does NOT mean the
  * real, compiled-in mount-namespace machinery in fs/namespace.c stops
  * working; it means shadow_ns additionally maintains its own bookkeeping
- * registry entry for it, same as it would for IPC/NET/CGROUP.
+ * registry entry for it, same as it would for IPC/NET/CGROUP. MNT and
+ * CGROUP are left compile-time-only (no runtime canary) since both their
+ * gating symbols (CONFIG_NAMESPACES, CONFIG_CGROUPS) are effectively always
+ * on for every kernel this module targets and neither has been observed to
+ * differ between the build-time and run-time kernel the way IPC/PID/USER
+ * did.
  * CLONE_NEWCGROUP only requires CONFIG_CGROUPS=y (every GKI defconfig sets
  * this), so CONFIG_CGROUPS is used as its proxy, matching shadow_ctr_checker.
  */
-#define SHADOW_NS_BUILTIN_FLAGS ( \
+#define SHADOW_NS_BUILTIN_FLAGS_COMPILETIME ( \
 	(IS_ENABLED(CONFIG_UTS_NS)  ? (unsigned long)CLONE_NEWUTS    : 0UL) | \
 	(IS_ENABLED(CONFIG_IPC_NS)  ? (unsigned long)CLONE_NEWIPC    : 0UL) | \
 	(IS_ENABLED(CONFIG_NAMESPACES) ? (unsigned long)CLONE_NEWNS : 0UL) | \
@@ -70,12 +96,16 @@
 				CLONE_NEWUSER | CLONE_NEWCGROUP))
 
 /*
- * SHADOW_NS_SHADOW_CLONE_FLAGS - the CLONE_NEW* bits shadow_ns still needs to
- * simulate: exactly the ones NOT already builtin on this kernel. On the
- * expected production build (containerd support => every type builtin) this
- * is 0 and every hook below is a pure passthrough to the real syscall.
+ * shadow_ns_clone_flags - the CLONE_NEW* bits shadow_ns still needs to
+ * simulate on *this* running kernel: exactly the ones NOT actually
+ * available at runtime (see shadow_ns_compute_clone_flags(), called once
+ * from shadow_ns_init() before any hook is installed). On the expected
+ * production build/deploy combination (containerd support => every type
+ * builtin on both ends) this is 0 and every hook below is a pure
+ * passthrough to the real syscall.
  */
-#define SHADOW_NS_SHADOW_CLONE_FLAGS (SHADOW_NS_ALL_FLAGS & ~SHADOW_NS_BUILTIN_FLAGS)
+extern unsigned long shadow_ns_clone_flags;
+unsigned long shadow_ns_compute_clone_flags(void);
 #define SHADOW_NS_REAP_INTERVAL	(30 * HZ)
 
 struct shadow_uts_priv {

@@ -1,0 +1,430 @@
+<?xml version="1.0"?>
+<recovery>
+	<pages>
+		<page name="modules_mount">
+			<template name="base"/>
+			<template name="dialog_body"/>
+
+			<text style="text_status">
+				<placement x="%center_x%" y="%center_y%" placement="5"/>
+				<text>{@lang_wait}</text>
+			</text>
+
+			<action>
+				<condition var1="rmm_type" var2="magisk"/>
+				<action function="set">rmm_name=Magisk Manager</action>
+				<action function="set">rmm_type_ver={@mm_ver}</action>
+				<action function="ftls">
+					prop="%magisk_path%/util_functions.sh"
+					found="twrp xset rmm_found="
+  
+					if [ ! -d "%rmm_path%" ] || [ ! -f "$prop" ]
+					then ${found}0; exit 1; else ${found}1; fi
+					
+					ver=$(cat "$prop" | grep "MAGISK_VER=" | cut -d'=' -f2 | sed 's*"**g')
+					ver_code=$(cat "$prop" | grep "MAGISK_VER_CODE=" | cut -d'=' -f2 | sed 's*"**g')
+					twrp xset rmm_ver="$ver ($ver_code)"
+				</action>
+			</action>
+
+			<action>
+				<condition var1="rmm_type" var2="ap"/>
+				<action function="set">rmm_type_path=%ap_path%</action>
+				<action function="set">rmm_name={@ap_modules}</action>
+				<action function="set">rmm_type_ver={@ap_ver}</action>
+				<action function="ftls">twrp xset rmm_ver=$(%ap_path%/bin/apd -V | awk '{print $2}')</action>
+				<action function="set">need_mount=1</action>
+			</action>
+
+			<action>
+				<condition var1="rmm_type" var2="ksu"/>
+				<action function="set">rmm_type_path=%ksu_path%</action>
+				<action function="set">rmm_name={@ksu_modules}</action>
+				<action function="set">rmm_type_ver={@ksu_ver}</action>
+				<action function="ftls">twrp xset rmm_ver=$(%ksu_path%/bin/ksud -V | awk '{print $2}')</action>
+				<action function="set">need_mount=1</action>
+			</action>
+
+			<action>
+				<condition var1="need_mount" var2="1"/>
+				<condition var1="tw_action_thread_running" var2="0"/>
+				<action function="set">need_mount=0</action>
+				<action function="ftls">
+					modules="%rmm_type_path%/modules.img"
+					modules_update="%rmm_type_path%/modules_update.img"
+					found="twrp xset rmm_found="
+					image_mounted="twrp xset rmm_image="
+
+					mount | grep "%rmm_path%";
+					if [ $? -eq 0 ]; then
+						${found}1;
+						exit 0;
+					fi
+
+					if [ -f "$modules_update" ]; then
+						mkdir -p "%rmm_path%";
+						mount -t auto $modules_update "%rmm_path%";
+						if [ $? -eq 0 ]; then
+							${found}1;
+							${image_mounted}1;
+						else
+							${found}0;
+							exit 1;
+						fi
+					elif [ -f "$modules" ]; then
+						mkdir -p "%rmm_path%";
+						mount -t auto $modules "%rmm_path%";
+						if [ $? -eq 0 ]; then
+							${found}1;
+							${image_mounted}1;
+						else
+							${found}0;
+							exit 1;
+						fi
+					elif [ -n "$(find "%rmm_path%" -mindepth 1 -maxdepth 1 -type d)" ]; then
+						${found}1;
+						${image_mounted}0;
+					else
+						${found}0;
+						exit 1;
+					fi
+				</action>
+			</action>
+
+			<action>
+				<condition var1="ftls_running" var2="0"/>
+				<condition var1="rmm_found" op="modified"/>
+				<condition var1="rmm_found" var2="1"/>
+				<action function="set">rmm_found=-1</action>
+				<action function="page">root_modules</action>
+			</action>
+
+			<action>
+				<condition var1="ftls_running" var2="0"/>
+				<condition var1="rmm_found" op="modified"/>
+				<condition var1="rmm_found" op="!=" var2="1"/>
+				<condition var1="rmm_type" op="!=" var2="magisk"/>
+				<action function="overlay">dialog_modules_cannot_mount</action>
+				<action function="page">advanced</action>
+			</action>
+
+			<action>
+				<condition var1="ftls_running" var2="0"/>
+				<condition var1="rmm_found" op="modified"/>
+				<condition var1="rmm_found" op="!=" var2="1"/>
+				<condition var1="rmm_type" var2="magisk"/>
+				<action function="overlay">dialog_magisk_not_found</action>
+				<action function="page">advanced</action>
+			</action>
+		</page>
+
+		<page name="modules_unmount">
+			<action>
+				<condition var1="rmm_image" var2="1"/>
+				<action function="set">rmm_image=0</action>
+				<action function="ftls">
+						mount | grep "%rmm_path%";
+						if [ $? -eq 0 ]; then
+							umount "%rmm_path%";
+							exit 0;
+						fi
+				</action>
+			</action>
+
+			<action>
+				<action function="page">%after_unmount%</action>
+			</action>
+		</page>
+
+		<page name="root_modules">
+			<template name="base"/>
+
+			<text style="text_ab_title">
+				<placement x="%col1_x_indent%" y="%ab_bc_y%"/>
+				<text>%rmm_name%</text>
+			</text>
+
+			<button style="actionbar">
+				<placement x="%ab_btn1_x%" y="%ab_y%" placement="4"/>
+				<condition var1="rmm_type" var2="magisk"/>
+				<condition var1="fileexists" var2="%fox_magisk_path%/%fox_magisk_uninstaller%"/>
+				<action function="set">install_back=modules_mount</action>
+				<action function="page">mod_unmagisk</action>
+			</button>
+
+			<image>
+				<condition var1="rmm_type" var2="magisk"/>
+				<condition var1="fileexists" var2="%fox_magisk_path%/%fox_magisk_uninstaller%"/>
+				<placement x="%ab_btn1_x%" y="%ab_y%" placement="4"/>
+				<image resource="actionbar_delete"/>
+			</image>
+
+			<text style="text_ab_title">
+				<placement x="%center_x%" y="%ab_bc2_y%" placement="5"/>
+				<text>%rmm_type_ver%: %rmm_ver%</text>
+			</text>
+
+			<button style="menu_btn">
+				<condition var1="fileexists" var2="%fox_magisk_path%/%fox_magisk_zip_installer%"/>
+				<condition var1="rmm_type" var2="magisk"/>
+				<placement x="0" y="%ab_bc2_y%" w="%screen_w%" h="%mb_h_hide%"/>
+				<action function="set">install_back=modules_mount</action>
+				<action function="page">mod_magisk</action>
+			</button>
+
+			<text style="caption">
+				<placement x="%gl_text_x%" y="%row1_3_y%"/>
+				<text>{@mm_modules}</text>
+			</text>
+
+			<fileselector style="fileselector_b">
+				<condition var1="list_font" var2="1"/>
+				<placement x="0" y="%row2_1_y%" w="%fileselector_width%" h="%magisk_list_h%"/>
+				<sort name="0"/>
+				<icon folder="module_icon" file="module_icon" />
+				<filter folders="1" files="0" nav="0" hidden="1"/>
+				<path name="rmm_path" default="/data/adb/modules"/>
+				<data name="rmm_file"/>
+				<selection name="rmm_select"/>
+			</fileselector>
+
+			<fileselector style="fileselector_s">
+				<condition var1="list_font" op="!=" var2="1"/>
+				<placement x="0" y="%row2_1_y%" w="%fileselector_width%" h="%magisk_list_h%"/>
+				<sort name="0"/>
+				<iconsize w="%col1_x_indent%" h="90" padding="25"/>
+				<icon folder="module_icon_small" file="module_icon_small" />
+				<filter folders="1" files="0" nav="0" hidden="1"/>
+				<path name="rmm_path" default="/data/adb/modules"/>
+				<data name="rmm_file"/>
+				<selection name="rmm_select"/>
+			</fileselector>
+
+			<action>
+				<condition var1="rmm_file" op="modified"/>
+				<action function="ftls">
+					set="twrp xset mmodule_"
+					prop(){ twrp xset ft_mm_${1}="$(cat "%rmm_file%/module.prop" | grep "${1}=" | cut -d'=' -f2)"; }
+					stat(){ if [ -f "%rmm_file%/${1}" ]; then ${set}${1}=1; else ${set}${1}=0; fi; }
+
+					prop name; prop author; prop version; stat disable; stat skip_mount; stat remove;
+				</action>
+				<action function="page">module_actions</action>
+			</action>
+
+			<template name="gestures"/>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+
+			<action>
+				<touch key="back"/>
+				<action function="set">after_unmount=advanced</action>
+				<action function="page">modules_unmount</action>
+			</action>
+		</page>
+
+		<page name="module_actions">
+
+			<!-- Enabled -->
+			<image>
+				<condition var1="mmodule_disable" op="!=" var2="1"/>
+				<placement x="40" y="%ab_ex_h%"/>
+				<image resource="main_switch_card_active" />
+			</image>
+
+			<image style="switch_on">
+				<condition var1="mmodule_disable" op="!=" var2="1"/>
+				<placement x="%main_switch_icon_x%" y="%ab3_y%" placement="4"/>
+			</image>
+
+			<text style="text_ab_switch_on">
+				<condition var1="mmodule_disable" op="!=" var2="1"/>
+				<placement x="%switch_text_x%" y="%ab_bc3_y%"/>
+				<text>{@mm_module_active}</text>
+			</text>
+
+			<!-- Disabled -->
+			<image>
+				<condition var1="mmodule_disable" var2="1"/>
+				<placement x="40" y="%ab_ex_h%"/>
+				<image resource="main_switch_card_not_active" />
+			</image>
+
+			<image style="switch_off">
+				<condition var1="mmodule_disable" var2="1"/>
+				<placement x="%main_switch_icon_x%" y="%ab3_y%" placement="4"/>
+			</image>
+
+			<text style="text_ab_switch_off">
+				<condition var1="mmodule_disable" var2="1"/>
+				<placement x="%gl_text_x%" y="%ab_bc3_y%"/>
+				<text>{@mm_module_active}</text>
+			</text>
+
+			<!-- Both enabled and disabled -->
+			<button style="bs_btn">
+				<placement x="0" y="%ab_ex_h%" w="%screen_w%" h="%ab_btn_h%"/>
+				<action function="ftls">
+					file="%rmm_file%/disable"
+					var="twrp xset mmodule_disable="
+
+					if [ -f "$file" ]; then rm "$file" &amp;&amp; ${var}0
+					else touch "$file" &amp;&amp; ${var}1; fi
+				</action>
+			</button>
+
+			<template name="base_ex"/>
+
+			<text style="text_ab_title">
+				<placement x="%col1_x_indent%" y="%ab_bc_y%"/>
+				<text>%rmm_name%</text>
+			</text>
+
+			<text style="text_ab_title">
+				<placement x="%col1_x%" y="%row1_2_y%" placement="2"/>
+				<text>%ft_mm_name%</text>
+			</text>
+
+			<text style="text_ab_subtitle">
+				<placement x="%col1_x%" y="%row1_2_y%"/>
+				<text>%ft_mm_author%</text>
+			</text>
+
+			<text style="caption">
+				<placement x="%gl_text_x%" y="%row3_1_y%"/>
+				<text>{@mm_mod_ver}</text>
+			</text>
+
+			<text style="text_body1">
+				<placement x="%gl_text_x%" y="%row3_2_y%"/>
+				<text>%ft_mm_version%</text>
+			</text>
+
+			<text style="caption">
+				<placement x="%gl_text_x%" y="%row4_1_y%"/>
+				<text>{@fm_path2}</text>
+			</text>
+
+			<text style="text_body1">
+				<placement x="%gl_text_x%" y="%row4_2_y%"/>
+				<text>%rmm_file%</text>
+			</text>
+
+			<button style="menu_btn">
+				<placement x="%gl_text_x%" y="%row4_1_y%" w="%input_w%" h="%mb_h_hide%"/>
+				<action function="set">tw_file_location1=%rmm_file%</action>
+				<action function="set">tw_reload_fm=1</action>
+				<action function="page">filemanagerlist</action>
+			</button>
+
+			<text style="caption">
+				<placement x="%gl_text_x%" y="%row5_1_y%"/>
+				<text>{@cust_oth}</text>
+			</text>
+
+			<listbox style="settingslist_group">
+				<placement x="0" y="%row5_2_y%" w="%screen_w%" h="%lb_group_l2%"/>
+				<listitem name="{@mm_module_mount}">
+					<condition var1="mmodule_skip_mount" op="!=" var2="0"/>
+					<icon res="checkbox_true"/>
+					<action function="ftls">rm "%rmm_file%/skip_mount" &amp;&amp; twrp xset mmodule_skip_mount=0</action>
+				</listitem>
+				<listitem name="{@mm_module_mount}">
+					<condition var1="mmodule_skip_mount" var2="0"/>
+					<icon res="checkbox_false"/>
+					<action function="ftls">touch "%rmm_file%/skip_mount" &amp;&amp; twrp xset mmodule_skip_mount=1</action>
+				</listitem>
+				<listitem name="{@mm_remove}">
+					<condition var1="mmodule_remove" op="!=" var2="0"/>
+					<icon res="checkbox_true"/>
+					<action function="ftls">rm "%rmm_file%/remove" &amp;&amp; twrp xset mmodule_remove=0</action>
+				</listitem>
+				<listitem name="{@mm_remove}">
+					<condition var1="mmodule_remove" var2="0"/>
+					<icon res="checkbox_false"/>
+					<action function="page">module_delete</action>
+				</listitem>
+			</listbox>
+
+			<image>
+				<image resource="snackbar"/>
+				<condition var1="mmodule_remove" op="!=" var2="0"/>
+				<placement x="0" y="%row_nav_y%" placement="2"/>
+			</image>
+			
+			<text style="text_body1">
+				<condition var1="mmodule_remove" op="!=" var2="0"/>
+				<placement x="%snackbar_text_x%" y="%snackbar_text_y%"/>
+				<text>{@mm_remove_hint}</text>
+			</text>
+
+			<button style="btn_dlg_hl">
+				<condition var1="mmodule_remove" op="!=" var2="0"/>
+				<condition var1="tw_reboot_system" var2="1"/>
+				<placement x="%snackbar_button_x%" y="%snackbar_button_y%"/>
+				<text>{@mm_remove_reboot}</text>
+				<action function="set">tw_back=main</action>
+				<action function="overlay">reboot</action>
+			</button>
+
+			<template name="gestures"/>
+
+			<action>
+				<touch key="home"/>
+				<action function="set">after_unmount=main</action>
+				<action function="page">modules_unmount</action>
+			</action>
+
+			<action>
+				<touch key="back"/>
+				<action function="page">root_modules</action>
+			</action>
+		</page>
+
+		<page name="module_delete">
+				<template name="base_ex"/>
+
+				<text style="text_ab_title">
+					<placement x="%col1_x_indent%" y="%ab_bc_y%"/>
+					<text>%rmm_name%</text>
+				</text>
+
+				<text style="text_ab_title">
+					<placement x="%col1_x%" y="%row1_2_y%" placement="2"/>
+					<text>{@fm_delete_btn}</text>
+				</text>
+
+				<text style="text_ab_subtitle">
+					<placement x="%col1_x%" y="%row1_2_y%"/>
+					<text>%ft_mm_name%</text>
+				</text>
+
+				<text style="caption">
+					<placement x="%center_x%" y="%slider_text_y%" placement="5"/>
+					<text>{@swipe_delete}</text>
+				</text>
+
+				<slider style="slider_action">
+					<placement x="%center_x%" y="%slider_y%" placement="5"/>
+					<action function="ftls">touch "%rmm_file%/remove" &amp;&amp; twrp xset mmodule_remove=1</action>
+					<action function="page">module_actions</action>
+				</slider>
+
+				<template name="gestures"/>
+
+				<action>
+					<touch key="home"/>
+					<action function="set">after_unmount=main</action>
+					<action function="page">modules_unmount</action>
+				</action>
+
+				<action>
+					<touch key="back"/>
+					<action function="page">module_actions</action>
+				</action>
+			</page>
+	</pages>
+</recovery>

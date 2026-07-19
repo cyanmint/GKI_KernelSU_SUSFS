@@ -1,0 +1,22 @@
+# Kernel Module Loading for TWRP Recovery
+# Ensures critical kernel modules are loaded early
+# Missing modules can cause splash screen hangs
+
+on early-init
+    # Load display/graphics modules if present
+    insmod /vendor/lib/modules/msm_drm.ko
+    insmod /vendor/lib/modules/panel.ko
+    insmod /vendor/lib/modules/display.ko
+    
+on init
+    # Load touch/input modules
+    insmod /vendor/lib/modules/focaltech_fts.ko
+    insmod /vendor/lib/modules/goodix_core.ko
+    insmod /vendor/lib/modules/xiaomi_touch.ko
+    
+    # Load USB/ADB modules
+    insmod /vendor/lib/modules/usb_f_fs.ko
+    insmod /vendor/lib/modules/usb_f_mtp.ko
+    
+on post-fs
+    exec - root root -- /system/bin/log -t TWRP "Kernel modules loading attempted"

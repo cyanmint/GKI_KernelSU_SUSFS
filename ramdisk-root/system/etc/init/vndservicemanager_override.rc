@@ -1,0 +1,13 @@
+# Override vndservicemanager configuration for OrangeFox Recovery
+# This file prevents vndservicemanager auto-start during init to avoid crypto deadlock
+
+service vndservicemanager /system/bin/vndservicemanager /dev/vndbinder
+    user root
+    group root readproc
+    disabled
+    seclabel u:r:recovery:s0
+    writepid /dev/cpuset/system-background/tasks
+
+# Do not auto-start vndservicemanager during init
+# on init
+#     start vndservicemanager

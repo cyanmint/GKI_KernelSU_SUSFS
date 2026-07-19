@@ -1,0 +1,21 @@
+# SELinux Permissive Mode for Recovery
+# Prevents SELinux denials from blocking critical recovery operations
+# Common cause of splash screen hangs when services are denied
+
+on early-init
+    # Set SELinux to permissive mode for recovery
+    # This prevents SELinux denials from blocking boot
+    write /sys/fs/selinux/enforce 0
+    
+on init
+    # Ensure SELinux stays permissive
+    write /sys/fs/selinux/enforce 0
+    
+on post-fs
+    # Final check - keep SELinux permissive
+    write /sys/fs/selinux/enforce 0
+    exec - root root -- /system/bin/log -t TWRP "SELinux set to permissive mode"
+
+on boot
+    # Maintain permissive mode during boot
+    write /sys/fs/selinux/enforce 0

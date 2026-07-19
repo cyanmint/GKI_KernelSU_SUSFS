@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<recovery>
+	<resources>
+		<!-- Controls -->
+		<image name="radio_true" filename="SVG/Controls/radio_true_d.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="checkbox_true" filename="SVG/Controls/checkbox_true_d.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="slider_used" filename="SVG/Controls/slider_used.svg" tint="#COLOR#"/>
+		<image name="handle" filename="SVG/Controls/handle.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="handle_h" filename="SVG/Controls/handle_h.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="handle_h_classic" filename="SVG/Controls/handle_h_classic.svg" retainaspect="1" tint="#COLOR#"/>
+
+		<!-- Info -->
+		<image name="icon_info" filename="SVG/Info/icon_info.svg" retainaspect="1" tint="#COLOR#"/>
+
+		<!-- Keyboard -->
+		<image name="enter" filename="SVG/Keyboard/enter.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="enter_new" filename="SVG/Keyboard/enter_new.svg" retainaspect="1" tint="#COLOR#"/>
+		<image name="enter_num_new" filename="SVG/Keyboard/enter_num_new.svg" retainaspect="1" tint="#COLOR#"/>
+	</resources>
+	<variables>
+		<variable name="accent" value="#COLOR#"/>
+		<variable name="theme_accent_light" value="#COLOR_LIGHT#"/>
+		<variable name="theme_accent_dark" value="#COLOR_DARK#"/>
+		<variable name="theme_accent" value="#ACCENT_NAME#"/>
+	</variables>
+</recovery>

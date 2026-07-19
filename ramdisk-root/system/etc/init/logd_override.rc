@@ -1,0 +1,11 @@
+# Disable logd service in TWRP Recovery
+# The logd service crashes in recovery because task_profiles.json is missing
+# This prevents the boot-blocking crash loop
+
+service logd /system/bin/logd
+    disabled
+    # Don't auto-start in recovery - causes crash loop
+    
+# Prevent auto-start at any boot stage
+# on init
+#     start logd

@@ -1,0 +1,1256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language>
+	<display>Nederlands</display>
+
+	<resources>
+		<!-- Font overrides - only change these if your language requires special characters -->
+
+		<!-- Partition display names -->
+		<string name="system">Systeem</string>
+		<string name="system_image">Systeem image</string>
+		<string name="vendor">Leverancier</string>
+		<string name="vendor_image">Leveranciers image</string>
+		<string name="boot">Opstarten</string>
+		<string name="recovery">Recovery</string>
+		<string name="cache">Cache</string>
+		<string name="data">Data</string>
+		<string name="sdcard">SD-Kaart</string>
+		<string name="internal">Intern geheugen</string>
+		<string name="microsd">Micro SD-Kaart</string>
+		<string name="usb_storage">USB-Opslag</string>
+		<string name="android_secure">Beveiligde Android</string>
+		<string name="dalvik">Dalvik / ART Cache</string>
+		<!-- This is a rarely used partition on a Micro SD card for a very old app2sd system -->
+		<string name="sdext">SD-EXT</string>
+		<string name="adopted_data">Geadopteerde Data</string>
+		<string name="adopted_storage">Geadopteerde opslag</string>
+
+		<!-- GUI XML strings -->
+		<string name="twrp_watch_header">OrangeFox %fox_actual_build%</string>
+		<string name="cpu_temp">CPU: %tw_cpu_temp% &#xB0;C</string>
+		<string name="sort_by_name_asc">Naam</string>
+		<string name="sort_by_date_asc">Datum</string>
+		<string name="sort_by_size_asc">Grootte</string>
+		<string name="sort_by_name_desc">Naam</string>
+		<string name="sort_by_date_desc">Datum</string>
+		<string name="sort_by_size_desc">Grootte</string>
+		<string name="install_btn">Installeren</string>
+		<string name="wipe_btn">Wissen</string>
+		<string name="backup_btn">Back-ups</string>
+		<string name="restore_btn">Herstellen</string>
+		<string name="mount_btn">Mount</string>
+		<string name="file_manager_btn">Bestanden</string>
+		<string name="advanced_btn">Geavanceerd</string>
+		<string name="reboot_btn">Herstarten</string>
+		<string name="copy_log_btn">Log kopiëren naar SD-kaart</string>
+		<string name="install_zip_hdr">ZIP installeren</string>
+		<string name="install_zip_btn">ZIP installeren</string>
+		<string name="install_image_hdr">Image installeren</string>
+		<string name="install_image_btn">Image installeren</string>
+		<string name="install_select_file_hdr">Bestand selecteren</string>
+		<string name="install_select_file_btn">Bestand selecteren</string>
+		<string name="adb_sideload_btn">ADB &amp; Sideload</string>
+		<string name="select_storage_hdr">Opslag kiezen</string>
+		<string name="select_storage_btn">Opslag kiezen</string>
+		<string name="queue_hdr">Wachtrij</string>
+		<string name="raised_clearqueue_btn">Wachtrij wissen</string>
+		<string name="raised_viewqueue_btn">Bekijk wachtrij</string>
+		<string name="zip_queue_count">%tw_zip_queue_count% van maximaal 10 bestanden in de wachtrij</string>
+		<string name="folder">Map</string>
+		<string name="file">Bestand</string>
+		<string name="zip_sig_chk">ZIP handtekening verificatie</string>
+		<string name="inject_twrp_chk">OrangeFox na installatie injecteren</string>
+		<string name="install_reboot_chk">Herstart nadat de installatie is voltooid</string>
+		<string name="options_hdr">Instellingen</string>
+		<string name="zip_queue">Wachtrij</string>
+		<string name="install_zip_count_hdr">Bestand %tw_zip_index% van %tw_zip_queue_count% installeren</string>
+		<string name="working">Bezig...</string>
+		<string name="failed">Mislukt</string>
+		<string name="successful">Succesvol</string>
+		<string name="wipe_cache_btn">Cache wissen</string>
+		<string name="reboot_system_btn">Systeem herstarten</string>
+		<string name="reboot_recovery_btn">Recovery herstarten</string>
+		<string name="install_sel_target">Selecteer doelpartitie</string>
+		<string name="flash_image_select">Partitie</string>
+		<string name="flashing_image">Flashing Image...</string>
+		<string name="image_flashed">Image Flashed</string>
+		<string name="wipe_cache_dalvik_confirm">Wipe Cache &amp; Dalvik</string>
+		<string name="wipe_dalvik_confirm">Wis Dalvik</string>
+		<string name="wiping_cache_dalvik">Wisen Cache &amp; Dalvik...</string>
+		<string name="wipe_cache_dalvik_complete">Cache &amp; Dalvik wissen voltooid</string>
+		<string name="cache_dalvik_done">Cache &amp; Dalvik wissen voltooid</string>
+		<string name="swipe_wipe">Veeg om te wissen</string>
+		<string name="rebooting">Herstarten...</string>
+		<string name="swipe_reboot">Veeg om te herstarten</string>
+		<string name="confirm_action">Bevestig actie</string>
+		<string name="cancel_btn">Annuleer</string>
+		<string name="wipe_hdr">Wissen</string>
+		<string name="factory_reset_hdr">Fabrieksinstellingen herstellen</string>
+		<string name="factory_reset1">Wist data, cache en Dalvik</string>
+		<string name="factory_reset2">(interne opslag niet inbegrepen)</string>
+		<string name="factory_reset3">Meestal is dit</string>
+		<string name="factory_reset4">de enige wis actie die nodig is.</string>
+		<string name="factory_reset5">(niet inclusief gebruikers/vergrendelscherm)</string>
+		<string name="factory_resetting">Fabrieksinstellingen herstellen...</string>
+		<string name="advanced_wipe_hdr">Geavanceerd wissen</string>
+		<string name="advanced_wipe_btn">Geavanceerd wissen</string>
+		<string name="wipe_enc_confirm">Versleuteling wissen van data</string>
+		<string name="formatting_data">Data formatteren...</string>
+		<string name="swipe_format_data">Veeg om data te formatteren</string>
+		<string name="factory_reset_complete">Fabrieksinstellingen hersteld</string>
+		<string name="sel_part_hdr">Selecteer partities</string>
+		<string name="wipe_sel_confirm">Geselecteerde partities wissen</string>
+		<string name="wiping_part">Partities wissen...</string>
+		<string name="wipe_complete">Wissen voltooid</string>
+		<string name="format_data_hdr">Data formatteren</string>
+		<string name="format_data_btn">Data formatteren</string>
+		<string name="format_data_ptr1">Het formatteren van data verwijdert al uw apps,</string>
+		<string name="format_data_ptr2">backups, foto's, video's, media, en</string>
+		<string name="format_data_ptr3">verwijdert de versleuteling van de interne opslag.</string>
+		<string name="format_data_adopted">Geadopteerde opslag inbegrepen</string>
+		<string name="format_data_undo">Dit kan niet ongedaan worden gemaakt.</string>
+		<string name="format_data_complete">Formateren van data voltooid</string>
+		<!-- Translator note: the word "yes" must remain English! -->
+		<string name="yes_continue">Typ "yes" om te bevestigen.</string>
+		<string name="part_opt_hdr">Partitie Info</string>
+		<string name="file_sys_opt">Partitie opties</string>
+		<string name="part_mount_point">Beginpunt</string>
+		<string name="part_curr_fs">Bestandssysteem</string>
+		<string name="part_present">Aanwezig</string>
+		<string name="part_removable">Verwijderbaar</string>
+		<string name="part_yes">Ja</string>
+		<string name="part_no">Nee</string>
+		<string name="part_size">Grootte</string>
+		<string name="part_used">Gebruikt</string>
+		<string name="part_free">Vrij</string>
+		<string name="part_backup_size">Back-up grootte</string>
+		<string name="resize_btn">Formaat van FS aanpassen</string>
+		<string name="resize_confirm">Formaat partitie aanpassen</string>
+		<string name="resizing">Aanpassen...</string>
+		<string name="resize_complete">Formaat aanpassen voltooid</string>
+		<string name="swipe_resize">Veeg om te formaat te wijzigen</string>
+		<string name="repair_btn">Repareer FS</string>
+		<string name="repair_confirm">Repareer partitie</string>
+		<string name="repairing">Repareren...</string>
+		<string name="repair_complete">Reparatie voltooid</string>
+		<string name="swipe_repair">Veeg om te repareren</string>
+		<string name="change_fs_btn">Wijzig FS</string>
+		<string name="change_fs_warn1">Sommige ROM's of kernels ondersteunen mogelijk niet</string>
+		<string name="change_fs_warn2">sommige bestandssystemen. Ga voorzichtig te werk!</string>
+		<string name="change_fs_confirm">Wijzig FS naar</string>
+		<string name="formatting">Formatteren...</string>
+		<string name="format_complete">Formateren voltooid</string>
+		<string name="swipe_change_fs">Veeg om te veranderen</string>
+		<string name="back_btn">Achterzijde</string>
+		<string name="wipe_enc_btn">Encryptie wissen</string>
+		<string name="swipe_factory_reset">Veeg voor fabrieksinstellingen</string>
+		<string name="backup_hdr">Backup</string>
+		<string name="encryption_hdr">Encryptie inschakelen</string>
+		<string name="name">Naam</string>
+		<string name="enable_backup_comp_chk">Compressie inschakelen</string>
+		<string name="skip_md5_backup_chk">MD5 generatie tijdens backup overslaan</string>
+		<string name="disable_backup_space_chk">Lege ruimtecontrole uitschakelen voor back-up</string>
+		<string name="swipe_backup">Veeg om back-up te maken</string>
+		<string name="backup_name_exists">Een backup met die naam bestaat al!</string>
+		<string name="pass_not_match">Wachtwoorden komen niet overeen!</string>
+		<string name="partitions">Partities</string>
+		<string name="progress">Voortgang</string>
+		<string name="backup_complete">Backup voltooid</string>
+		<string name="restore_hdr">Back-ups</string>
+		<string name="restore_backup_hdr">Backup herstellen</string>
+		<string name="sel_backup_hdr">Selecteer backup</string>
+		<string name="restore_dec_fail">Wachtwoord is mislukt, probeer het opnieuw!</string>
+		<string name="del_backup_confirm">Backup verwijderen</string>
+		<string name="del_backup_confirm2">Dit kan niet ongedaan worden gemaakt!</string>
+		<string name="deleting_backup">Backup verwijderen...</string>
+		<string name="backup_deleted">Backup verwijderd</string>
+		<string name="swipe_delete">Veeg om te verwijderen</string>
+		<string name="restore_backup_date">Backup datum</string>
+		<string name="restore_md5_chk">Controleer MD5 van backup bestanden</string>
+		<string name="restore_enable_md5_chk">MD5-verificatie van backup bestanden inschakelen</string>
+		<string name="restore_complete">Restore voltooid</string>
+		<string name="swipe_restore">Veeg voor restore</string>
+		<string name="rename_backup_hdr">Hernoem backup</string>
+		<string name="rename_backup_confirm">Hernoem backup</string>
+		<string name="rename_backup_confirm2">Dit kan niet ongedaan worden gemaakt!</string>
+		<string name="renaming_backup">Backup hernoemen...</string>
+		<string name="rename_backup_complete">Backup hernoemen voltooid</string>
+		<string name="swipe_to_rename">Veeg om te hernoemen</string>
+		<string name="mount_hdr">Mount</string>
+		<string name="mount_sys_ro_chk">Systeempartities alleen-lezen mounten</string>
+		<string name="erofs_is_ro_fs">EROFS is een alleen-lezen bestandssysteem en kan niet in lees-/schrijfmodus worden gemount!</string>
+		<string name="decrypt_data_btn">Data ontsleutelen</string>
+		<string name="disable_mtp_btn">MTP uitschakelen</string>
+		<string name="enable_mtp_btn">MTP inschakelen</string>
+		<string name="usb_storage_hdr">USB opslag</string>
+		<string name="usb_storage_btn">USB opslag</string>
+		<string name="usb_stor_mnt1">USB-opslag is aangesloten</string>
+		<string name="usb_stor_mnt2">Zorg ervoor dat u uw apparaat veilig verwijdert</string>
+		<string name="usb_stor_mnt3">van uw computer voordat u ontkoppelt!</string>
+		<string name="unmount_btn">Ontkoppel</string>
+		<string name="rb_system_btn">Systeem</string>
+		<string name="rb_poweroff_btn">Schakel uit</string>
+		<string name="rb_recovery_btn">Recovery</string>
+		<string name="rb_bootloader_btn">Bootloader</string>
+		<string name="rb_theme">Thema</string>
+		<string name="rb_download_btn">Download</string>
+		<string name="rb_edl_btn">Edl</string>
+		<string name="turning_off">Uitzetten...</string>
+		<string name="swipe_power_off">Veeg om uit te schakelen</string>
+		<string name="sys_ro">Systeem partitie</string>
+		<string name="sys_ro_hdr">Ongewijzigd systeem partitie</string>
+		<string name="sys_rop1">OrangeFox kan uw systeem partitie</string>
+		<string name="sys_rop2">ongewijzigd laten om het makkelijker te maken voor jou</string>
+		<string name="sys_rop2a">maak officiële updates.</string>
+		<string name="sys_rop3">OrangeFox zal niet kunnen voorkomen dat</string>
+		<string name="sys_rop4">de stock ROM OrangeFox gaat vervangen.</string>
+		<string name="sys_rop5">ZIP installaties of ADB bewerkingen</string>
+		<string name="sys_rop6">kan de systeem partitie nog steeds wijzigen.</string>
+		<string name="sys_ro_never_show_chk">Dit scherm nooit meer weergeven</string>
+		<string name="sys_ro_keep_ro_btn">Houd alleen-lezen</string>
+		<string name="swipe_allow_mod">Veeg om aanpassingen toe te staan</string>
+		<string name="settings_hdr">Instellingen</string>
+		<string name="settings_cptn">Algemeen</string>
+		<string name="use_rmrf_chk">Gebruik rm -rf in plaats van formatteren</string>
+		<string name="use24clock_chk">Gebruik 24-uurs klok</string>
+		<string name="rev_navbar_chk">Omgekeerde navbar lay-out</string>
+		<string name="simact_chk">Acties simuleren voor thema testen</string>
+		<string name="simfail_chk">Simuleer mislukking voor acties</string>
+		<string name="sel_tz_list">Tijdzone</string>
+		<string name="dialog_reset_theme_hdr">Standaardwaarden herstellen</string>
+		<!-- Translator note: if it does not make sense to translate the locations or if it makes more sense,
+				feel free to change the location listed or drop the location entirely and just call it UTC -6 -->
+		<string name="utcm11">(UTC -11) Samoa, Midway eiland</string>
+		<string name="utcm10">(UTC -10) Hawaii</string>
+		<string name="utcm9">(UTC -9) Alaska</string>
+		<string name="utcm8">(UTC -8) Pacific Time</string>
+		<string name="utcm7">(UTC -7) Mountain Time</string>
+		<string name="utcm6">(UTC -6) Central Time</string>
+		<string name="utcm5">(UTC -5) Eastern Time</string>
+		<string name="utcm4">(UTC -4) Atlantisch Tijd</string>
+		<string name="utcm3">(UTC -3) Brazilië, Buenos Aires</string>
+		<string name="utcm2">(UTC -2) Mid-Atlantisch</string>
+		<string name="utcm1">(UTC -1) Azoren, Kaapverdie</string>
+		<string name="utc0">(UTC  0) London, Dublin, Lissabon</string>
+		<string name="utcp1">(UTC +1) Berlijn, Brussel, Parijs</string>
+		<string name="utcp2">(UTC +2) Athene, Istanboel, Zuid-Afrika</string>
+		<string name="utcp3">(UTC +3) Moskou, Bagdad</string>
+		<string name="utcp4">(UTC +4) Abu Dhabi, Tbilisi, Muscat</string>
+		<string name="utcp5">(UTC +5) Yekaterinburg, Islamabad</string>
+		<string name="utcp6">(UTC +6) Almaty, Dhaka, Colombo</string>
+		<string name="utcp7">(UTC +7) Bangkok, Hanoi, Jakarta</string>
+		<string name="utcp8">(UTC + 8) Peking, Singapore, Hongkong</string>
+		<string name="utcp9">(UTC +9) Tokyo, Seoul, Yakutsk</string>
+		<string name="utcp10">(UTC + 10) Oost-Australië, Guam</string>
+		<string name="utcp11">(UTC + 11) Vladivostok, Salomoneilanden</string>
+		<string name="utcp12">(GMT +12) Auckland, Wellington, Fiji</string>
+		<string name="tz_offset_hdr">Verschuiving Tijd</string>	
+		<string name="tz_offset">Verschuiving</string>
+		<string name="sel_tz_offset">Selecteer Offset (meestal 0): %tw_time_zone_guioffset%</string>
+		<string name="tz_offset_0">0</string>
+		<string name="tz_offset_15">15</string>
+		<string name="tz_offset_30">30</string>
+		<string name="tz_offset_45">45</string>
+		<string name="use_dst_chk">Gebruik zomertijd (DST)</string>
+		<string name="curr_tz">Huidige tijdzone: %tw_time_zone%</string>
+		<string name="curr_tz_s">Huidige tijdzone:</string>
+		<string name="set_tz_btn">Tijdzone instellen</string>
+		<string name="settings_screen_cptn">Scherminstellingen</string>
+		<string name="settings_screen_timeout_cptn">Timeout is uitgeschakeld</string>
+		<string name="settings_screen_timeout_cptn2">Time-out:</string>
+		<string name="timeout_unit">seconden</string>
+		<string name="enable_timeout_chk">Scherm timeout inschakelen</string>
+		<string name="screen_to_na">Scherm time-outinstelling niet beschikbaar</string>
+		<string name="rotation_chk">Rotatie</string>
+		<string name="screen_bright_slider">Helderheid: %tw_brightness_pct%%</string>
+		<string name="screen_bright_na">Helderheidsinstelling niet beschikbaar</string>
+		<string name="vibration_hdr">Trillen</string>
+		<string name="button_vibration_hdr">Knop Trillen is uitgeschakeld</string>
+		<string name="kb_vibration_hdr">Toetsenbord vibratie is uitgeschakeld</string>
+		<string name="act_vibration_hdr">Actie trillen is uitgeschakeld</string>
+		<string name="button_vibration">Knop trilling:</string>
+		<string name="kb_vibration">Toetsenbord vibratie:</string>
+		<string name="act_vibration">Actie vibratie:</string>
+		<string name="advanced_hdr">Geavanceerd</string>
+		<string name="copy_log_confirm">Log kopiëren naar SD-kaart</string>
+		<string name="copying_log">Log kopiëren naar SD-kaart...</string>
+		<string name="copy_log_complete">Log gekopieerd</string>
+		<string name="terminal_btn">Terminal</string>
+		<string name="inject_twrp_btn">Inject OrangeFox</string>
+		<string name="inject_twrp_confirm">Oranje F0x opnieuw injecteren</string>
+		<string name="injecting_twrp">Herinjecteren OrangeFox...</string>
+		<string name="inject_twrp_complete">OrangeFox injectie voltooid</string>
+		<string name="swipe_to_confirm">Veeg om te bevestigen</string>
+		<string name="part_sd_hdr">SD-kaart partitioneren</string>
+		<string name="rem_sd">Verwisselbare opslag</string>
+		<string name="rem_sd_sel">Selecteer een verwijderbaar apparaat!</string>
+		<string name="invalid_partsd_sel">U moet een verwijderbaar apparaat selecteren</string>
+		<string name="part_sd_lose">U verliest alle bestanden op uw SD-kaart!</string>
+		<string name="part_sdcard_sel_note_1">Partitioneren zal alle bestanden verwijderen</string>
+		<string name="part_sdcard_sel_note_2">op je SD-kaart!</string>
+		<string name="part_sd_undo">Deze actie kan niet ongedaan worden gemaakt!</string>
+		<string name="part_sd_ext_sz">EXT Grootte:</string>
+		<string name="btn_flat_ext4">EXT4</string>
+		<string name="btn_flat_ext3">EXT3</string>
+		<string name="btn_flat_more">+</string>
+		<string name="btn_flat_less">-</string>
+		<string name="part_sd_swap_sz">Swap grootte:</string>
+		<string name="file_system">Bestandssysteem:</string>
+		<string name="swipe_part_sd">Veeg om te partitioneren</string>
+		<string name="partitioning_sd">SD-kaart partitioneren...</string>
+		<string name="partitioning_sd2">Dit duurt enkele minuten.</string>
+		<string name="part_sd_complete">Partitionering voltooid</string>
+		<string name="swipe_to_unlock">Veeg om te ontgrendelen</string>
+		<string name="fm_actions">Acties</string>
+		<string name="fm_hdr">Bestanden</string>
+		<string name="fm_sel_file">Selecteer een bestand of map</string>
+		<string name="fm_type_folder">Map</string>
+		<string name="fm_type_file">Bestand</string>
+		<string name="fm_copy_btn">Kopieer</string>
+		<string name="fm_copying">Kopiëren</string>
+		<string name="fm_move_btn">Verplaats</string>
+		<string name="fm_moving">Verplaatsen</string>
+		<string name="fm_chmod755_btn">Instellen 755</string>
+		<string name="fm_chmod755ing">Instellen 755</string>
+		<string name="fm_chmod644_btn">Instellen 644</string>
+		<string name="fm_chmod644ing">Instellen 644</string>
+		<string name="fm_chmod_btn">Machtigingen instellen</string>
+		<string name="fm_delete_btn">Verwijder</string>
+		<string name="fm_deleting">Verwijderen</string>
+		<string name="fm_rename_btn">Hernoem</string>
+		<string name="fm_renaming">Hernoemen</string>
+		<string name="fm_sel_dest">Bestemming map</string>
+		<string name="fm_rename_hdr">Hernoem</string>
+		<string name="fm_set_perms_hdr">Machtigingen instellen</string>
+		<string name="fm_perms">Machtigingen</string>
+		<string name="fm_complete">Bestandsbewerking voltooid</string>
+		<string name="decrypt">Ontsleutel</string>
+		<string name="data_part">Data partitie</string>
+		<string name="encrypt_data_part">Data Partitie is versleuteld</string>
+		<string name="sel_encrypt_backup">U heeft een versleutelde back-up geselecteerd.</string>
+		<string name="decrypt_data_enter_note1">Voer het wachtwoord in of</string>
+		<string name="decrypt_data_enter_note1a">Voer het patroon in of</string>
+		<string name="decrypt_data_enter_note2">druk op de terugknop om te annuleren.</string>
+		<string name="decrypt_data_enter_pass">Voer wachtwoord in</string>
+		<string name="decrypt_data_failed_pattern">Patroon mislukt!</string>
+		<string name="decrypt_try_again">Probeer het opnieuw.</string>
+		<string name="decrypt_data_enter_pattern">Voer Patroon in.</string>
+		<string name="decrypt_data_trying">Decoderen proberen</string>
+		<string name="term_s_hdr">Terminal</string>
+		<string name="adb_sideload_hdr">ADB Sideload</string>
+		<string name="sideload_wipe_dalvik_chk">Wipe Dalvik Cache</string>
+		<string name="sideload_wipe_cache_chk">Cache wissen</string>
+		<string name="swipe_to_sideload">Veeg om Sideload te starten</string>
+		<string name="sideload_confirm">ADB Sideload</string>
+		<string name="sideload_usage">Gebruik: ADB SideLoad File.ZIP</string>
+		<string name="sideload_complete">ADB Sideload voltooid</string>
+		<string name="fix_contexts_hdr">Contexten herstellen</string>
+		<string name="fix_contexts_confirm">SELinux contexten herstellen</string>
+		<string name="fix_contexts_note1">Opmerking: het herstellen van contexten is zelden nodig.</string>
+		<string name="fix_contexts_note2">Het repareren van SELinux contexten kan er toe leiden dat</string>
+		<string name="fix_contexts_note3">je apparaat niet goed opstart.</string>
+		<string name="swipe_to_fix_contexts">Veeg om contexten te repareren</string>
+		<string name="fixing_contexts">Contexten herstellen...</string>
+		<string name="fix_contexts_complete">Contexten herstellen voltooid</string>
+		<string name="reboot_hdr">Herstarten</string>
+		<string name="sel_storage_list">Opslag kiezen</string>
+		<string name="ok_btn">OK</string>
+		<string name="install_twrp_ramdisk">Recovery Ramdisk installeren</string>
+		<string name="install_kernel">Kernel installeren</string>
+		<string name="repack_backup_first">Maak eerst een backup van de bestaande image</string>
+		<string name="installing">Installeren...</string>
+		<string name="install_complete">Installatie voltooid</string>
+		<string name="decrypt_users">Gebruikers decrypten</string>
+		<string name="backup_storage_undecrypt_warning">Backup bevat niet alle bestanden van gebruiker {1}, omdat de gebruiker niet gedecrypt is.</string>
+		<string name="decrypting_user_fbe">Probeert FBE voor gebruiker {1} te decrypten...</string>
+		<string name="decrypt_user_success_fbe">Gebruiker {1} succesvol gedecrypt</string>
+		<string name="decrypt_user_fail_fbe">Kon gebruiker {1} niet decrypten</string>
+		<string name="decrypt_data_user">Geselecteerde gebruiker</string>
+		<string name="data_users">Gebruikers</string>
+
+		<!-- Various console messages - these consist of user displayed messages, oftentimes errors -->
+		<string name="no_kernel_selinux">Kernel heeft geen ondersteuning voor het lezen van SELinux contexten.</string>
+		<string name="full_selinux">Volledige SELinux ondersteuning is aanwezig.</string>
+		<string name="no_selinux">Geen SELinux ondersteuning (geen libselinux).</string>
+		<string name="mtp_enabled">MTP is ingeschakeld</string>
+		<string name="mtp_disabled">MTP is uitgeschakeld</string>
+		<string name="mtp_crash">MTP is gecrasht, MTP wordt niet gestart tijdens het opstarten.</string>
+		<string name="decrypt_success">Succesvol gedecodeerd met standaardwachtwoord.</string>
+		<string name="unable_to_decrypt">Kan niet ontsleutelen met het standaardwachtwoord. Mogelijk moet de data worden geformatteerd.</string>
+		<string name="generating_md51">MD5 genereren</string>
+		<!-- Message displayed during a backup if we are generating an MD5, ideally, leave the leading " * " to help align and separate this text from other console text -->
+		<string name="generating_md52"> * Md5 genereren...</string>
+		<string name="md5_created"> * MD5 aangemaakt.</string>
+		<string name="md5_error"> * MD5 fout!</string>
+		<string name="md5_compute_error"> * Fout bij het berekenen van MD5.</string>
+		<string name="current_date">(Huidige datum)</string>
+		<string name="auto_generate">(Automatisch genereren)</string>
+		<string name="unable_to_locate_partition">Kan '{1}' partitie niet vinden voor back-up berekeningen.</string>
+		<string name="no_partition_selected">Geen partities geselecteerd voor backup.</string>
+		<string name="total_partitions_backup"> * Totaal aantal partities om een back-up van te maken: {1}</string>
+		<string name="total_backup_size"> * Totale grootte van alle gegevens: {1}MB</string>
+		<string name="available_space"> * Beschikbare ruimte: {1}MB</string>
+		<string name="unable_locate_storage">Kan opslagapparaat niet vinden.</string>
+		<string name="no_space">Onvoldoende vrije ruimte op de opslag.</string>
+		<string name="backup_started">[BACKUP GESTART]</string>
+		<string name="backup_folder"> * Back-up map: {1}</string>
+		<string name="fail_backup_folder">Het maken van de back-up map is mislukt.</string>
+		<string name="avg_backup_fs">Gemiddelde back-up snelheid voor bestanden: {1} MB/sec</string>
+		<string name="avg_backup_img">Gemiddelde back-up snelheid voor imaged bestanden: {1} MB/sec</string>
+		<string name="total_backed_size">[{1} MB TOTAAL BACKED UP]</string>
+		<string name="backup_completed">[BACKUP VOLTOOID IN {1} SECONDEN]</string>
+		<string name="restore_started">[RESTORE GESTART]</string>
+		<string name="restore_folder">Restore map: '{1}'</string>
+		<!-- {1} is the partition display name and {2} is the number of seconds -->
+		<string name="restore_part_done">[{1} uitgevoerd ({2} seconden)]</string>
+		<string name="verifying_md5">MD5 verifiëren</string>
+		<string name="skip_md5">MD5 controle overslaan op basis van gebruikersinstellingen.</string>
+		<string name="calc_restore">Restore details berekenen...</string>
+		<string name="restore_read_only">Kan {1} niet restoren - alleen lezen.</string>
+		<string name="restore_unable_locate">Kan '{1}' partitie niet vinden om te restoren.</string>
+		<string name="no_part_restore">Geen partities geselecteerd om te restoren.</string>
+		<string name="restore_part_count">Restoring {1} partities...</string>
+		<string name="total_restore_size">Totale restore grootte is {1}MB</string>
+		<string name="updating_system_details">Systeemgegevens bijwerken</string>
+		<string name="restore_completed">[RESTORE VOLTOOID IN {1} SECONDEN]</string>
+		<!-- {1} is the path we could not open, {2} is strerror output -->
+		<string name="error_opening_strerr">Fout bij openen: '{1}' ({2})</string>
+		<string name="unable_locate_part_backup_name">Niet in staat om partitie te vinden met de naam van de back-up: '{1}'</string>
+		<string name="unable_find_part_path">Kan geen partitie vinden voor pad '{1}'</string>
+		<string name="update_part_details">Bijwerken partitie gegevens...</string>
+		<string name="update_part_details_done">...voltooid</string>
+		<string name="wiping_dalvik">Dalvik mappen wissen...</string>
+		<string name="cleaned">Opgeschoond: {1}...</string>
+		<string name="dalvik_done">Dalvik Cache mappen wissen voltooid!</string>
+		<string name="no_andsec">Geen beveiligde android partities gevonden.</string>
+		<string name="unable_to_locate">Kan {1} niet vinden.</string>
+		<string name="wiping_datamedia">Interne opslag wissen -- /data/media...</string>
+		<string name="unable_to_mount">Niet mogelijk om {1} te koppelen</string>
+		<string name="unable_to_mount_internal">Kan interne opslag niet koppelen</string>
+		<string name="unable_to_mount_storage">Kan opslag niet koppelen</string>
+		<string name="fail_decrypt">Data decoderen mislukt.</string>
+		<string name="no_crypto_support">Er is geen crypto ondersteuning gecompileerd in deze build.</string>
+		<string name="decrypt_success_dev">Gegevens succesvol gedecodeerd, nieuw blokapparaat: '{1}'</string>
+		<string name="done">Voltooid</string>
+		<string name="start_partition_sd">SD-kaart partitioneren...</string>
+		<string name="partition_sd_locate">Kan apparaat om te partiteren niet vinden.</string>
+		<string name="ext_swap_size">EXT + Swap grootte is groter dan de sd-kaart.</string>
+		<string name="remove_part_table">Partitie-tabel verwijderen...</string>
+		<string name="unable_rm_part">Kan partitietabel niet verwijderen.</string>
+		<string name="create_part">Partitie {1} aanmaken...</string>
+		<string name="unable_to_create_part">Kan {1} partitie niet aanmaken.</string>
+		<string name="format_sdext_as">Sd-ext formatteren als {1}...</string>
+		<string name="part_complete">Partitioneren voltooid.</string>
+		<string name="unable_to_open">Kan{1} niet openen.</string>
+		<string name="mtp_already_enabled">MTP is al ingeschakeld</string>
+		<string name="mtp_fail">Kan MTP niet inschakelen</string>
+		<string name="no_mtp">MTP ondersteuning niet inbegrepen</string>
+		<string name="mtp_base_path_missing">MedOpslag niet gevonden. Kan MTP niet inschakelen.</string>
+		<string name="image_flash_start">[IMAGE FLASH BEGONNEN]</string>
+		<string name="img_to_flash">Image om te flashen: '{1}'</string>
+		<string name="flash_unable_locate">Kan '{1}' partitie niet vinden om te flashen.</string>
+		<string name="no_part_flash">Geen partities geselecteerd voor het flashen.</string>
+		<string name="too_many_flash">Teveel partities geselecteerd om te flashen.</string>
+		<string name="invalid_flash">Ongeldige partitie om te flashen opgegeven.</string>
+		<string name="flash_done">[IMAGE FLASH VOLTOOID]</string>
+		<string name="wiping">Wissen {1}</string>
+		<string name="repair_not_exist">{1} bestaat niet! Kan niet repareren!</string>
+		<string name="repairing_using">Repareer {1} met behulp van {2}...</string>
+		<string name="unable_repair">Kan {1} niet repareren.</string>
+		<string name="mount_data_footer">Kan /data niet koppelen en kan de crypto-voettekst niet vinden.</string>
+		<!-- {1} is the folder name that we could not create, {2} is strerror output -->
+		<string name="create_folder_strerr">Kan de map{1} niet aanmaken ({2}).</string>
+		<!-- {1} is the folder name that we could not mount, {2} is strerror output -->
+		<string name="fail_mount">Kan '{1}' ({2}) niet koppelen</string>
+		<!-- {1} is the folder name that we could not unmount, {2} is strerror output -->
+		<string name="fail_unmount">Ontkoppelen van '{1}' ({2}) mislukt</string>
+		<string name="cannot_resize">Kan formaat {1} niet wijzigen.</string>
+		<string name="repair_resize">Repareer {1} voordat het formaat wordt aangepast.</string>
+		<string name="unable_resize">Formaat wijzigen van {1} niet mogelijk.</string>
+		<string name="no_md5_found">Geen md5 bestand gevonden voor '{1}'. Schakel de MD5-verificatie uit om te restoren.</string>
+		<string name="md5_fail_match">MD5 matchen op '{1} ' is mislukt.</string>
+		<string name="fail_decrypt_tar">Ontcijferen van tar bestand{1} is mislukt</string>
+		<string name="format_data_msg">Mogelijk moet u de recovery herstarten om /data opnieuw te kunnen gebruiken.</string>
+		<string name="format_data_err">Het is niet mogelijk om te formatteren om versleuteling te verwijderen.</string>
+		<string name="formatting_using">Formatteren van {1} met {2}...</string>
+		<string name="unable_to_wipe">Niet mogelijk om te wissen {1}.</string>
+		<string name="cannot_wipe">Partitie {1} kan niet gewist worden.</string>
+		<string name="remove_all">Verwijderen van alle bestanden onder '{1}'</string>
+		<string name="wiping_data">Gegevens wissen zonder het wissen van /data/media...</string>
+		<string name="backing_up">Back-up maken van {1}...</string>
+		<string name="backing">Back-uppen</string>
+		<string name="backup_size">Back-up bestandsgrootte voor '{1}' is 0 bytes.</string>
+		<string name="datamedia_fs_restore">WAARSCHUWING: Deze /data back-up is gemaakt met {1} bestandssysteem! De back-up kan niet worden opgestart tenzij je terug naar {1} wisselt.</string>
+		<string name="restoring">Restoring {1}...</string>
+		<string name="restoring_hdr">Restoring...</string>
+		<string name="recreate_folder_err">Kan map {1} niet opnieuw aanmaken.</string>
+		<string name="img_size_err">Image is groter dan het doelapparaat</string>
+		<string name="flashing">Flashen {1}...</string>
+		<string name="backup_folder_set">Back-up map ingesteld op '{1}'</string>
+		<string name="locate_backup_err">Kan backup niet vinden '{1}'</string>
+		<string name="set_restore_opt">Instellen restore opties: '{1}':</string>
+		<string name="md5_check_skip">MD5 controle overslaan staat aan</string>
+		<string name="ors_encrypt_restore_err">Kan OpenRecoveryScript niet gebruiken om een versleutelde back-up te herstellen.</string>
+		<string name="mounting">Mounting</string>
+		<string name="unmounting">Ontkoppelen</string>
+		<string name="mounted">Mounted '{1}'</string>
+		<string name="unmounted">Ontkoppeld '{1}'</string>
+		<string name="setting">Instellen '{1}' naar '{2}'</string>
+		<string name="setting_empty">Instelling '{1}' naar leeg</string>
+		<string name="making_dir1">Map maken</string>
+		<string name="making_dir2">Map maken: '{1}'</string>
+		<string name="running_command">Opdracht uitvoeren</string>
+		<string name="sideload">ADB Sideload</string>
+		<string name="start_sideload">ADB sideload functie wordt gestart...</string>
+		<string name="need_new_adb">Je hebt adb 1.0.32 of nieuwer nodig om te sideloaden naar dit apparaat.</string>
+		<string name="no_pwd">Geen wachtwoord opgegeven.</string>
+		<string name="done_ors">Script verwerken voltooid</string>
+		<string name="injecttwrp">Oranje Fox injecteren in boot image...</string>
+		<string name="zip_err">Fout bij het installeren van ZIP bestand '{1}'</string>
+		<string name="installing_zip">ZIP bestand installeren '{1}'</string>
+		<string name="select_backup_opt">Backup-opties instellen:</string>
+		<string name="compression_on">Compressie is ingeschakeld</string>
+		<string name="md5_off">MD5 generatie is uitgeschakeld</string>
+		<string name="backup_fail">Backup mislukt</string>
+		<string name="backup_clean">Back-up mislukt. Opschonen backup map.</string>
+		<string name="running_recovery_commands">Herstel opdrachten uitvoeren</string>
+		<string name="recovery_commands_complete">Herstelopdrachten voltooid</string>
+		<string name="running_ors">OpenRecoveryScript wordt uitgevoerd</string>
+		<string name="ors_complete">OpenRecoveryScript is voltooid</string>
+		<string name="no_updater_binary">Kan '{1}' niet vinden in het ZIP bestand.</string>
+		<string name="check_for_md5">Controleren op MD5 bestand...</string>
+		<string name="fail_sysmap">Kan bestand '{1} ' niet toewijzen</string>
+		<string name="verify_zip_sig">ZIP handtekening verifiëren...</string>
+		<string name="verify_zip_fail">ZIP handtekening verificatie mislukt!</string>
+		<string name="verify_zip_done">ZIP handtekening succesvol geverifieerd.</string>
+		<string name="zip_corrupt">ZIP bestand is beschadigd!</string>
+		<string name="no_md5">MD5 controle overslaan: geen MD5 bestand gevonden</string>
+		<string name="md5_fail">MD5 komt niet overeen</string>
+		<string name="md5_match">MD5 komt overeen</string>
+		<string name="pid_signal">{1} proces eindigde met signaal: {2}</string>
+		<string name="pid_error">{1} proces eindigde met FOUT: {2}</string>
+		<string name="run_script">{1} script uitvoeren...</string>
+		<string name="split_backup">Backup bestand in meerdere archieven opsplitsen...</string>
+		<string name="backup_error">Fout bij maken backup.</string>
+		<string name="restore_error">Fout tijdens het restoreproces.</string>
+		<string name="split_thread">Thread-ID {1} splitsen in archief {2}</string>
+		<!-- These 2 items are saved in the data manager instead of resource manager, so %llu, etc is correct instead of {1} -->
+		<string name="file_progress">%llu van %llu bestanden, %i%%</string>
+		<string name="size_progress">%lluMB van %lluMB, %i%%</string>
+		<string name="decrypt_cmd">Proberen data partitie te decoderen via command line.</string>
+		<string name="base_pkg_err">Fout bij het laden van de basispakketten.</string>
+		<string name="simulating">SIMULEREN ACTIES</string>
+		<string name="backup_cancel">Backup geannuleerd</string>
+		<string name="config_twrp">Configureren OrangeFox...</string>
+		<string name="config_twrp_err">Kan OrangeFox niet configureren met deze kernel.</string>
+		<string name="copy_log">Recovery log gekopieerd naar {1}.</string>
+		<string name="max_queue">Maximale ZIP wachtrij bereikt!</string>
+		<string name="min_queue">Minimale ZIP wachtrij bereikt!</string>
+		<string name="screenshot_saved">Schermafbeelding is opgeslagen naar {1}</string>
+		<string name="screenshot_err">Het maken van een schermafbeelding is mislukt!</string>
+		<string name="zip_wipe_cache">Een of meer ZIP heeft verzocht om cache te wissen - Cache nu wissen.</string>
+		<string name="and_sec_wipe_err">Kan android beveiligd niet wissen</string>
+		<string name="dalvik_wipe_err">Kan dalvik niet wissen</string>
+		<string name="auto_gen">(Automatisch genereren)</string>
+		<string name="curr_date">(Huidige datum)</string>
+		<string name="backup_name_len">Backup naam is te lang.</string>
+		<string name="backup_name_invalid">Backup naam '{1}' bevat ongeldig teken: '{1}'</string>
+		<string name="no_real_sdcard">Dit apparaat beschikt niet over een echte SD-kaart! Afbreken!</string>
+		<string name="cancel_sideload">ADB sideload wordt geannuleerd...</string>
+		<string name="change_fs_err">Fout bij het veranderen van het bestandssysteem.</string>
+		<string name="change_fs_hdr">Bestandssysteem wijzigen</string>
+		<string name="theme_ver_err">Aangepaste thema versie komt niet overeen met OrangeFox versie. Standaard thema wordt gebruikt.</string>
+		<string name="up_a_level">..</string>
+
+		<!-- new-->
+		<string name="sel_color">Selecteer kleur</string>
+		<string name="s_color">Kleur</string>
+		<string name="current_color">Bestandssysteem:</string>
+		<string name="show_cpu_temp_bar">Toon CPU temperatuur</string>
+		<string name="ts_inform">Informatie</string>
+		<string name="sel_splash_png">Selecteer Spattende PNG</string>
+		<string name="swipe_to_install">Veeg om te installeren</string>
+		<string name="swipe_to_install_img">Swipe om image te installeren</string>
+		<string name="sel_image_type">Selecteer Image type!</string>
+		<string name="zip_add_queue">Toevoegen aan wachtrij</string>
+		<string name="part_fs_error_1">Opties voor partities zijn niet</string>
+		<string name="part_fs_error_2">beschikbaar voor deze partitie!</string>
+		<string name="new_file_system">Nieuw bestandssysteem</string>
+		<string name="adb_sideload_opt">Sideload opties</string>
+		<string name="about_hdr">Over</string>
+		<string name="author">Auteur</string>
+		<string name="credits">Bijdragen</string>
+		<string name="version">Versie</string>
+		<string name="set_password">Wachtwoord instellen</string>
+		<string name="verifying_pas">Verifieer wachtwoord</string>
+		<string name="dialog_offset_note">Selecteer uw offset waarde</string>
+		<string name="queue_no">#</string>
+		<string name="options_cptn">Instellingen</string>
+		<string name="flash_img_confirm">Flash Image bestand</string>
+		<string name="also_wipes">Ook wissen</string>
+		<string name="confirm_wipe_cptn">Bevestig wissen</string>
+		<string name="storage_cptn">Opslag</string>
+		<string name="enter_password_restore">Wachtwoord</string>
+		<string name="enter_password_cptn">Beveiliging</string>
+		<!-- added by fordownloads -->
+		<string name="fordowns_sl">Sideload starten...</string>
+		<string name="fordowns_to">naar</string>
+		<string name="dbg">Debug</string>
+		<string name="dbg_active">Debug menu geactiveerd!</string>
+		<string name="dbg_act">Actie</string>
+		<string name="dbg_func">Functie</string>
+		<string name="dbg_set">Stel in</string>
+		<string name="dbg_page">Pagina</string>
+		<string name="dbg_overlay">Overlay</string>
+		<string name="fm_none">Geen</string>
+		
+		<string name="cust_navbar_noug">Nougat</string>
+		<string name="cust_navbar_cls">Klassiek</string>
+		<string name="cust_navbar_accent">Accent</string>
+		<string name="cust_navbar_black">Zwart</string>
+		<string name="cust_navbar_white">Gebruik witte knoppen</string>
+		<string name="cust_navbar_gray">Gebruik grijze knoppen</string>
+		
+		<string name="fm_open">Openen als...</string>
+		<string name="fm_open_text">Tekstbestand</string>
+		<string name="fm_open_ZIP">Flashable ZIP</string>
+		
+		<string name="fm_open_backup">Backup</string>
+		<string name="fm_open_makezip">Comprimeer</string>
+		<string name="fm_open_unpackzip">Archief uitpakken</string>
+		<string name="fm_open_image">Flashable image</string>
+		<string name="arc_type">Archief type</string>
+		<string name="arc_lvl">Compressie niveau:</string>
+		<string name="arc_lvl_title">Compressie</string>
+		
+		<string name="bkp_date">Voeg datum toe</string>
+		<string name="bkp_gen">Back-up naam genereren</string>
+		<string name="bkp_gen_whilebkp">Back-up naam genereren bij het maken van back-up</string>
+		<string name="bkp_quick">Snelle backup</string>
+		<string name="bkp_clear">Leeg</string>
+		
+		<string name="language_cptn">Taal</string>
+		<string name="cust_oth">Anders</string>
+		
+		<string name="settings_general">Algemeen</string>
+		<string name="settings_ui">Aanpassing</string>
+		<string name="settings_screen">Weergave</string>
+		<string name="settings_time">Regionaal</string>
+		
+		<string name="lang_wait">Even geduld...</string>
+		
+		<string name="settings_ui_status">Statusbalk</string>
+		<string name="settings_ui_battery">Toon batterij pictogram</string>
+		<string name="settings_ui_style">NavBar stijl</string>
+		<string name="settings_ui_color">NavBar achtergrond</string>
+		
+		<string name="settings_backup_qbkp_custom">Snelle backup partities</string>
+		
+		<string name="settings_backup_name">Naam backup</string>
+		<string name="settings_backup_name_user">Niet wijzigen</string>
+		<string name="settings_backup_name_auto">Automatisch gedefinieerd</string>
+		<string name="settings_backup_name_auto_hide">Tijdens het maken van de backup</string>
+		
+		<string name="update_btn">Bijwerken</string>
+		<string name="include_kernel_log">Inclusief Kernel Log</string>
+		<string name="include_logcat">Logcat opnemen</string>
+		
+		<string name="fm_books">Favoriete mappen</string>
+		<string name="fm_books_desc">Lang indrukken om deze lijst te bewerken</string>
+		<string name="fm_books_edit">Bewerk deze lijst...</string>
+		<string name="fm_books_desc_edit">Lang indrukken om item te verwijderen</string>
+		<string name="fm_books_empty">(Leeg)</string>
+		
+		<string name="fm_mkdir">Map aanmaken</string>
+		<string name="fm_mkdir_folder">Naam map</string>
+		
+		<string name="fm_path">Voer pad in</string>
+		<string name="fm_path2">Pad</string>
+		
+		<string name="no_os_title">Weet je het zeker?</string>
+		<string name="no_os_subtitle">Systeempartitie is leeg</string>
+		
+		<string name="no_os1">Geen OS geïnstalleerd! Weet je het zeker dat je</string>
+		<string name="no_osrb">opnieuw wenst op te starten?</string>
+		<string name="no_ospo">wens je uit te schakelen?</string>
+		<string name="no_osrb_recovery">wens je te herstarten naar recovery?</string>
+		<string name="no_osrb_boot">wens je te herstarten naar bootloader?</string>
+		<string name="no_osrb_down">wens je te herstarten naar downloadmode?</string>
+		<string name="no_osrb_edl">wens je te herstarten naar EDL?</string>
+		
+		<string name="areb_confirm">Bevestigingsdialoogvenster herstarten</string>
+		<string name="areb_noos">Wanneer geen OS geïnstalleerd is</string>
+		<string name="opt_always">Altijd</string>
+		<string name="otp_never">Nooit</string>
+		
+		<string name="areb_off">Uit</string>
+		
+		<string name="restoredialog_readonly">Laat nooit het koppel systeem als alleen-lezen dialoog zien</string>
+		
+		<string name="offset_wrong">Verkeerde offset!</string>
+
+		<string name="new_key">Nieuwe stijl gebruiken voor toetsenbord</string>
+		
+		<string name="bkp_nametitle">Naam backup</string>
+		<string name="bkp_namesub">Typ of genereer een backupnaam</string>
+		
+		<string name="goto_storage">Opslag</string>
+		
+		<string name="theme_apply">Thema updaten...</string>
+		<string name="theme_fonts">Lettertypes</string>
+		<string name="theme_style">Opmaak</string>
+		<string name="theme_accent">Accent</string>
+		<string name="theme_font_sel">Primair lettertype</string>
+		<string name="theme_sec_font_sel">Secundair lettertype</string>
+		
+		<string name="of">van</string>
+		
+		<string name="sph_sph">Plons</string>
+		
+		<string name="real">echt</string>
+		<string name="info">Informatie</string>
+		<string name="time_m">Wijzig</string>
+		<string name="time_c">Verander</string>
+		<string name="access">Toegang</string>
+		<string name="fm_sums">Controlesom</string>
+		
+		<string name="use_fixed_font">Lettertype Monospace in terminal</string>
+
+		<string name="adb_backup_pc1">Deze backup wordt</string>
+		<string name="adb_backup_pc2">opgeslagen op uw PC</string>
+		
+		<string name="starting_aroma">AromaFM starten...</string>
+		<string name="lang_set_wait">Veranderen van taal...</string>
+		<string name="installing_theme">Thema installeren...</string>
+		
+		<string name="menu_btn">Menu</string>
+		
+		<string name="data_backup">Data</string>
+		<string name="autostorage">Opslag</string>
+		<string name="install_reboot">Herstarten in %tw_sleep% seconden</string>
+		<string name="cancel_reboot_btn">Herstart annuleren</string>
+		<string name="skip_digest_backup_chk" version="2">Md5 generatie tijdens backup overslaan</string>
+		<string name="restore_digest_chk" version="2">Schakel Digest verificatie van back-ups in</string>
+		<string name="restore_enable_digest_chk" version="2">Schakel Digest verificatie van back-ups in</string>
+		<string name="decrypt_data_vold_os_missing">Ontbrekende bestanden nodig voor vold ontsleutelen: {1}</string>
+		<string name="generating_digest1" version="2">Genereren Digest</string>
+		<string name="generating_digest2" version="2"> * Genereren Digest...</string>
+		<string name="digest_created" version="2"> * Digest aangemaakt.</string>
+		<string name="digest_error" version="2"> * Digest fout!</string>
+		<string name="digest_compute_error" version="2"> * Fout bij berekenen van digest.</string>
+		<string name="verifying_digest" version="2">Digest verifiëren</string>
+		<string name="skip_digest" version="2">Overslaan Digest controle gebaseerd op gebruikersinstellingen.</string>
+		<string name="decrypt_success_nodev">Data succesvol gedecodeerd</string>
+		<string name="no_digest_found" version="2">Geen Digest bestand gevonden voor '{1}'. Deselecteer Digest verificatie om te restoren.</string>
+		<string name="digest_fail_match" version="2">Digest gefaald in match op '{1}'.</string>
+		<string name="digest_matched" version="2">Digest komt overeen met '{1}'.</string>
+		<string name="digest_check_skip" version="2">Digest check skip staat aan</string>
+		<string name="digest_off" version="2">Generatie Digest is uitgeschakeld</string>
+		<string name="invalid_zip_format">Ongeldig zip-bestand formaat!</string>
+		<string name="check_for_digest" version="2">Controleren op digest bestand...</string>
+		<string name="no_digest" version="2">Overslaan digest controle: geen Digest bestand gevonden</string>
+		<string name="digest_fail" version="2">Digest komt niet overeen</string>
+		<string name="digest_match" version="2">Digest komt overeen</string>
+		<string name="password">Wachtwoord</string>
+		<string name="boot_slot">Start Plek</string>
+		<string name="boot_slot_a">SLOT A</string>
+		<string name="boot_slot_use_a">WIJZIG NAAR SLOT A</string>
+		<string name="boot_slot_b">SLOT B</string>
+		<string name="boot_slot_use_b">WIJZIG NAAR SLOT B</string>
+		<string name="changing_boot_slot">Wijzigen van boot Slot</string>
+		<string name="changing_boot_slot_complete">Het veranderen van de Boot Slot is voltooid</string>
+		<string name="unable_set_boot_slot">Fout bij het veranderen van bootloader bootslot naar {1}</string>
+		<string name="flash_ab_inactive">Flitsen A/B zip naar inactieve slot: {1}</string>
+		<string name="flash_ab_reboot">Om aanvullende zips te flitsen, start u recovery opnieuw op om over te schakelen naar de bijgewerkte slot.</string>
+		<string name="flash_ab_both_slots">Flitsen naar beide slots</string>
+		<string name="ozip_decrypt_decryption">Ozip decodering wordt gestart...</string>
+		<string name="ozip_decrypt_finish">Ozip decodering voltooid!</string>
+		<string name="backup_storage_warning">Backups van {1} bevatten geen bestanden uit de interne opslag zoals afbeeldingen of downloads.</string>
+		<string name="sha2_chk">Gebruik SHA2 voor hashing</string>
+		<string name="disabled">Uitgeschakeld</string>
+		<string name="enabled">Ingeschakeld</string>
+		<string name="keep_storage_data">Sla wisperen bij herstellen van opslag over</string>
+		<string name="zip_compatible_err">Compatibiliteitsfout met Zip-Treble!</string>
+
+		<string name="unmount_sys_install">Ontkoppel Systeem voor het installeren van een ZIP</string>
+		<string name="unmount_system">Systeem ontkoppelen...</string>
+		<string name="unmount_system_err">Kan Systeem niet unmounten</string>		
+
+		<string name="unmount_vendor_install">Unmount Leverancier voor het installeren van een ZIP</string>
+		<string name="unmount_vendor">Leverancier unmounten...</string>
+		<string name="unmount_vendor_err">Kan Leverancier niet unmounten</string>	
+			
+		<string name="fbe_wipe_msg">WAARSCHUWING: {1} gewist. FBE apparaat moet worden opgestart in Android en niet recovery om het initiële FBE-beleid na het wissen in te stellen.</string>		
+		<string name="fastboot_button">Fastboot</string>
+		<string name="enable_adb">ADB inschakelen</string>
+		<string name="enable_fastboot">Fastboot inschakelen</string>
+		<string name="fastboot_console_msg">Fastboot-modus geactiveerd...</string>
+		<string name="data_media_fbe_msg">OrangeFox zal /data/media nietnieuw creëren op een FBE-apparaat. Start uw rom opnieuw op om /data/media te creëren</string>
+
+		<!-- Console Messages -->
+		<string name="fox_incremental_ota_compatibility_chk">Handtekening van incrementele pakketten verifiëren...</string>
+		<string name="fox_incremental_ota_compatibility_false">Incrementeel pakket is niet compatibel met deze ROM!</string>
+		<string name="fox_incremental_ota_compatibility_true">Incrementeel pakket is compatibel</string>
+		<string name="fox_incremental_ota_status_enabled">Ondersteuning incrementele pakketstatus: Ingeschakeld</string>
+		<string name="fox_incremental_ota_status_disabled">Ondersteuning incrementele pakketstatus: Uitgeschakeld</string>
+		<string name="fox_incremental_package_detected">Incrementele pakket gedetecteerd '{1}'</string>
+		<string name="fox_survival_does_not_exist">OTA Survival bestaat niet! Gelieve eerst een volledige ROM te flashen!</string>
+		<string name="fox_install_detecting">Huidig pakket detecteren</string>
+		<string name="fox_install_standard_detected">- Standaard pakket gedetecteerd</string>
+		<string name="fox_install_miui_detected">- MIU update pakket gedetecteerd</string>
+		<string name="fox_zip_have_bootloader">Waarschuwing: herinstallatie van de bootloader gedetecteerd door '{1}'.</string>
+		<string name="fox_no_space_ota_survival">Onvoldoende vrije ruimte op interne opslag om de OTA survival te laten creëren.</string>
+		<string name="fox_incremental_ota_res">OTA_RES -- klaar!</string>
+		<string name="fox_incremental_ota_res_run">OTA_RES proces wordt uitgevoerd...</string>
+		<string name="fox_incremental_ota_bak_run">OTA_BAK proces aan het uitvoeren...</string>
+		<string name="fox_incremental_ota_bak">OTA_BAK -- klaar!</string>
+		<string name="fox_internal_fatal_i1">OrangeFox: FATAL ERROR! Je kunt geen interne opslag naar zichzelf back-uppen!</string>
+		<string name="fox_internal_fatal_i2">U MOET de backup-bestemming wijzigen naar MicroSD/USB-OTG.</string>
+		<string name="fox_internal_q1">OrangeFox - interne opslag - let op!</string>
+
+		<string name="copy_kernel_log">Kernel log gekopieerd naar {1}</string>
+		<string name="copy_logcat">Logcat gekopieerd naar {1}</string>
+
+		<string name="of_run_process">Proces{1} wordt gestart</string>
+		<string name="of_run_process_fail">Kan '{1}' proces niet voltooien</string>
+		<string name="of_run_process_done">Proces '{1}' voltooid</string>
+		<string name="of_dm_verity">Succesvol DM-Verity gepatched</string>
+		<string name="of_dm_verity_off">DM-Verity is niet ingeschakeld</string>
+		<string name="of_encryption">Succesvol geforceerde encryptie gepatched</string>
+		<string name="of_encryption_off">Geforceerde versleuteling is niet ingeschakeld</string>
+		<string name="of_fstab">Detecteerde fstab: '{1}'</string>
+
+		<string name="install_remlatest">Nieuwste verwijderen</string>
+		
+		<string name="backups_remove_all">Alle backups</string>
+		<string name="backups_remove">Verwijder</string>
+		
+		<!-- OrangeFox Recovery - Pie Door theme -->
+
+		<string name="unpack">Uitpakken</string>
+		<string name="repack">Inpakken</string>
+
+		<string name="fox_save_load_aromafm_config_chk">Opslaan / laden AromaFM instellingen</string>
+		<string name="search_help">Bestanden en mappen zoeken...</string>
+		
+		<string name="reboot_to_take_effect">Herstarten om wijzigingen toe te passen</string>
+		<string name="fox_modules_hdr">Fox Addons</string>
+		<string name="fox_modules_inst">Installeer addon</string>
+		<string name="backup_short_hdr">Nieuwe backup</string>
+		<string name="backups_wat">Waar zijn de back-ups?</string>
+		
+		<string name="module_install">Installeren</string>
+		<string name="module_uninstall">De-installeer</string>
+		<string name="remove_of_files">Verwijder OrangeFox bestanden</string>
+		<string name="module_initd">Init.d ondersteuning inschakelen</string>
+		<string name="module_of_set">OrangeFox-instellingen back-uppen</string>
+		<string name="module_cam">Camera2API inschakelen</string>
+		<string name="module_pass">Wachtwoord verwijderen</string>
+		<string name="module_remove_survival">Verwijder alle survival scripts</string>
+		<string name="fox_files_not_exist_1">Bestand bestaat niet!</string>
+		<string name="fox_files_not_exist_2">Herinstalleer recovery alstublieft</string>
+		<string name="fox_files_not_exist_3">met behulp van de zip-installatie.</string>
+
+		<!-- Customization -->
+		<string name="cust_new_ota_screen">Minder details tonen tijdens OTA updates</string>
+		<string name="fm_icons_simple">Maak bestandsiconen groter</string>
+		<string name="theme_engine_update">Wijzigingen toepassen en opnieuw laden?</string>
+		<string name="theme_engine_reset">Thema opnieuw instellen en herladen?</string>
+		<string name="apply_btn">Toepassen</string>
+		<string name="theme_hdr">Thema</string>
+		
+		<string name="font_small">Klein</string>
+		<string name="font_norm">Normaal</string>
+		<string name="font_big">Groot</string>
+		<string name="font_size">Lettertype grootte</string>
+		<string name="cust_autoapply">Thema zonder bevestiging toepassen</string>
+		<string name="cust_expand_list">Automatisch lijsten uitklappen</string>
+		
+		<string name="status_battery_style">Batterij stijl</string>
+		<string name="status_battery_circle">Cirkel</string>
+		<!-- Status bar -->
+		<string name="status_clock_pos">Klok positie</string>
+		<string name="status_clock_left">Links</string>
+		<string name="status_clock_center">Gecentreerd</string>
+		<string name="status_clock_right">Rechts</string>
+		<string name="dark_title">Maak titel donkerder</string>
+		<string name="separate_status">Statusbalk donkerder maken</string>
+		<string name="noshadow_title">Statusbalk schaduw weergeven</string>
+		<string name="hide_notch">Notch verbergen</string>
+		<!-- NavBar -->
+		<string name="navbar_title">Navigatiebalk</string>
+		<string name="navbar_onscreen">NavBar inschakelen</string>
+		<string name="show_slideout">Toon console knop</string>
+		<string name="dark_nav">Donker</string>
+		<!-- Keyboard -->
+		<string name="keyboard_title">Keyboard</string>
+		<string name="keyboard_newstyle">Vernieuwde stijl</string>
+		<string name="keyboard_nums">Getallenrij</string>
+		<string name="key_swipe">Veeg op toetsenbord om alles te verwijderen</string>
+		<!-- Lockscreen -->
+		<string name="lockscreen_unlock">Ontgrendel</string>
+		<string name="lockscreen_title">Vergrendelscherm</string>
+		<string name="lockscreen_style">Vergrendelscherm stijl</string>
+		<string name="lockscreen_clock">Klok</string>
+		<string name="lockscreen_icon">Icoon</string>
+		<string name="lockscreen_btn">Schuifregelaar vervangen door knop</string>
+		<string name="lockscreen_info">Toon batterij en CPU info</string>
+		<string name="lockscreen_quicklock">Op het vergrendelingspictogram tikken vergrendelt het scherm</string>
+
+		<!-- OTA working page -->
+		<string name="ota_console_title">OTA installeren...</string>
+		<string name="ota_simple_title">Updaten...</string>
+		<string name="ota_simple_log_btn">Log</string>
+
+		<string name="battery">Batterij</string>
+
+		<!-- Pass -->
+		<string name="pass_gk">Gebaren knop</string>
+		<string name="pass_classic">Tekst wachtwoord</string>
+		<string name="pass_dis">Wachtwoord uitschakelen</string>
+		<string name="pass_pin">PIN code</string>
+		
+		<string name="locked_info_1">Recovery is beschermd tegen</string>
+		<string name="locked_info_2">ongeautoriseerde toegang.</string>
+		<string name="locked_info_3">Om gebruik te maken van de belangrijkste recovery functies</string>
+		<string name="locked_info_4">moet je eerst een wachtwoord invoeren.</string>
+		<string name="locked_info_4_gk">eerst moet je je gebaar sleutel tekenen.</string>
+		
+		<string name="new_pass_info_1">Voer een nieuw wachtwoord in om</string>
+		<string name="new_pass_info_1_gk">Teken een nieuwe gebaar toets om te beschermen</string>
+		<string name="new_pass_info_2">OrangeFox tegen onbevoegde</string>
+		<string name="new_pass_info_3">toegang.</string>
+		<string name="new_pass_info_4">U moet uw wachtwoord twee keer invoeren.</string>
+		<string name="new_pass_info_4_gk">Je moet je sleutel twee keer tekenen.</string>
+		<string name="new_pass_info_4_2">Voer je wachtwoord opnieuw in.</string>
+		<string name="new_pass_info_4_2_gk">Teken gebaar toets opnieuw.</string>
+		
+		<string name="pass_page_block">Huidige blokkeringsmethode</string>
+		<string name="pass_page_block_inf1">Je kunt beter slapen wetende</string>
+		<string name="pass_page_block_inf2">dat je beschermd wordt.</string>
+		<string name="pass_page_select">Selecteer wachtwoord type</string>
+		
+		<!-- Utilities -->
+		<string name="more">Meer...</string>
+		<string name="hide">Verberg</string>
+		<string name="part_menu_hdr">Partities beheren</string>
+		<string name="run_adb_startup">ADB uitvoeren bij opstarten</string>
+
+		<!-- Root modules manager -->
+		<string name="mm_module_active">Actief</string>
+		<string name="mm_module_mount">Mount overslaan</string>
+		<string name="mm_modules">Modules</string>
+		<string name="mm_ver">Magisk versie</string>
+		<string name="mm_mod_ver">Module versie</string>
+		<string name="mm_remove">Verwijder module volgende boot</string>
+		<string name="mm_remove_hint">Herstarten om wijzigingen toe te passen</string>
+		<string name="mm_remove_reboot">Herstarten</string>
+		<string name="magisk_not_found">Magisk niet gevonden!</string>
+		<string name="magisk_not_found_1">Wilt u naar de Fox Addons gaan</string>
+		<string name="magisk_not_found_2">en voorgebouwd Magisk installeren?</string>
+		<string name="magisk_not_found_3"/>
+
+		<!-- APatch / KernelSU modules -->
+		<string name="ap_modules">APatch modules</string>
+		<string name="ap_ver">APatch versie</string>
+		<string name="ksu_modules">KernelSU modules</string>
+		<string name="ksu_ver">KernelSU versie</string>
+
+		<string name="modules_not_found">Geen modules gevonden!</string>
+		<string name="modules_not_found_1">De modules zijn ofwel niet</string>
+		<string name="modules_not_found_2">geïnstalleerd of kunnen niet worden gemount!</string>
+		<string name="modules_not_found_3"/>
+
+		<!-- MIUI OTA -->
+		<string name="fox_ota_settings">OTA instellingen</string>
+		<string name="fox_miui_ota_on">OTA inschakelen</string>
+		<string name="fox_ota_on">OTA inschakelen</string>
+		<string name="fox_patch_rom">Patch ROM</string>
+		<string name="fox_ota_lite">OTA &amp; ROM</string>
+		
+		<!-- About -->
+		<string name="abt_maintainer">Beheerder</string>
+		<string name="abt_fd">Thema ontwerper</string>
+		<string name="abt_bork">CEO, site &amp; UI</string>
+		<string name="abt_dj">Build systeem, voormalig onderhouder</string>
+		<string name="abt_front">Frontend ontwikkelaar</string>
+		<string name="abt_back">Backend ontwikkelaar</string>
+		<string name="abt_device">Apparaat</string>
+		<string name="version_twrp">OrangeFox versie</string>
+		<string name="build_type">Build-type</string>
+		<string name="abt_credits">Bijdragen</string>
+		<string name="abt_trans">Vertalers</string>
+		<string name="abt_changes">Changelog</string>
+		<string name="abt_main_shrt">Beheerder</string>
+		<string name="welcome_msg">Welkom bij OrangeFox!</string>
+		<string name="welcome_msg2"><!-- If welcome message is too big in your lang, use this string --></string>
+
+		<string name="fox_welcome">Welkom bij OrangeFox Recovery!</string>
+		<string name="fox_release">[Release]   : {1}</string>
+		<string name="fox_variant">[Variant]   : {1}</string>
+		<string name="fox_codebase">[Codebase]  : {1}, {2}</string>
+		<string name="fox_settings">[Settings]  : {1}</string>
+		<string name="fox_misc">[Misc]      : {1}</string>
+		<string name="fox_build_date">[Build date]: {1}</string>
+		<string name="fox_build_type_unofficial">[Build type]: Niet-officieel. Geen officiële ondersteuning voor niet-officiële builds</string>
+		<string name="fox_build_type">[Build type]: {1}</string>
+		<string name="fox_support">[Support]   : {1}</string>
+		<string name="fox_nosupport">[Support]   : Geen officiële ondersteuning voor onbekende builds</string>
+		<string name="fox_websites">OrangeFox-websites:</string>
+		<string name="fox_downloads">[Downloads] : {1}</string>
+		<string name="fox_faq">[Gidsen/FAQ]: {1}</string>
+		<string name="fox_encrypted">* Opslag is versleuteld</string>
+		<string name="fox_unencrypted">* Opslag is niet versleuteld</string>
+		<string name="fox_display">* Weergave:    {1}</string>
+		<string name="fox_device">* Apparaat:     {1} ({2})</string>
+		<string name="fox_platform">* Platform:   {1}</string>
+		<string name="fox_dynamic_yes">* Dynamisch:    ja</string>
+		<string name="fox_dynamic_no">* Dynamisch:    nee</string>
+		<string name="fox_boot_slot">* Boot slot:  {1}</string>
+		<string name="fox_vab_yes">* Virtueel_AB: ja</string>
+		<string name="fox_vab_no">* Virtueel_AB: nee</string>
+		<string name="fox_kernel">* Kernel:     {1}</string>
+		<string name="fox_miui_rom">* MIUI ROM (SDK:{1}, {2})</string>
+		<string name="fox_custom_rom">* Aangepaste ROM (SDK:{1}, {2})</string>
+		<string name="fox_fingerprint">* Vingerafdruk: {1}</string>
+		<string name="fox_no_rom">* Geen ROM.</string>
+		
+		<!-- Symlink -->
+		<string name="symlink_dir_name">Link naar map</string>
+		<string name="symlink_file_name">Link naar bestand</string>
+		<string name="symlink_broken_name">Verbroken link</string>
+		<string name="symlink_folder">Open echte map</string>
+		<string name="symlink_file">Open echt bestand</string>
+		
+		<!-- Files -->
+		<string name="files_show_hidden">Verborgen bestanden weergeven</string>
+		<string name="files_auto_open">Bestandstype automatisch detecteren</string>
+		<string name="file_read">Bestand lezen: {1}</string>
+		<string name="file_read_error">Kan bestand niet openen!</string>
+		<string name="file_read_error_size">Bestand is groter dan 1.5MB!</string>
+		<string name="file_read_error_bin">Kan binair bestand niet lezen!</string>
+		<string name="subs_wipe">Substratum Overlays wissen</string>
+		<string name="sort_ex_all">Alle bestanden</string>
+		<string name="sort_ex_img">IMG bestanden</string>
+		<string name="sort_ex_zip">ZIP bestanden</string>
+		<string name="aroma_help">Druk opnieuw om AromaFM te starten...</string>
+
+		<!-- this error will shown when recovery cannot create backup folder
+		 -->
+		<string name="backups_rw_error_1">Opslag gekoppeld</string>
+		<string name="backups_rw_error_2">als alleen-lezen!</string>
+
+		<!-- App mgr -->
+		<string name="appmgr_apps">Apps</string>
+		<string name="appmgr_title">App manager</string>
+
+		<!-- performance -->
+		<string name="perf_title">Prestaties</string>
+		<string name="perf_conf_mode">Herstel prestatiemodus</string>
+		<string name="perf_conf_balance">Gebalanceerd</string>
+		<string name="perf_conf_high">Hoge prestaties</string>
+		<string name="perf_conf_batt">Energiebesparing</string>
+
+		<string name="fox_led_title">LED instellingen</string>
+		<string name="fox_use_green_led">Gebruik groene led kleur</string>
+		<string name="fox_boot_fastcharge">Forceer snel opladen</string>
+
+		<!-- OTA -->
+		<string name="fox_ota_msg_ready">Je bent klaar om updates te ontvangen!</string>
+		<string name="fox_ota_msg_custom">Aangepaste ROM modus ingeschakeld</string>
+		<string name="fox_ota_msg_reflash">Flash volledige ROM alstublieft!</string>
+		<string name="fox_advanced_stock_recovery">Agressieve stock recovery deactivatie</string>
+		<string name="fox_support_miui_ota_chk">OTA ondersteuning</string>
+		<string name="fox_include_system_survival_chk">Inclusief systeem in OTA survival</string>
+		<string name="fox_verify_incremental_ota_signature_chk">Incrementele OTA handtekeningverificatie</string>
+		<string name="fox_dmverity_chk">DM-Verity Uitschakelen</string>
+		<string name="fox_forced_encryption_chk">Geforceerde encryptie uitschakelen</string>
+		<string name="FOX_DISABLE_OTA_AUTO_REBOOT_chk">Voorkom automatisch herstarten na het installeren van OTA</string>
+		<string name="of_ota_reboot_disabled">OTA update voltooid. Je hebt automatisch herstarten uitgeschakeld. De controle terug naar u.</string>
+
+		<!-- Wipe format moved -->
+		<string name="wipe_format_moved_info1">Opmerking: Formatteer data verplaatst naar</string>
+		<string name="wipe_format_moved_info2">Beheer partities pagina.</string>
+
+		<!-- R11 -->
+		<string name="gst_title">Gebaren navigatie</string>
+		<string name="gst_enable_all">Gebaren inschakelen</string>
+		<string name="gst_back">Terug gebaar</string>
+		<string name="gst_back_left">Van links</string>
+		<string name="gst_back_right">Van rechts</string>
+		<string name="gst_console_enable">Veeg vanaf de statusbalk om console te openen</string>
+		<string name="gst_navbar_error">Sommige instellingen zijn verborgen.</string>
+		<string name="gst_navbar_error_2">Gebaren uitschakelen om te tonen.</string>
+
+		<string name="in">in</string>
+		<string name="con_digest_start">[DIGEST CREATIE STARTEN]</string>
+		<string name="con_digest_error">Partitielijst is leeg!</string>
+		<string name="con_digest_cancel">Annuleren...</string>
+		<string name="con_digest_complete">[DIGEST CREATIE VOLTOOID IN {1} SECONDS]</string>
+		<string name="digest_btn">Maak Digest</string>
+		<string name="digest_creating">Maak Digest...</string>
+		
+		<!-- 124/14354 files, 20/5412MB (5%)  -->
+		<string name="file_progress_v2">%llu/%llu bestanden,</string>
+		<string name="size_progress_v2">%llu/%llu MB (%i%%)</string>
+
+		<string name="navpan_new_design">Nieuw navigatiepaneel ontwerp</string>
+		<string name="full_partition_list">Toon extra partities voor backup</string>
+
+		<string name="data_decrypted_reload">Succesvol gedecodeerd!</string>
+
+		<string name="install_queue_magisk_btn">Voeg Magisk toe</string>
+		<string name="hint_ffiles_missing">Ben je iets kwijtgeraakt?</string>
+		<string name="hint_ffiles_missing1">Fox Addons niet beschikbaar</string>
+		<string name="hint_ffiles_missing2">OrangeFox kan zijn bestanden niet bereiken.</string>
+		<string name="hint_ffiles_missing3">Probeer /data te mounten of opnieuw te installeren</string>
+		<string name="hint_ffiles_missing4">OrangeFox als /data was gewist.</string>
+		<string name="hint_ffiles_missing5"><!-- Use this line if this hint is too big in your language --></string>
+		<string name="hide_btn">Tip verbergen</string>
+
+		<string name="info_dir_empty">Map is leeg</string>
+		<string name="info_dir_empty_hidden">Sommige bestanden zijn verborgen</string>
+
+		<string name="navbar_style_line">Lijn</string>
+		<string name="accent_in_titles">Accent tekstkleur in de titel</string>
+
+		<string name="backup_quick_info1">Deze partities zullen worden geselecteerd</string>
+		<string name="backup_quick_info2">na het klikken op de knop "Snelle Backup"</string>
+		<string name="mbyte">MB</string>
+		<string name="mbytesec">MB/s</string>
+		<string name="backup_av_files">Bestand</string>
+		<string name="backup_av_img">Image</string>
+		<string name="backup_exp_size">Verwachte grootte</string>
+		<string name="time_minute">min.</string>
+		<string name="backup_av">Gemiddelde tijd</string>
+		<string name="backup_av1">Wilt u de snelheidswaarden resetten</string>
+		<string name="backup_av2">naar standaardwaarden? Gemiddelde tijd</string>
+		<string name="backup_av3">de prognoses zullen minder accuraat zijn.</string>
+
+		<string name="cust_line_white">Witte lijn gebruiken</string>
+		<string name="cust_line_gray">Grijze lijn gebruiken</string>
+
+		<!-- Updated slot selection -->
+		<string name="slot_show">Wissel van slots</string>
+		<string name="slot_switch_a">Overschakelen naar slot A</string>
+		<string name="slot_switch_b">Overschakelen naar slot B</string>
+		<string name="slot_active_a">Slot A is actief</string>
+		<string name="slot_active_b">Slot B is actief</string>
+
+		<string name="theme_font_primary_tab">Primair</string>
+		<string name="theme_font_secondary_tab">Secundair</string>
+		<string name="theme_font_size_tab">Grootte</string>
+		<string name="theme_font_select">Select font</string>
+
+		<string name="theme_fweight">Lettertype dikte</string>
+		<string name="theme_fweight_norm">Standaard</string>
+		<string name="theme_fweight_reg">Normaal</string>
+		<string name="theme_fweight_med">Gemiddeld</string>
+
+		<string name="swipe_up_to_unlock">Veeg omhoog vanaf de onderkant van het scherm om te ontgrendelen</string>
+
+		<string name="spl_background">Achtergrondkleur</string>
+		<string name="spl_logo">Logo</string>
+		<string name="spl_white">Wit</string>
+		<string name="spl_black">Zwart</string>
+		<string name="spl_night">Nacht</string>
+		<string name="spl_orange">Oranje</string>
+		<string name="spl_accent">Accent</string>
+		<string name="spl_image">Achtergrond afbeelding</string>
+		<string name="spl_del_img">Remove image</string>
+		<string name="hidden">Verborgen</string>
+		<string name="spl_ofr">"OrangeFox Recovery" label</string>
+
+		<string name="batch_selected">%of_batch_count% geselecteerd</string>
+		<string name="batch_title">Batch acties</string>
+		<string name="batch_files_folders">Bestanden &amp; Mappen</string>
+
+		<string name="fm_action_folder">Acties op deze map</string>
+
+		<string name="tap_to_generate">Tik hier om te berekenen</string>
+		<string name="calc_checksum">Berekenen...</string>
+		<string name="cant_access_data">Geen toegang tot gegevens. Koppel de data partitie handmatig.</string>
+
+		<string name="backup_pass_wait">Wachtwoord Wijzigen...</string>
+		<string name="pass_encrypt_error1">U kunt het wachtwoord niet wijzigen</string>
+		<string name="pass_encrypt_error2">wanneer data is versleuteld!</string>
+
+		<string name="backup_encrypt_data_info">Alleen data partitie zal versleuteld worden</string>
+		
+		<!-- Missing functions from TWRP -->
+		<string name="img_advanced">Ramdisk installeren</string>
+		<string name="img_type">Image Type</string>
+		<string name="img_select_type">Selecteer Image type</string>
+		<string name="repack_overwrite_warning">Als het apparaat eerder geroot was, is de root overschreven en moet opnieuw worden geïnstalleerd.</string>		
+
+		<string name="repack_backup_first">Maak eerst een backup van de bestaande image</string>
+
+		<string name="unpack_error">Fout bij uitpakken image.</string>
+		<string name="repack_error">Fout bij terugplaatsen image.</string>
+		<string name="unpacking_image">Uitpakken {1}...</string>
+		<string name="repacking_image">{1} wordt teruggeplaatst...</string>
+		
+		<string name="fix_recovery_loop">Herstel Recovery Bootloop</string>
+		<string name="fixing_recovery_loop">Herstel Recovery Bootloop...</string>
+		<string name="fix_recovery_loop_complete">Herstel Recovery Bootloop voltooid</string>
+		<string name="fixing_recovery_loop_patch">Patchen van kernel...</string>
+		<string name="fix_recovery_loop_patch_error">Fout bij het patchen kernel.</string>
+		<string name="try_app">Probeer onze app!</string>
+		<string name="try_app_2">Controleer recovery-updates met onze</string>
+		<string name="try_app_3">nieuwe app! </string>
+		<string name="try_app_4">Downloadlink:</string>
+		<string name="try_app_5">https://app.orangefox.tech</string>
+		<string name="fm_edit_file">Bewerk bestand in nano</string>
+		<string name="fm_open_terminal_btn">Open Terminal Hier</string>
+		<string name="batch_progress">Voortgang</string>
+
+		<!-- R11.1 -->
+		<string name="custom_settings">Aangepaste instellingen voor %fox_compatibility_fox_device%</string>
+		<string name="custom_settings_title">Aangepaste instellingen</string>
+		<string name="tap_to_show">Tik om te tonen</string>
+
+		<!-- Android Rescue Party trigger -->
+		<string name="rescue_party0">Android Rescue Party trigger! Mogelijke oplossingen? Ofwel:</string>
+		<string name="rescue_party1"> 1. Wis caches, en/of</string>
+		<string name="rescue_party2"> 2. Formateer gegevens, en/of</string>
+		<string name="rescue_party3"> 3. Schoon-flash uw ROM.</string>
+		<string name="rescue_party4">Het gerapporteerde probleem is:</string>
+
+		<string name="restore_system_context">Kan standaardcontext voor {1} niet krijgen -- Android start mogelijk niet op.</string>
+		
+		<string name="batch_progress">Voortgang</string>
+		<string name="recovery_busy">Recovery is bezig</string>
+		<string name="status_delimeter">Statusbalkscheidingsteken</string>
+		<string name="status_delimeter_shadow">Schatduw</string>
+
+		<string name="mount_vab_partitions">Apparaten op super mogen mogelijk niet mounten tot na het herstarten van recovery.</string>
+		<string name="merges_snapshots">Snapshots samenvoegen</string>
+		<string name="merging_snapshots">Snapshots samenvoegen...</string>
+		<string name="merging_snapshots_complete">Snapshots samengevoegd</string>
+		
+		<string name="unmap_super_devices">Super Apparaten unmappen</string>
+		<string name="unmapping_super_devices">Super Apparaten unmappen...</string>
+		<string name="unmap_super_devices_complete">Alle Super Apparaten ungemapt</string>
+
+		<string name="auto_reflashtwrp_chk">OrangeFox opnieuw flashen na het flashen van een ROM</string>
+		<string name="modified_ramdisk_error">ramdisk bestanden zijn gewijzigd, kan geen ramdisk maken om te flashen. fastboot boot OrangeFox en probeer deze optie opnieuw of ga terug naar bestanden en installeer img-bestand als Recovery Ramdisk met de knop Install Ramdisk.</string>
+		<string name="create_ramdisk_error">kon geen ramdisk maken om te flashen.</string>
+		<string name="reflash_twrp">Flash huidige OrangeFox</string>
+		<string name="reflashing_twrp">OrangeFox aan het flashen...</string>
+		<string name="reflash_twrp_complete">Klaar met flashen van OrangeFox</string>
+
+		<string name="auto_disable_avb2">Schakel vbmeta AVB2.0 uit na ROM flash</string>
+		<string name="disable_avb2">Vbmeta AVB2.0 uitschakelen</string>
+		<string name="disable_avb2_confirm">Vbmeta AVB2.0 uitschakelen?</string>
+		<string name="disabling_AVB2">Vbmeta AVB2.0 wordt uitgeschakeld...</string>
+		<string name="disabling_AVB2_complete">Vbmeta AVB2.0 is uitgeschakeld!</string>
+		<string name="disable_avb2_success_msg">Vbmeta AVB2.0 uitschakelen: verwerking van '{1}' is gelukt.</string>
+		<string name="disable_avb2_fail_msg">Vbmeta AVB2.0 uitschakelen: verwerking van '{1}' is mislukt!</string>
+
+		<string name="enable_hw_control">Hardware GUI-bediening</string>
+		<string name="enable_hw_control_1">Hiermee kunt u navigeren via</string>
+		<string name="enable_hw_control_2">de interface met behulp van de hardware</string>
+		<string name="enable_hw_control_3">volume- en aan/uit-knoppen.</string>
+		<string name="enable_hw_control_4">Gebaren worden uitgeschakeld. Doorgaan?</string>
+	</resources>
+</language>

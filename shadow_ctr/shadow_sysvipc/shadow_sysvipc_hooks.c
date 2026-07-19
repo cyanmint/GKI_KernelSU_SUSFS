@@ -248,20 +248,33 @@ static long svipc_hook_msgctl(const struct pt_regs *regs)
 
 static long svipc_hook_msgsnd(const struct pt_regs *regs)
 {
-	/*
-	 * No safe shadow data path exists here yet: a real implementation needs an
-	 * in-kernel message queue, payload storage, blocking/wakeup semantics and
-	 * careful copy_{from,to}_user handling.  Preserve native behaviour instead.
-	 */
-	return real_sys_msgsnd(regs);
+	long ret;
+	int msqid = (int)svipc_sys_arg(regs, 0);
+	const void __user *umsgp = (const void __user *)svipc_sys_arg(regs, 1);
+	size_t msgsz = (size_t)svipc_sys_arg(regs, 2);
+	int msgflg = (int)svipc_sys_arg(regs, 3);
+
+	ret = real_sys_msgsnd(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	return svipc_sys_msgsnd(msqid, umsgp, msgsz, msgflg);
 }
 
 static long svipc_hook_msgrcv(const struct pt_regs *regs)
 {
-	/* See svipc_hook_msgsnd(): bookkeeping-only shadow queues cannot safely fake
-	 * successful payload transfer semantics.
-	 */
-	return real_sys_msgrcv(regs);
+	long ret;
+	int msqid = (int)svipc_sys_arg(regs, 0);
+	void __user *umsgp = (void __user *)svipc_sys_arg(regs, 1);
+	size_t msgsz = (size_t)svipc_sys_arg(regs, 2);
+	long msgtyp = (long)svipc_sys_arg(regs, 3);
+	int msgflg = (int)svipc_sys_arg(regs, 4);
+
+	ret = real_sys_msgrcv(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	return svipc_sys_msgrcv(msqid, umsgp, msgsz, msgtyp, msgflg);
 }
 
 static long svipc_hook_semget(const struct pt_regs *regs)
