@@ -1184,6 +1184,7 @@ typedef struct dentry *(*mq_kern_path_create_fn)(int, const char *,
 typedef void (*mq_done_path_create_fn)(struct path *, struct dentry *);
 typedef int (*mq_path_mount_fn)(const char *, struct path *, const char *,
 				 unsigned long, void *);
+typedef void (*mq_path_put_fn)(const struct path *);
 
 /*
  * mq_dev_mqueue_do_mount() - mount tmpfs at an already-resolved @path.
@@ -1210,6 +1211,7 @@ static void mq_dev_mqueue_ensure(void)
 	mq_done_path_create_fn done_path_create_fn;
 	mq_vfs_mkdir_fn vfs_mkdir_fn;
 	mq_path_mount_fn path_mount_fn;
+	mq_path_put_fn path_put_fn;
 	struct path path;
 	struct path create_path;
 	struct dentry *dentry;
@@ -1222,9 +1224,10 @@ static void mq_dev_mqueue_ensure(void)
 		shadow_hook_resolve("done_path_create");
 	vfs_mkdir_fn = (mq_vfs_mkdir_fn)shadow_hook_resolve("vfs_mkdir");
 	path_mount_fn = (mq_path_mount_fn)shadow_hook_resolve("path_mount");
+	path_put_fn = (mq_path_put_fn)shadow_hook_resolve("path_put");
 
 	if (!kern_path_fn || !kern_path_create_fn || !done_path_create_fn ||
-	    !vfs_mkdir_fn || !path_mount_fn) {
+	    !vfs_mkdir_fn || !path_mount_fn || !path_put_fn) {
 		pr_info("shadow_mqueue: init: could not resolve VFS helpers for proactive %s mount; falling back to the reactive mount(2) hook only\n",
 			SHADOW_MQ_DEV_MQUEUE_PATH);
 		return;
@@ -1243,12 +1246,12 @@ static void mq_dev_mqueue_ensure(void)
 		if (path.dentry == path.dentry->d_sb->s_root) {
 			pr_info("shadow_mqueue: init: %s is already a mountpoint; leaving it as-is\n",
 				SHADOW_MQ_DEV_MQUEUE_PATH);
-			path_put(&path);
+			path_put_fn(&path);
 			return;
 		}
 
 		ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
-		path_put(&path);
+		path_put_fn(&path);
 		if (ret)
 			pr_info("shadow_mqueue: init: proactive tmpfs mount on existing %s failed: %d\n",
 				SHADOW_MQ_DEV_MQUEUE_PATH, ret);
@@ -1290,7 +1293,7 @@ static void mq_dev_mqueue_ensure(void)
 	}
 
 	ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
-	path_put(&path);
+	path_put_fn(&path);
 	if (ret)
 		pr_info("shadow_mqueue: init: created %s but tmpfs mount failed: %d\n",
 			SHADOW_MQ_DEV_MQUEUE_PATH, ret);
