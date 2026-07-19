@@ -12,8 +12,8 @@
  * (upstream commit "file: convert to struct fd") that landed in v6.8; on the
  * older GKI branches (e.g. 6.1) these modules still target, "struct fd" is a
  * plain aggregate with a directly accessible ->file member, so provide
- * compatible shims when the helpers aren't present. Currently only
- * shadow_mqueue uses these.
+ * compatible shims when the helpers aren't present. Used by shadow_mqueue
+ * and shadow_ns.
  */
 
 #ifndef _SHADOW_CTR_COMPAT_H

@@ -81,6 +81,8 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+#include "shadow_ctr_compat.h"
+
 /*
  * The allow/deny latch lives on the *inode*, not in a per-file heap
  * allocation: runc/containerd's "reopen through /proc/thread-self/fd/<n>"
@@ -264,9 +266,9 @@ static bool shadow_ns_dfd_is_procfs(int dfd)
 		return false;
 
 	f = fdget(dfd);
-	if (!f.file)
+	if (fd_empty(f))
 		return false;
-	ret = f.file->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC;
+	ret = fd_file(f)->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC;
 	fdput(f);
 	return ret;
 }
@@ -297,7 +299,7 @@ static long shadow_ns_proc_open(int dfd, const char __user *upath, int flags,
 				 umode_t mode)
 {
 	struct shadow_ns *ns;
-	struct fd dirfd = {NULL};
+	struct fd dirfd;
 	bool have_dirfd = false;
 	char buf[192];
 	char tail[192];
@@ -369,7 +371,7 @@ static long shadow_ns_proc_open(int dfd, const char __user *upath, int flags,
 		file = filp_open_fn(full, flags, mode);
 	} else {
 		dirfd = fdget(dfd);
-		if (!dirfd.file)
+		if (fd_empty(dirfd))
 			return LONG_MIN;
 		have_dirfd = true;
 
@@ -379,7 +381,7 @@ static long shadow_ns_proc_open(int dfd, const char __user *upath, int flags,
 			fdput(dirfd);
 			return LONG_MIN;
 		}
-		file = file_open_root_fn(&dirfd.file->f_path, tail, flags,
+		file = file_open_root_fn(&fd_file(dirfd)->f_path, tail, flags,
 					  mode);
 	}
 	if (have_dirfd)
@@ -536,10 +538,10 @@ static bool shadow_ns_fd_is_proc_root(int fd)
 	bool ret;
 
 	f = fdget(fd);
-	if (!f.file)
+	if (fd_empty(f))
 		return false;
-	ret = f.file->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC &&
-	      f.file->f_path.dentry == f.file->f_path.dentry->d_sb->s_root;
+	ret = fd_file(f)->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC &&
+	      fd_file(f)->f_path.dentry == fd_file(f)->f_path.dentry->d_sb->s_root;
 	fdput(f);
 	return ret;
 }
