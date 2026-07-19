@@ -23,13 +23,13 @@ shadow_ctr_checker v2.0 - shadow container-support status
 mqueue: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
 sysvipc: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
 cgroup_device: supported (builtin)
-overlay2: supported (shadow_overlay2.ko)
+overlay2: supported (module: overlay)
 # namespaces (task explicitly requests net/pid/ipc/uts; mnt/user/cgroup shown for completeness)
 ns_net: not supported (not builtin); shadow_ns.ko provides bookkeeping-only fallback if loaded - check lsmod
 ns_pid: not supported (not builtin); shadow_ns.ko provides real isolation if loaded - check lsmod
 ns_ipc: not supported (not builtin); shadow_ns.ko provides bookkeeping-only fallback if loaded - check lsmod
 ns_uts: not supported (not builtin); shadow_ns.ko provides real isolation if loaded - check lsmod
-ns_mnt: not supported
+ns_mnt: supported (builtin)
 ns_user (user namespace): supported (builtin)
 ns_cgroup (proxy: CONFIG_CGROUPS): supported (builtin)
 ```
@@ -43,14 +43,14 @@ The report is generated fresh on every `open()`.
 | `mqueue`            | `IS_ENABLED(CONFIG_POSIX_MQUEUE)`    | n/a (see below) |
 | `sysvipc`           | `IS_ENABLED(CONFIG_SYSVIPC)`         | n/a (see below) |
 | `cgroup_device`     | `IS_ENABLED(CONFIG_CGROUP_DEVICE)`   | n/a (see below) |
-| `overlay2`          | `get_fs_type("overlay")` ground truth| distinguishes builtin / `shadow_overlay2.ko` / other module |
+| `overlay2`          | `get_fs_type("overlay")` ground truth| distinguishes builtin / loadable module |
 | `ns_net`            | `IS_ENABLED(CONFIG_NET_NS)`          | bookkeeping-only, if `shadow_ns.ko` loaded |
 | `ns_pid`            | `IS_ENABLED(CONFIG_PID_NS)`          | real isolation, if `shadow_ns.ko` loaded |
 | `ns_ipc`            | `IS_ENABLED(CONFIG_IPC_NS)`          | bookkeeping-only, if `shadow_ns.ko` loaded |
 | `ns_uts`            | `IS_ENABLED(CONFIG_UTS_NS)`          | real isolation, if `shadow_ns.ko` loaded |
-| `ns_mnt`            | `IS_ENABLED(CONFIG_MNT_NS)`          | n/a (always builtin in practice) |
+| `ns_mnt`            | `IS_ENABLED(CONFIG_NAMESPACES)` (proxy; no dedicated `CONFIG_MNT_NS` symbol exists) | bookkeeping-only, if `shadow_ns.ko` loaded (only if `CONFIG_NAMESPACES=n`, effectively never in practice) |
 | `ns_user`           | `IS_ENABLED(CONFIG_USER_NS)`         | real isolation, if `shadow_ns.ko` loaded (called out explicitly) |
-| `ns_cgroup`         | `IS_ENABLED(CONFIG_CGROUPS)` (proxy) | n/a (always builtin in practice) |
+| `ns_cgroup`         | `IS_ENABLED(CONFIG_CGROUPS)` (proxy) | bookkeeping-only, if `shadow_ns.ko` loaded (only if `CONFIG_CGROUPS=n`, rare) |
 
 `mqueue`/`sysvipc`/`cgroup_device` have no runtime "which `.ko` provides it"
 column (see "Why there is no cross-module runtime detection at all" below);
@@ -80,10 +80,9 @@ independently-computed answers are guaranteed to agree.
 For **overlayfs specifically** the checker prefers `get_fs_type("overlay")`
 over `IS_ENABLED(CONFIG_OVERLAY_FS)`, because `get_fs_type()` is the
 ground-truth answer to "will `mount(2)` of an overlay actually succeed": overlay
-could be builtin (`=y`), a genuine loadable `overlay.ko`, or provided by
-`shadow_overlay2.ko`. The checker inspects the returned
-`file_system_type->owner` to distinguish builtin (owner `NULL`) from a module,
-and compares the owning module's name to identify `shadow_overlay2`. The
+could be builtin (`=y`) or provided by a genuine loadable `overlay.ko`. The
+checker inspects the returned `file_system_type->owner` to distinguish builtin
+(owner `NULL`) from a module, and reports the owning module's name. The
 reference `get_fs_type()` takes is released with `module_put()`.
 
 ## Why there is no cross-module runtime detection at all

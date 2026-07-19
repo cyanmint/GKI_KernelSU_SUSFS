@@ -1,7 +1,7 @@
 # shadow_ns
 
 `shadow_ns.ko` is a single, standalone out-of-tree namespace system for the
-GKI_KernelSU_SUSFS kernel, modelled the same way as `shadow_overlay2.ko`: one
+GKI_KernelSU_SUSFS kernel: one
 module, no plugin/submodule architecture, no dependency chain of thin
 per-type `.ko` files. It replaces the old `shadow_ns_base` +
 `shadow_ns_{uts,ipc,mnt,pid,net,user,cgroup}` family.
@@ -24,14 +24,18 @@ whenever `use_containerd` is true, which is the default in
 `config.py`) forces `CONFIG_UTS_NS=y`, `CONFIG_PID_NS=y`, `CONFIG_IPC_NS=y`,
 `CONFIG_USER_NS=y`, `CONFIG_NET_NS=y` — the production kernel already has
 real, native namespace support for every type. Mount namespaces
-(`CLONE_NEWNS`, `fs/namespace.c`) have no Kconfig gate at all and are always
-compiled in; cgroup namespaces only need `CONFIG_CGROUPS=y` (always set).
+(`CLONE_NEWNS`, `fs/namespace.c`) have no dedicated per-type Kconfig gate at
+all and are always compiled in; cgroup namespaces only need
+`CONFIG_CGROUPS=y` (always set).
 
 `shadow_ns.c` computes, per namespace type, whether this specific kernel
 build has genuine support via `IS_ENABLED(CONFIG_UTS_NS)` /
 `IS_ENABLED(CONFIG_IPC_NS)` / `IS_ENABLED(CONFIG_USER_NS)` /
-`IS_ENABLED(CONFIG_PID_NS)` / `IS_ENABLED(CONFIG_NET_NS)` (`CLONE_NEWNS` and
-`CLONE_NEWCGROUP` are always treated as builtin):
+`IS_ENABLED(CONFIG_PID_NS)` / `IS_ENABLED(CONFIG_NET_NS)` /
+`IS_ENABLED(CONFIG_CGROUPS)`. `CLONE_NEWNS` (MNT) has no `CONFIG_MNT_NS`
+symbol to check the way every other type does, so it instead keys off
+`IS_ENABLED(CONFIG_NAMESPACES)` itself (the parent menuconfig, `default
+!EXPERT`, i.e. effectively always on):
 
 * **Builtin type** → the corresponding `CLONE_NEW*` bit is left untouched in
   `unshare`/`clone`/`clone3`, so the real kernel namespace code runs and
@@ -43,6 +47,8 @@ build has genuine support via `IS_ENABLED(CONFIG_UTS_NS)` /
   `menuconfig NAMESPACES ... if NAMESPACES ... endif`, so turning the parent
   off forces all five children off too — `SHADOW_NS_BUILTIN_FLAGS` collapses
   to "none of these five builtin" automatically, no special-casing needed.
+  MNT is also gated on that same `CONFIG_NAMESPACES` symbol (see below), so
+  it drops out alongside the other five and falls back to bookkeeping too.
   `unshare(2)`/`setns(2)`/`clone(2)`/`clone3(2)` have no `CONFIG_NAMESPACES`
   guard either (always compiled in `kernel/fork.c`), so the syscalls are
   always available for this module to hook.
@@ -54,8 +60,8 @@ inert bookkeeping:
 
 | Type | If builtin | If absent (simulated) |
 |------|-----------|------------------------|
-| MNT (`CLONE_NEWNS`) | always (no gate) | n/a |
-| CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (always) | n/a |
+| MNT (`CLONE_NEWNS`) | if `IS_ENABLED(CONFIG_NAMESPACES)` (effectively always, `default !EXPERT`; no dedicated `CONFIG_MNT_NS` symbol exists so the parent menuconfig is used as a defensive proxy) | bookkeeping only — same generic id/refcount registry as IPC/NET/CGROUP; the real, always-compiled-in mount-namespace code in `fs/namespace.c` keeps running regardless, this only adds a parallel bookkeeping entry |
+| CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (every GKI defconfig sets this) | bookkeeping only — same generic id/refcount registry as IPC/NET below; no functional cgroup-namespace partitioning to add safely from a module |
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
 | PID (`CLONE_NEWPID`) | passthrough | **real**: per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid` hooked) |
 | USER (`CLONE_NEWUSER`) | passthrough | **real**: creator's uid/gid appear as 0 inside the namespace (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked), matching the common docker/runc single-mapping userns-remap shape |
@@ -111,8 +117,8 @@ Build (and load) `shadow_hijack` first; see `KBUILD_EXTRA_SYMBOLS` in the
   bookkeeps `type` (i.e. the kernel build genuinely lacks native support).
 * `bool shadow_ns_type_real(u32 type)` — true if the simulation for `type`
   performs genuine functional isolation rather than bookkeeping only
-  (UTS, PID, USER); false for IPC/NET/MNT/CGROUP (either builtin, or
-  bookkeeping-only when simulated).
+  (UTS, PID, USER); false for IPC/NET/CGROUP/MNT (bookkeeping-only when
+  simulated).
 
 Not currently consumed by any other in-tree module — `shadow_ctr_checker`
 deliberately has zero build/load-time dependencies and instead recomputes the

@@ -2,8 +2,8 @@
 #
 # Dual-purpose kbuild Makefile for the standalone shadow_ns module.
 #
-# shadow_ns.ko is a single, self-contained namespace system (modelled on the
-# shadow_overlay2 module, i.e. no plugin/submodule architecture): it hooks
+# shadow_ns.ko is a single, self-contained namespace system (i.e. no
+# plugin/submodule architecture): it hooks
 # unshare(2)/setns(2)/clone(2)/clone3(2)/fork(2)/vfork(2) and, for whichever
 # namespace types this kernel build genuinely lacks (per IS_ENABLED(CONFIG_
 # {UTS,IPC,USER,PID,NET}_NS) — which also collapses correctly to "all five
@@ -37,6 +37,10 @@ obj-$(CONFIG_SHADOW_NS) += shadow_ns.o
 ifeq ($(CONFIG_SHADOW_NS),)
 obj-m += shadow_ns.o
 endif
+
+# shadow_hook.h (used to hook unshare/setns/clone/clone3/fork/vfork) lives
+# in ../common, same as every other shadow_ctr hooking module.
+ccflags-y += -I$(src)/../common
 
 else
 

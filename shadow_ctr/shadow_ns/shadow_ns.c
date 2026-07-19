@@ -89,13 +89,36 @@
  *     getresgid(2) so unmodified code inside the shadow user namespace
  *     really observes uid/gid 0, not its real host id.
  *
- * IPC/NET/CGROUP keep reference-counted bookkeeping only when genuinely
+ * IPC/NET/CGROUP/MNT keep reference-counted bookkeeping only when genuinely
  * unsupported: IPC without CONFIG_IPC_NS falls back to the single global
  * init_ipc_ns already (no meaningful extra isolation to add safely from a
  * module), and NET namespace isolation is inseparable from the entire
  * networking stack (net/core/net_namespace.c touches routing, sockets,
  * netfilter, sysctls, ...); vendoring that wholesale into a loadable module
  * would conflict with the compiled-in stack and cannot be done safely here.
+ * CGROUP is included here too: on a kernel built with CONFIG_CGROUPS=n (rare
+ * -- every GKI defconfig sets it, but not guaranteed by any other Kconfig
+ * relationship), CLONE_NEWCGROUP drops out of SHADOW_NS_BUILTIN_FLAGS and
+ * shadow_ns transparently falls back to the exact same generic, no-special-
+ * payload bookkeeping object (id/parent/refcount only, see shadow_ns_alloc())
+ * used for IPC/NET -- no separate code path is needed, since the alloc/clone/
+ * unshare/setns machinery below is already fully generic over "type".
+ *
+ * MNT (CLONE_NEWNS) is the odd one out: fs/namespace.c/kernel/nsproxy.c have
+ * no dedicated per-type Kconfig gate at all in mainline Linux (verified
+ * against $RUNNER_TEMP/kernel-common: every CLONE_NEWNS check in
+ * kernel/nsproxy.c and kernel/fork.c is unconditional, not
+ * "#ifdef CONFIG_NAMESPACES"), so there is no CONFIG_MNT_NS symbol to key
+ * off of the way UTS/IPC/USER/PID/NET each have their own. This module uses
+ * CONFIG_NAMESPACES itself (the parent menuconfig, "default !EXPERT" i.e.
+ * effectively always on) as MNT's builtin gate instead, purely as a
+ * defensive fallback: on CONFIG_NAMESPACES=n, CLONE_NEWNS drops out of
+ * SHADOW_NS_BUILTIN_FLAGS and MNT gets the exact same bookkeeping-only
+ * treatment as IPC/NET/CGROUP above. This does not disable or replace the
+ * real, always-compiled-in mount-namespace machinery in fs/namespace.c
+ * (which keeps running regardless of CONFIG_NAMESPACES); it only means
+ * shadow_ns additionally tracks a bookkeeping id/refcount entry for it, for
+ * parity with every other type when this config combination is hit.
  *
  * A kernel built with CONFIG_NAMESPACES=n entirely (init/Kconfig nests
  * CONFIG_UTS_NS/IPC_NS/USER_NS/PID_NS/NET_NS inside
@@ -105,11 +128,12 @@
  * IS_ENABLED(CONFIG_*_NS), so it automatically evaluates to "none of these
  * five builtin" and shadow_ns transparently falls back to real PID/USER
  * isolation plus IPC/NET bookkeeping for all of them — no separate code path
- * needed. Only CLONE_NEWNS (fs/namespace.c has no Kconfig gate at all) and
- * CLONE_NEWCGROUP (gated solely by CONFIG_CGROUPS, outside the NAMESPACES
- * menu) stay builtin regardless. unshare(2)/setns(2)/clone(2)/clone3(2)
- * themselves have no CONFIG_NAMESPACES guard either (always compiled in
- * kernel/fork.c), so the syscalls are always there for this module to hook.
+ * needed. MNT (gated on CONFIG_NAMESPACES itself, as described above) and
+ * CGROUP (gated solely by CONFIG_CGROUPS, also outside the NAMESPACES menu)
+ * get the same bookkeeping fallback if their respective config is off.
+ * unshare(2)/setns(2)/clone(2)/clone3(2) themselves have no CONFIG_NAMESPACES
+ * guard either (always compiled in kernel/fork.c), so the syscalls are
+ * always there for this module to hook.
  */
 
 #include <linux/module.h>
@@ -144,15 +168,31 @@
  * include/generated/autoconf.h, which matches the vmlinux it is built
  * against — see ../shadow_ctr_checker for the same IS_ENABLED() pattern).
  *
- * CLONE_NEWNS (mount namespaces) has no Kconfig gate in mainline Linux and is
- * unconditionally compiled in, so it is always treated as builtin.
+ * CLONE_NEWNS (mount namespaces) has no dedicated per-type Kconfig gate
+ * anywhere in mainline Linux (unlike UTS/IPC/USER/PID/NET, which each have
+ * their own CONFIG_*_NS symbol nested inside "if NAMESPACES ... endif" in
+ * init/Kconfig -- verified directly against $RUNNER_TEMP/kernel-common's
+ * init/Kconfig and kernel/nsproxy.c, where every CLONE_NEWNS check is
+ * unconditional, not "#ifdef CONFIG_NAMESPACES"). So CONFIG_NAMESPACES
+ * itself (the parent menuconfig, not a child symbol) is used here as MNT's
+ * own builtin gate: on every kernel this module actually targets it is
+ * `default !EXPERT`, i.e. effectively always on, so this is a defensive
+ * fallback for a hypothetical/non-standard build with CONFIG_NAMESPACES=n
+ * rather than something expected to ever trigger in practice. If it is off,
+ * MNT drops out of SHADOW_NS_BUILTIN_FLAGS and gets exactly the same
+ * reference-counted bookkeeping-only fallback as IPC/NET/CGROUP below (the
+ * alloc/unshare/clone/setns machinery is already fully generic over "type",
+ * so no MNT-specific payload/code path is needed) -- it does NOT mean the
+ * real, compiled-in mount-namespace machinery in fs/namespace.c stops
+ * working; it means shadow_ns additionally maintains its own bookkeeping
+ * registry entry for it, same as it would for IPC/NET/CGROUP.
  * CLONE_NEWCGROUP only requires CONFIG_CGROUPS=y (every GKI defconfig sets
  * this), so CONFIG_CGROUPS is used as its proxy, matching shadow_ctr_checker.
  */
 #define SHADOW_NS_BUILTIN_FLAGS ( \
 	(IS_ENABLED(CONFIG_UTS_NS)  ? (unsigned long)CLONE_NEWUTS    : 0UL) | \
 	(IS_ENABLED(CONFIG_IPC_NS)  ? (unsigned long)CLONE_NEWIPC    : 0UL) | \
-	(unsigned long)CLONE_NEWNS | \
+	(IS_ENABLED(CONFIG_NAMESPACES) ? (unsigned long)CLONE_NEWNS : 0UL) | \
 	(IS_ENABLED(CONFIG_PID_NS)  ? (unsigned long)CLONE_NEWPID    : 0UL) | \
 	(IS_ENABLED(CONFIG_NET_NS)  ? (unsigned long)CLONE_NEWNET    : 0UL) | \
 	(IS_ENABLED(CONFIG_USER_NS) ? (unsigned long)CLONE_NEWUSER   : 0UL) | \

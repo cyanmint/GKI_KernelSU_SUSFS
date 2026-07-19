@@ -59,8 +59,8 @@
  * For overlayfs specifically the checker additionally consults
  * get_fs_type("overlay") as ground truth, because that (not IS_ENABLED alone)
  * is what determines whether mount(2) of an overlay will actually work: overlay
- * could be builtin (=y), a genuine loadable overlay.ko, or provided by
- * shadow_overlay2.ko, and get_fs_type() is the authoritative signal.
+ * could be builtin (=y) or provided by a genuine loadable overlay.ko, and
+ * get_fs_type() is the authoritative signal.
  */
 
 #include <linux/module.h>
@@ -166,7 +166,7 @@ static void shadow_checker_ns(struct shadow_checker_buf *b, const char *label,
 static void shadow_checker_build_report(struct shadow_checker_buf *b)
 {
 	struct file_system_type *ovl;
-	bool ovl_registered, ovl_builtin, ovl_is_shadow;
+	bool ovl_registered, ovl_builtin;
 
 	b->len = 0;
 
@@ -184,8 +184,6 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 	ovl = get_fs_type("overlay");
 	ovl_registered = (ovl != NULL);
 	ovl_builtin = ovl_registered && (ovl->owner == NULL);
-	ovl_is_shadow = ovl_registered && ovl->owner &&
-			!strcmp(ovl->owner->name, "shadow_overlay2");
 	if (ovl)
 		module_put(ovl->owner); /* balance get_fs_type()'s ref; NULL-safe */
 
@@ -193,9 +191,6 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 		shadow_checker_add(b, "overlay2: not supported\n");
 	else if (ovl_builtin)
 		shadow_checker_add(b, "overlay2: supported (builtin)\n");
-	else if (ovl_is_shadow)
-		shadow_checker_add(b,
-			"overlay2: supported (shadow_overlay2.ko)\n");
 	else
 		shadow_checker_add(b,
 			"overlay2: supported (module: %s)\n", ovl->owner->name);
@@ -212,17 +207,31 @@ static void shadow_checker_build_report(struct shadow_checker_buf *b)
 			 SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
 	shadow_checker_ns(b, "ns_uts", IS_ENABLED(CONFIG_UTS_NS),
 			 SHADOW_CHECKER_NS_SIM_REAL);
-	shadow_checker_ns(b, "ns_mnt", IS_ENABLED(CONFIG_MNT_NS),
-			 SHADOW_CHECKER_NS_SIM_NONE);
+	/*
+	 * Mount namespaces (CLONE_NEWNS) have no dedicated per-type Kconfig
+	 * gate anywhere in mainline Linux -- fs/namespace.c/kernel/nsproxy.c
+	 * compile them in unconditionally, so there is no CONFIG_MNT_NS
+	 * symbol to check (unlike every other CLONE_NEW* type). shadow_ns.c
+	 * instead keys MNT's builtin status off CONFIG_NAMESPACES itself (the
+	 * parent menuconfig, "default !EXPERT" i.e. effectively always on) as
+	 * a defensive fallback -- if that is ever off, shadow_ns transparently
+	 * falls back to bookkeeping-only for MNT too. See shadow_ns/README.md.
+	 */
+	shadow_checker_ns(b, "ns_mnt", IS_ENABLED(CONFIG_NAMESPACES),
+			 SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
 	/* User namespace: called out separately/explicitly per the task. */
 	shadow_checker_ns(b, "ns_user (user namespace)",
 			 IS_ENABLED(CONFIG_USER_NS), SHADOW_CHECKER_NS_SIM_REAL);
 	/*
 	 * cgroup namespace has no dedicated Kconfig gate in mainline; CONFIG_
-	 * CGROUPS is used as its proxy for the "builtin" column here.
+	 * CGROUPS is used as its proxy for the "builtin" column here. Unlike
+	 * mnt, this one genuinely can be absent (a kernel built with
+	 * CONFIG_CGROUPS=n, though every GKI defconfig sets it), and
+	 * shadow_ns.c already falls back to the same reference-counted
+	 * bookkeeping-only registry it uses for ipc/net in that case.
 	 */
 	shadow_checker_ns(b, "ns_cgroup (proxy: CONFIG_CGROUPS)",
-			 IS_ENABLED(CONFIG_CGROUPS), SHADOW_CHECKER_NS_SIM_NONE);
+			 IS_ENABLED(CONFIG_CGROUPS), SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
 }
 
 static int shadow_checker_open(struct inode *inode, struct file *file)

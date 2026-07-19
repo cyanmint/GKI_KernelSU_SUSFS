@@ -5,7 +5,7 @@
 # shadow_ctr_checker.ko is a pure, standalone diagnostics tool: it has NO
 # build-time (KBUILD_EXTRA_SYMBOLS/Module.symvers) or load-time dependency on
 # any other shadow_ctr module (shadow_ns, shadow_mqueue, shadow_sysvipc,
-# shadow_cgdevices, shadow_hijack, shadow_overlay2, ...). It can be built and
+# shadow_cgdevices, shadow_hijack, ...). It can be built and
 # insmod'd entirely on its own, in any order. (An earlier revision took a
 # hard dependency on shadow_ns's EXPORT_SYMBOL_GPL query API, and before that
 # used symbol_get()/symbol_put() to detect modules purely at runtime - but

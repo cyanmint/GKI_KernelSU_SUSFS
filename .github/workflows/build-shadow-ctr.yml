@@ -43,11 +43,6 @@
 #                                built/loaded last purely so it can observe
 #                                all of the other modules that happen to be
 #                                loaded (not a hard requirement).
-#   shadow_overlay2           -- vendored fs/overlayfs; ONLY built for
-#                                android14-6.1 (its VFS ABI is incompatible
-#                                with the other KMIs), mirroring the old
-#                                WITH_SHADOW_OVERLAY gating. See
-#                                shadow_ctr/shadow_overlay2/README.md.
 # All resulting .ko files for a given KMI are uploaded together as a single
 # artifact (shadow_ctr-modules-<kmi>-arm64), so consumers download one bundle
 # per kernel version instead of stitching together per-module artifacts.
@@ -122,15 +117,8 @@ jobs:
 
       - name: Build all shadow_ctr modules (arm64, via DDK container)
         run: |
-          # shadow_overlay2 (vendored fs/overlayfs) is only source-compatible
-          # with android14-6.1 -- see shadow_ctr/shadow_overlay2/README.md.
-          if [ "${{ matrix.kmi }}" = "android14-6.1" ]; then
-            build_overlay=1
-          else
-            build_overlay=0
-          fi
           docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
-            -e BUILD_OVERLAY="$build_overlay" -e KMI="${{ matrix.kmi }}" \
+            -e KMI="${{ matrix.kmi }}" \
             "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
             bash -euxo pipefail -c '
               KDIR="/opt/ddk/kdir/${KMI}"
@@ -160,11 +148,6 @@ jobs:
               # shadow_ctr_checker is a pure standalone diagnostics tool with
               # no dependency on any other shadow_ctr module.
               build shadow_ctr_checker
-
-              # 3) overlay2 only on android14-6.1.
-              if [ "$BUILD_OVERLAY" = "1" ]; then
-                build shadow_overlay2
-              fi
 
               # collect every built .ko into one staging dir so all modules
               # for this KMI can be uploaded together as a single artifact.

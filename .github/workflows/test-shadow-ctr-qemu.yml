@@ -110,8 +110,6 @@ jobs:
               # shadow_ctr_checker is a pure standalone diagnostics tool with
               # no dependency on any other shadow_ctr module.
               build shadow_ctr_checker
-              # overlay2 is android14-6.1 compatible (this KMI), so build it too
-              build shadow_overlay2
 
               # collect all built .ko into one staging dir for injection/upload
               mkdir -p /workspace/modules-out
@@ -184,8 +182,7 @@ jobs:
           # shadow_ns MUST go next (single standalone namespace system).
           /system/bin/insmod $M/shadow_ns.ko
           echo "insmod shadow_ns.ko -> $?"
-          for m in shadow_sysvipc shadow_mqueue shadow_cgdevices \
-                   shadow_overlay2; do
+          for m in shadow_sysvipc shadow_mqueue shadow_cgdevices; do
             if [ -f "$M/$m.ko" ]; then
               /system/bin/insmod "$M/$m.ko"
               echo "insmod $m.ko -> $?"
@@ -199,8 +196,6 @@ jobs:
           /system/bin/dmesg
           echo "=== SHADOW_CTR_QEMU_TEST: /dev nodes ==="
           /system/bin/ls -la /dev/shadow_ctr_checker
-          echo "=== SHADOW_CTR_QEMU_TEST: overlay registered? ==="
-          /system/bin/grep overlay /proc/filesystems
           echo "=== SHADOW_CTR_QEMU_TEST: cat /dev/shadow_ctr_checker ==="
           /system/bin/cat /dev/shadow_ctr_checker
           echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
