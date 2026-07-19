@@ -215,6 +215,25 @@ static void shadow_checker_send_err(int fd, int err)
 }
 
 /*
+ * Build a collision-resistant name of the form "<prefix>-<pid>-<nsec-hex>".
+ * Uses CLOCK_MONOTONIC at nanosecond resolution (rather than time(NULL),
+ * which only has 1-second resolution) so that two invocations of the same
+ * test in quick succession -- e.g. a PID reused across rapid re-runs within
+ * the same wall-clock second -- can never collide on the generated name.
+ * This matters for tests like mqueue that use O_EXCL and would otherwise
+ * intermittently fail with EEXIST.
+ */
+static void shadow_checker_unique_name(char *out, size_t out_len,
+					const char *prefix)
+{
+	struct timespec ts = { 0, 0 };
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	snprintf(out, out_len, "%s-%d-%lx%08lx", prefix, getpid(),
+		 (unsigned long)ts.tv_sec, (unsigned long)ts.tv_nsec);
+}
+
+/*
  * ---------------------------------------------------------------------
  * UTS namespace: unshare(CLONE_NEWUTS), then set a unique hostname inside
  * the child. Real isolation means the parent's own gethostname() never
@@ -255,8 +274,7 @@ static void shadow_checker_uts(void)
 			shadow_checker_send_err(pipefd[1], errno);
 			_exit(0);
 		}
-		snprintf(newname, sizeof(newname), "shadowchk-%d-%lx", getpid(),
-			 (unsigned long)time(NULL));
+		shadow_checker_unique_name(newname, sizeof(newname), "shadowchk");
 		if (sethostname(newname, strlen(newname))) {
 			shadow_checker_send_err(pipefd[1], errno);
 			_exit(0);
@@ -575,8 +593,14 @@ static void shadow_checker_mqueue(void)
 		.mq_msgsize = sizeof(msgbuf),
 	};
 
-	snprintf(name, sizeof(name), "/shadowchk-%d-%lx", getpid(),
-		 (unsigned long)time(NULL));
+	shadow_checker_unique_name(name, sizeof(name), "/shadowchk-mq");
+
+	/* Best-effort cleanup of a stale queue left behind by a previous run
+	 * that crashed before mq_unlink() (e.g. name reused after a PID
+	 * wraparound); ignore ENOENT since that is the expected case.
+	 */
+	mq_unlink(name);
+
 	mq = mq_open(name, O_CREAT | O_RDWR | O_EXCL, 0600, &attr);
 	if (mq == (mqd_t)-1) {
 		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_FAIL,
