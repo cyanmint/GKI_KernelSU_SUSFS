@@ -1210,8 +1210,8 @@ static void mq_dev_mqueue_ensure(void)
 
 	if (!kern_path_fn || !kern_path_create_fn || !done_path_create_fn ||
 	    !vfs_mkdir_fn || !path_mount_fn) {
-		pr_info("shadow_mqueue: init: could not resolve VFS helpers for proactive "
-			SHADOW_MQ_DEV_MQUEUE_PATH " mount; falling back to the reactive mount(2) hook only\n");
+		pr_info("shadow_mqueue: init: could not resolve VFS helpers for proactive %s mount; falling back to the reactive mount(2) hook only\n",
+			SHADOW_MQ_DEV_MQUEUE_PATH);
 		return;
 	}
 
@@ -1226,8 +1226,8 @@ static void mq_dev_mqueue_ensure(void)
 		 * here without a NULL check.
 		 */
 		if (path.dentry == path.dentry->d_sb->s_root) {
-			pr_info("shadow_mqueue: init: " SHADOW_MQ_DEV_MQUEUE_PATH
-				" is already a mountpoint; leaving it as-is\n");
+			pr_info("shadow_mqueue: init: %s is already a mountpoint; leaving it as-is\n",
+				SHADOW_MQ_DEV_MQUEUE_PATH);
 			path_put(&path);
 			return;
 		}
@@ -1235,12 +1235,11 @@ static void mq_dev_mqueue_ensure(void)
 		ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
 		path_put(&path);
 		if (ret)
-			pr_info("shadow_mqueue: init: proactive tmpfs mount on "
-				 "existing " SHADOW_MQ_DEV_MQUEUE_PATH
-				 " failed: %d\n", ret);
+			pr_info("shadow_mqueue: init: proactive tmpfs mount on existing %s failed: %d\n",
+				SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 		else
-			pr_info("shadow_mqueue: init: mounted tmpfs on existing "
-				 SHADOW_MQ_DEV_MQUEUE_PATH "\n");
+			pr_info("shadow_mqueue: init: mounted tmpfs on existing %s\n",
+				SHADOW_MQ_DEV_MQUEUE_PATH);
 		return;
 	}
 
@@ -1278,11 +1277,11 @@ static void mq_dev_mqueue_ensure(void)
 	ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
 	path_put(&path);
 	if (ret)
-		pr_info("shadow_mqueue: init: created " SHADOW_MQ_DEV_MQUEUE_PATH
-			 " but tmpfs mount failed: %d\n", ret);
+		pr_info("shadow_mqueue: init: created %s but tmpfs mount failed: %d\n",
+			SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 	else
-		pr_info("shadow_mqueue: init: created and mounted "
-			 SHADOW_MQ_DEV_MQUEUE_PATH "\n");
+		pr_info("shadow_mqueue: init: created and mounted %s\n",
+			SHADOW_MQ_DEV_MQUEUE_PATH);
 }
 
 int __init shadow_mqueue_init(void)
