@@ -158,6 +158,18 @@ deliberately *not* used here even though it would avoid the extra
 whole `shadow_ctr.ko` fail to `insmod` with "Unknown symbol
 anon_inode_getfile_secure".
 
+`anon_inode_getfd_secure()` itself *is* `EXPORT_SYMBOL_GPL()`'d, but a
+direct call to it still made `shadow_ctr.ko` fail to `insmod` on both the
+stock and the SukiSU/SUSFS-patched production GKI test kernels with
+"Unknown symbol anon_inode_getfd_secure" — those kernels are built with
+`CONFIG_TRIM_UNUSED_KSYMS`, which strips the export for any symbol unused
+by built-in code even though the function itself stays compiled in and
+visible in `/proc/kallsyms` (the same class of failure previously hit with
+`path_put()` in `shadow_mqueue`). `shadow_ns_procfs.c` therefore resolves
+`anon_inode_getfd_secure` via `shadow_hook_resolve()` (kprobe-based
+kallsyms lookup) instead of calling it directly, exactly like
+`shadow_mqueue` does for `kern_path`/`vfs_mkdir`/`path_mount`/`path_put`.
+
 ## Build
 
 ```sh

@@ -134,8 +134,14 @@ static const struct file_operations shadow_setgroups_fops = {
 	.llseek		= default_llseek,
 };
 
+typedef int (*shadow_anon_inode_getfd_secure_fn)(const char *,
+						  const struct file_operations *,
+						  void *, int,
+						  const struct inode *);
+
 static long shadow_ns_setgroups_create_fd(void)
 {
+	shadow_anon_inode_getfd_secure_fn anon_inode_getfd_secure_fn;
 	struct file *file;
 	int fd;
 
@@ -163,13 +169,28 @@ static long shadow_ns_setgroups_create_fd(void)
 	 * anon_inode_getfd_secure()/anon_inode_getfile(), it has no
 	 * EXPORT_SYMBOL(_GPL) in fs/anon_inodes.c, so referencing it here
 	 * makes the whole module fail to insmod with "Unknown symbol
-	 * anon_inode_getfile_secure". anon_inode_getfd_secure() is fully
-	 * exported and returns the fd directly; the backing struct file is
-	 * then retrieved with fget() purely to reach its inode.
+	 * anon_inode_getfile_secure".
+	 *
+	 * anon_inode_getfd_secure() itself *is* EXPORT_SYMBOL_GPL()'d in
+	 * fs/anon_inodes.c, but production GKI kernels built with
+	 * CONFIG_TRIM_UNUSED_KSYMS strip the export entirely because no
+	 * built-in code calls it -- the symbol still exists as ordinary text
+	 * in /proc/kallsyms, but a direct call from an out-of-tree module
+	 * makes the whole shadow_ctr.ko fail to insmod with "Unknown symbol
+	 * anon_inode_getfd_secure" (same class of failure previously hit
+	 * with path_put() in shadow_mqueue). Resolve it via
+	 * shadow_hook_resolve() (kprobe-based kallsyms lookup) instead of
+	 * calling it directly, exactly like shadow_mqueue does for
+	 * kern_path/vfs_mkdir/path_mount/path_put.
 	 */
-	fd = anon_inode_getfd_secure("[shadow_setgroups]",
-				      &shadow_setgroups_fops, NULL,
-				      O_RDWR | O_CLOEXEC, NULL);
+	anon_inode_getfd_secure_fn = (shadow_anon_inode_getfd_secure_fn)
+		shadow_hook_resolve("anon_inode_getfd_secure");
+	if (!anon_inode_getfd_secure_fn)
+		return -ENOENT;
+
+	fd = anon_inode_getfd_secure_fn("[shadow_setgroups]",
+					 &shadow_setgroups_fops, NULL,
+					 O_RDWR | O_CLOEXEC, NULL);
 	if (fd < 0)
 		return fd;
 
