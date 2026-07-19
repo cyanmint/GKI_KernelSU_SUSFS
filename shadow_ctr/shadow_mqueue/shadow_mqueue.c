@@ -80,6 +80,16 @@
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/err.h>
+#include <linux/namei.h>
+#include <linux/dcache.h>
+#include <linux/mount.h>
+#include <linux/fcntl.h>
+#include <uapi/linux/mount.h>
+#include <linux/user_namespace.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#include <linux/mnt_idmapping.h>
+#endif
 #include <uapi/linux/mqueue.h>
 #include <uapi/linux/time_types.h>
 
@@ -1105,6 +1115,171 @@ static struct shadow_hook *shadow_mqueue_hooks[] = {
  * trimmed-symbol pseudo-filesystem registration.
  */
 
+/*
+ * /dev/mqueue proactive creation
+ * -------------------------------
+ * The mount(2) hook above only helps when *some* userspace process actually
+ * calls mount("mqueue", "/dev/mqueue", "mqueue", ...) *after* this module is
+ * loaded. In practice shadow_mqueue is typically insmod'd late (e.g. as a
+ * KernelSU/Magisk post-fs-data module), well after init.rc's own one-shot
+ * `mount mqueue mqueue /dev/mqueue ...` line already ran (and silently failed
+ * with -ENODEV, since init never retries a failed boot-time mount). That
+ * leaves /dev/mqueue nonexistent or an empty, never-mounted directory for
+ * the remainder of boot, and the reactive hook never gets a chance to fire.
+ *
+ * mq_dev_mqueue_ensure() fixes this by proactively creating the mountpoint
+ * (mkdir -p equivalent) and mounting tmpfs on it directly from module init,
+ * the same way the hook's fallback would have, without waiting for a mount(2)
+ * call that may never come. The reactive hook_sys_mount() above is left in
+ * place regardless, both as a fallback for kernels/paths this best-effort
+ * helper cannot handle and to keep serving any later mount("mqueue", ...)
+ * attempt (e.g. from a container's own /dev setup) that targets some other
+ * mount namespace.
+ *
+ * None of path_mount()/vfs_mkdir()/kern_path_create()/done_path_create() are
+ * referenced directly by name: path_mount() is not EXPORT_SYMBOL()'d at all
+ * on any of our target KMIs (it is fs/namespace.c-internal), and vfs_mkdir()
+ * is EXPORT_SYMBOL_NS()'d under "ANDROID_GKI_VFS_EXPORT_ONLY" on several GKI
+ * branches - a module that references it directly would need to
+ * MODULE_IMPORT_NS() that namespace, which is deliberately reserved for a
+ * small allow-list of in-tree consumers (fuse, overlayfs, ...) and may be
+ * refused outright on production kernels. Resolving all four via
+ * shadow_hook_resolve() (the same register_kprobe()-based address lookup
+ * used for the mq_* syscalls and the mount(2) hook above) sidesteps both
+ * problems: kprobe address resolution walks kallsyms directly and does not
+ * care whether a symbol is EXPORT_SYMBOL()'d, namespaced, or trimmed.
+ */
+
+#define SHADOW_MQ_DEV_MQUEUE_PATH "/dev/mqueue"
+#define SHADOW_MQ_DEV_MQUEUE_MODE 0755
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+typedef int (*mq_vfs_mkdir_fn)(struct mnt_idmap *, struct inode *,
+				struct dentry *, umode_t);
+#define MQ_VFS_MKDIR(fn, dir, dentry, mode) \
+	(fn)(&nop_mnt_idmap, (dir), (dentry), (mode))
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+typedef int (*mq_vfs_mkdir_fn)(struct user_namespace *, struct inode *,
+				struct dentry *, umode_t);
+#define MQ_VFS_MKDIR(fn, dir, dentry, mode) \
+	(fn)(&init_user_ns, (dir), (dentry), (mode))
+#else
+typedef int (*mq_vfs_mkdir_fn)(struct inode *, struct dentry *, umode_t);
+#define MQ_VFS_MKDIR(fn, dir, dentry, mode) \
+	(fn)((dir), (dentry), (mode))
+#endif
+
+typedef int (*mq_kern_path_fn)(const char *, unsigned int, struct path *);
+typedef struct dentry *(*mq_kern_path_create_fn)(int, const char *,
+						  struct path *, unsigned int);
+typedef void (*mq_done_path_create_fn)(struct path *, struct dentry *);
+typedef int (*mq_path_mount_fn)(const char *, struct path *, const char *,
+				 unsigned long, void *);
+
+/*
+ * mq_dev_mqueue_do_mount() - mount tmpfs at an already-resolved @path.
+ * @path is left untouched (caller still owns/puts the reference); returns
+ * the underlying path_mount() result.
+ */
+static int mq_dev_mqueue_do_mount(mq_path_mount_fn path_mount_fn,
+				   struct path *path)
+{
+	return path_mount_fn("mqueue", path, "tmpfs",
+			      MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
+}
+
+static void mq_dev_mqueue_ensure(void)
+{
+	mq_kern_path_fn kern_path_fn;
+	mq_kern_path_create_fn kern_path_create_fn;
+	mq_done_path_create_fn done_path_create_fn;
+	mq_vfs_mkdir_fn vfs_mkdir_fn;
+	mq_path_mount_fn path_mount_fn;
+	struct path path;
+	struct path create_path;
+	struct dentry *dentry;
+	int ret;
+
+	kern_path_fn = (mq_kern_path_fn)shadow_hook_resolve("kern_path");
+	kern_path_create_fn = (mq_kern_path_create_fn)
+		shadow_hook_resolve("kern_path_create");
+	done_path_create_fn = (mq_done_path_create_fn)
+		shadow_hook_resolve("done_path_create");
+	vfs_mkdir_fn = (mq_vfs_mkdir_fn)shadow_hook_resolve("vfs_mkdir");
+	path_mount_fn = (mq_path_mount_fn)shadow_hook_resolve("path_mount");
+
+	if (!kern_path_fn || !kern_path_create_fn || !done_path_create_fn ||
+	    !vfs_mkdir_fn || !path_mount_fn) {
+		pr_info("shadow_mqueue: init: could not resolve VFS helpers for "
+			 "proactive " SHADOW_MQ_DEV_MQUEUE_PATH " mount; falling "
+			 "back to the reactive mount(2) hook only\n");
+		return;
+	}
+
+	ret = kern_path_fn(SHADOW_MQ_DEV_MQUEUE_PATH, LOOKUP_DIRECTORY, &path);
+	if (!ret) {
+		/* Something is already mounted at this path (real mqueue, a
+		 * previous tmpfs fallback, ...): leave it alone. */
+		if (path.dentry == path.dentry->d_sb->s_root) {
+			pr_info("shadow_mqueue: init: " SHADOW_MQ_DEV_MQUEUE_PATH
+				" is already a mountpoint; leaving it as-is\n");
+			path_put(&path);
+			return;
+		}
+
+		ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
+		path_put(&path);
+		if (ret)
+			pr_info("shadow_mqueue: init: proactive tmpfs mount on "
+				 "existing " SHADOW_MQ_DEV_MQUEUE_PATH
+				 " failed: %d\n", ret);
+		else
+			pr_info("shadow_mqueue: init: mounted tmpfs on existing "
+				 SHADOW_MQ_DEV_MQUEUE_PATH "\n");
+		return;
+	}
+
+	if (ret != -ENOENT) {
+		pr_info("shadow_mqueue: init: kern_path(%s) failed: %d\n",
+			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		return;
+	}
+
+	/* /dev/mqueue does not exist yet: create it, then mount tmpfs on it. */
+	dentry = kern_path_create_fn(AT_FDCWD, SHADOW_MQ_DEV_MQUEUE_PATH,
+				      &create_path, LOOKUP_DIRECTORY);
+	if (IS_ERR(dentry)) {
+		pr_info("shadow_mqueue: init: kern_path_create(%s) failed: %ld\n",
+			 SHADOW_MQ_DEV_MQUEUE_PATH, PTR_ERR(dentry));
+		return;
+	}
+
+	ret = MQ_VFS_MKDIR(vfs_mkdir_fn, d_inode(create_path.dentry), dentry,
+			    SHADOW_MQ_DEV_MQUEUE_MODE);
+	done_path_create_fn(&create_path, dentry);
+	if (ret) {
+		pr_info("shadow_mqueue: init: mkdir(%s) failed: %d\n",
+			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		return;
+	}
+
+	ret = kern_path_fn(SHADOW_MQ_DEV_MQUEUE_PATH, LOOKUP_DIRECTORY, &path);
+	if (ret) {
+		pr_info("shadow_mqueue: init: kern_path(%s) failed after mkdir: %d\n",
+			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		return;
+	}
+
+	ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
+	path_put(&path);
+	if (ret)
+		pr_info("shadow_mqueue: init: created " SHADOW_MQ_DEV_MQUEUE_PATH
+			 " but tmpfs mount failed: %d\n", ret);
+	else
+		pr_info("shadow_mqueue: init: created and mounted "
+			 SHADOW_MQ_DEV_MQUEUE_PATH "\n");
+}
+
 int __init shadow_mqueue_init(void)
 {
 	int ret;
@@ -1117,6 +1292,8 @@ int __init shadow_mqueue_init(void)
 		return ret;
 	}
 	pr_info("shadow_mqueue: init: %d hook(s) installed\n", ret);
+
+	mq_dev_mqueue_ensure();
 
 	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded with transparent mq_* hooks\n");
 	return 0;

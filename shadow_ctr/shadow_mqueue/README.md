@@ -68,6 +68,10 @@ Key pieces:
   is ever referenced: the fallback reuses the real `mount(2)` syscall itself
   (via `vm_mmap()`/`vm_munmap()`, ordinary VFS/ELF-loader helpers that are
   never trimmed) with its filesystem-type argument swapped for `"tmpfs"`.
+* `shadow_mqueue` also proactively creates and mounts `/dev/mqueue` itself
+  at module load time (see "Proactive `/dev/mqueue` creation" below), instead
+  of only reacting to a `mount(2)` call that some userspace process may or
+  may not make after the module is loaded.
 
 ### `mount("mqueue", ...)` fallback
 
@@ -89,6 +93,35 @@ error, passes straight through untouched. This makes `/dev/mqueue` a real,
 working mountpoint for the runtime regardless of whether the kernel's mqueue
 subsystem is builtin, shadowed, or simply fails to mount in this particular
 namespace-faking setup.
+
+### Proactive `/dev/mqueue` creation
+
+The `mount(2)` hook above only helps if some process actually calls
+`mount("mqueue", "/dev/mqueue", ...)` *after* `shadow_mqueue.ko` is loaded.
+In practice the module is typically insmod'd late (e.g. as a KernelSU/Magisk
+post-fs-data module), well after init.rc's own one-shot
+`mount mqueue mqueue /dev/mqueue ...` line already ran and silently failed
+with `-ENODEV` (init never retries a failed boot-time mount). That would
+otherwise leave `/dev/mqueue` nonexistent, or an empty, never-mounted
+directory, for the rest of boot.
+
+To fix this, `shadow_mqueue_init()` also creates `/dev/mqueue` (if it doesn't
+already exist) and mounts `tmpfs` on it directly, the same way the `mount(2)`
+hook's fallback would have, without waiting for a `mount(2)` call that may
+never come. If `/dev/mqueue` is already a mountpoint (real `mqueue`, or a
+mount left over from a previous load), it is left untouched. None of the VFS
+helpers this needs (`path_mount()`, `vfs_mkdir()`, `kern_path_create()`,
+`done_path_create()`) are referenced directly by name: `path_mount()` isn't
+`EXPORT_SYMBOL()`'d on any target KMI, and `vfs_mkdir()` is
+`EXPORT_SYMBOL_NS()`'d under `ANDROID_GKI_VFS_EXPORT_ONLY` on several GKI
+branches, a namespace reserved for a small in-tree allow-list. All four are
+instead resolved at runtime via the same `register_kprobe()`-based
+`shadow_hook_resolve()` used for the mq_*/mount syscall hooks, which walks
+kallsyms directly and doesn't care whether a symbol is exported, namespaced,
+or trimmed. This step is best-effort: if any helper fails to resolve, or the
+mount fails, `shadow_mqueue` logs it and continues relying on the reactive
+`mount(2)` hook instead.
+
 
 ## What is simulated
 
@@ -150,4 +183,5 @@ dmesg | grep shadow_mqueue
 ```
 
 Expected log theme: the `mq_*` hook set is installed if those syscall
-wrappers are present.
+wrappers are present, and `/dev/mqueue` is created/mounted (or a reason is
+logged for why it wasn't).
