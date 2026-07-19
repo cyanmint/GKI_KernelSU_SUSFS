@@ -122,8 +122,8 @@ jobs:
             '
           # The DDK container runs as root, so modules-out/ (created inside
           # the container via the bind mount) is root-owned on the host;
-          # reopen it for the "runner" user before the next (non-container)
-          # step writes shadow_ctr_checker into it.
+          # fix ownership so the "runner" user can write into it before the
+          # next (non-container) step adds the userspace checker binary.
           sudo chown -R "$(id -u):$(id -g)" modules-out
 
       # shadow_ctr_checker is a plain userspace binary (not a kernel module):

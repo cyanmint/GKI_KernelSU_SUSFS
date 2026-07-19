@@ -229,7 +229,7 @@ static void shadow_checker_unique_name(char *out, size_t out_len,
 	struct timespec ts = { 0, 0 };
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	snprintf(out, out_len, "%s-%d-%lx%08lx", prefix, getpid(),
+	snprintf(out, out_len, "%s-%d-%lx-%08lx", prefix, getpid(),
 		 (unsigned long)ts.tv_sec, (unsigned long)ts.tv_nsec);
 }
 
