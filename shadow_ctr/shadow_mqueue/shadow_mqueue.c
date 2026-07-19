@@ -32,6 +32,28 @@
  *   Senders similarly block when a queue is full and are woken on dequeue.
  * - All resources (handles → queues → messages) are freed on fd close, so a
  *   crashed runtime never leaks kernel memory.
+ *
+ * mount("mqueue", ...) fallback
+ * -----------------------------
+ * Besides the mq_* syscalls above, this module also hooks mount(2) itself.
+ * Container runtimes (dockerd/containerd/runc) unconditionally attempt
+ * `mount("mqueue", "/dev/mqueue", "mqueue", MS_NOSUID|MS_NODEV|MS_NOEXEC, ...)`
+ * during container init. That call is expected to work whenever
+ * CONFIG_POSIX_MQUEUE is real/builtin - but in practice it can still fail
+ * with -ENODEV ("no such device") in the shadow_ns family's fake-namespace
+ * environment (see shadow_ns_mnt/shadow_ns_pid/shadow_ns_user: pid/mnt/user
+ * namespaces are refcounted bookkeeping only, not real, on kernels lacking
+ * those Kconfig options), which confuses the real mqueue filesystem's
+ * per-namespace tree lookup even though mqueue itself is genuinely
+ * registered. hook_sys_mount() lets the real mount(2) run first and, only if
+ * it fails with -ENODEV for fstype "mqueue", transparently retries the exact
+ * same call with the filesystem type swapped for "tmpfs" (which accepts the
+ * same handful of mount options runtimes pass here, e.g. "mode=", "size=",
+ * and is always available since CONFIG_TMPFS/CONFIG_SHMEM are core VFS
+ * features on every GKI kernel). This gives the runtime a real, working
+ * mountpoint at /dev/mqueue without depending on the mqueue subsystem's
+ * internal namespace plumbing at all. See mq_do_mount_fallback() below for
+ * why this needs a scratch page instead of just poking the caller's memory.
  */
 
 #include <linux/module.h>
@@ -55,6 +77,9 @@
 #include <linux/sched/signal.h>
 #include <linux/time64.h>
 #include <linux/timekeeping.h>
+#include <linux/mm.h>
+#include <linux/mman.h>
+#include <linux/err.h>
 #include <uapi/linux/mqueue.h>
 #include <uapi/linux/time_types.h>
 
@@ -132,9 +157,11 @@ static long (*real_sys_mq_timedsend)(const struct pt_regs *regs);
 static long (*real_sys_mq_timedreceive)(const struct pt_regs *regs);
 static long (*real_sys_mq_notify)(const struct pt_regs *regs);
 static long (*real_sys_mq_getsetattr)(const struct pt_regs *regs);
+static long (*real_sys_mount)(const struct pt_regs *regs);
 
 #if defined(CONFIG_ARM64)
 #define SHADOW_SYSCALL_ARG(_regs, _n) ((_regs)->regs[_n])
+#define SHADOW_SYSCALL_SET_ARG(_regs, _n, _val) ((_regs)->regs[_n] = (_val))
 #elif defined(CONFIG_X86_64)
 static __always_inline unsigned long shadow_syscall_arg(const struct pt_regs *regs,
 							unsigned int n)
@@ -150,6 +177,21 @@ static __always_inline unsigned long shadow_syscall_arg(const struct pt_regs *re
 	}
 }
 #define SHADOW_SYSCALL_ARG(_regs, _n) shadow_syscall_arg((_regs), (_n))
+static __always_inline void shadow_syscall_set_arg(struct pt_regs *regs,
+						   unsigned int n,
+						   unsigned long val)
+{
+	switch (n) {
+	case 0: regs->di = val; break;
+	case 1: regs->si = val; break;
+	case 2: regs->dx = val; break;
+	case 3: regs->r10 = val; break;
+	case 4: regs->r8 = val; break;
+	case 5: regs->r9 = val; break;
+	}
+}
+#define SHADOW_SYSCALL_SET_ARG(_regs, _n, _val) \
+	shadow_syscall_set_arg((_regs), (_n), (_val))
 #else
 #error "shadow_mqueue: unsupported architecture"
 #endif
@@ -868,6 +910,81 @@ out_put:
 	return ret;
 }
 
+#define SHADOW_MQ_MOUNT_FSTYPE_MAX 32
+#define SHADOW_MQ_MOUNT_TYPE_ARG   2
+
+/*
+ * mq_do_mount_fallback() - retry a failed mount("mqueue", ...) as tmpfs.
+ *
+ * We cannot just call an in-kernel mount helper directly (do_mount()/
+ * path_mount() are not exported, and the get_tree_nodev()/simple_fill_super()
+ * pair used by an earlier revision to register a real "mqueue" pseudo-fs are
+ * trimmed from production GKI kernels' exported-symbol table - see the
+ * top-of-file comment). Instead we reuse the *real* mount(2) syscall
+ * unmodified, just with its filesystem-type argument swapped out: we map a
+ * throwaway anonymous page into the calling process's address space with
+ * vm_mmap(), write "tmpfs" into it, point a copy of the original pt_regs at
+ * that page instead of the caller's "mqueue" string, and call through to
+ * @real_sys_mount with the copy. vm_mmap()/vm_munmap() are ordinary
+ * EXPORT_SYMBOL() helpers used throughout the VFS/ELF loader, so - unlike
+ * get_tree_nodev()/simple_fill_super() - they are never trimmed.
+ *
+ * The original dev_name/dir_name/flags/data arguments are passed through
+ * unchanged: tmpfs accepts the same handful of options ("mode=", "size=",
+ * "uid=", "gid=", ...) that runtimes typically pass for /dev/mqueue.
+ */
+static long mq_do_mount_fallback(const struct pt_regs *regs)
+{
+	struct pt_regs kregs;
+	unsigned long scratch;
+	long ret;
+
+	memcpy(&kregs, regs, sizeof(kregs));
+
+	scratch = vm_mmap(NULL, 0, PAGE_SIZE, PROT_READ | PROT_WRITE,
+			  MAP_PRIVATE | MAP_ANONYMOUS, 0);
+	if (IS_ERR_VALUE(scratch))
+		return (long)scratch;
+
+	if (copy_to_user((void __user *)scratch, "tmpfs", sizeof("tmpfs"))) {
+		vm_munmap(scratch, PAGE_SIZE);
+		return -EFAULT;
+	}
+
+	SHADOW_SYSCALL_SET_ARG(&kregs, SHADOW_MQ_MOUNT_TYPE_ARG, scratch);
+	ret = real_sys_mount(&kregs);
+	vm_munmap(scratch, PAGE_SIZE);
+	return ret;
+}
+
+/*
+ * hook_sys_mount() - let the real mount(2) run first; only retry as tmpfs
+ * when it failed with -ENODEV for fstype "mqueue" specifically. Every other
+ * fstype, and every other error (permissions, busy target, ...), passes
+ * through untouched.
+ */
+static long hook_sys_mount(const struct pt_regs *regs)
+{
+	const char __user *utype =
+		(const char __user *)SHADOW_SYSCALL_ARG(regs, SHADOW_MQ_MOUNT_TYPE_ARG);
+	char type[SHADOW_MQ_MOUNT_FSTYPE_MAX];
+	long copied;
+	long ret;
+
+	ret = real_sys_mount(regs);
+	if (ret != -ENODEV || !utype)
+		return ret;
+
+	copied = strncpy_from_user(type, utype, sizeof(type));
+	if (copied < 0 || copied >= sizeof(type) || strcmp(type, "mqueue"))
+		return ret;
+
+	pr_info_ratelimited(
+		"shadow_mqueue: mount(\"mqueue\", ...) failed with -ENODEV; "
+		"retrying as tmpfs so the caller sees a working mountpoint\n");
+	return mq_do_mount_fallback(regs);
+}
+
 static const char * const mq_open_hook_names[] = {
 	"__arm64_sys_mq_open",
 	"sys_mq_open",
@@ -904,6 +1021,12 @@ static const char * const mq_getsetattr_hook_names[] = {
 	NULL,
 };
 
+static const char * const mount_hook_names[] = {
+	"__arm64_sys_mount",
+	"sys_mount",
+	NULL,
+};
+
 static struct shadow_hook mq_open_hook =
 	SHADOW_HOOK(mq_open_hook_names, hook_sys_mq_open, &real_sys_mq_open);
 static struct shadow_hook mq_unlink_hook =
@@ -919,6 +1042,8 @@ static struct shadow_hook mq_notify_hook =
 static struct shadow_hook mq_getsetattr_hook =
 	SHADOW_HOOK(mq_getsetattr_hook_names, hook_sys_mq_getsetattr,
 		    &real_sys_mq_getsetattr);
+static struct shadow_hook mount_hook =
+	SHADOW_HOOK(mount_hook_names, hook_sys_mount, &real_sys_mount);
 
 static struct shadow_hook *shadow_mqueue_hooks[] = {
 	&mq_open_hook,
@@ -927,11 +1052,12 @@ static struct shadow_hook *shadow_mqueue_hooks[] = {
 	&mq_timedreceive_hook,
 	&mq_notify_hook,
 	&mq_getsetattr_hook,
+	&mount_hook,
 	NULL,
 };
 
 /*
- * shadow_mqueue deliberately does NOT register a "mqueue" filesystem type.
+ * shadow_mqueue does not register a "mqueue" filesystem type of its own.
  *
  * An earlier revision did so (via register_filesystem()/get_tree_nodev()/
  * simple_fill_super()) purely so that `mount("mqueue", ..., "mqueue", ...)`
@@ -949,17 +1075,18 @@ static struct shadow_hook *shadow_mqueue_hooks[] = {
  * The mq_* syscalls hooked below are fully self-contained (they resolve
  * queues through the global name hash and anon-inode fds, not through any
  * on-disk/vfs state) and work regardless of whether a "mqueue" filesystem is
- * registered, so dropping the pseudo-filesystem registration does not affect
- * message-queue semantics. A deployer whose container runtime insists on
- * mounting "mqueue" should ensure CONFIG_POSIX_MQUEUE (or another provider of
- * that filesystem type) is present instead.
+ * registered. The mount(2) hook above (hook_sys_mount()/
+ * mq_do_mount_fallback()) covers the actual `mount("mqueue", ...)` call
+ * itself instead: it lets the real syscall run first and only substitutes a
+ * "tmpfs" mount when that fails with -ENODEV, without ever needing a
+ * trimmed-symbol pseudo-filesystem registration.
  */
 
 int __init shadow_mqueue_init(void)
 {
 	int ret;
 
-	pr_info("shadow_mqueue: init: installing transparent mq_* hooks\n");
+	pr_info("shadow_mqueue: init: installing transparent mq_*/mount hooks\n");
 	ret = shadow_hook_install_all(shadow_mqueue_hooks, "shadow_mqueue");
 	if (ret < 0) {
 		pr_err("shadow_mqueue: init: shadow_hook_install_all() failed: %d\n", ret);
@@ -1014,5 +1141,5 @@ module_exit(shadow_mqueue_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Simulated POSIX message queue subsystem with transparent mq_* syscall hijacking");
+MODULE_DESCRIPTION("Simulated POSIX message queue subsystem with transparent mq_*/mount syscall hijacking");
 MODULE_VERSION(SHADOW_MQUEUE_VERSION);

@@ -46,8 +46,8 @@ Key pieces:
   genuine fd-like object, so later `mq_timedsend()` / `mq_timedreceive()` /
   `mq_getsetattr()` calls from the same unmodified process can resolve the queue
   through `fdget()` and `file->private_data`.
-* `shadow_mqueue` deliberately does **not** register a `"mqueue"` filesystem
-  type. An earlier revision did so via `get_tree_nodev()`/`simple_fill_super()`
+* `shadow_mqueue` does **not** register a `"mqueue"` filesystem type of its
+  own. An earlier revision did so via `get_tree_nodev()`/`simple_fill_super()`
   so that a container runtime's unconditional
   `mount("mqueue", "/dev/mqueue", "mqueue", ...)` call would succeed even
   without `CONFIG_POSIX_MQUEUE`. However, those two VFS helpers are trimmed
@@ -56,11 +56,39 @@ Key pieces:
   `EXPORT_SYMBOL` entries), which made the *entire module* fail to load with
   `insmod: failed to load shadow_mqueue.ko: No such file or directory`
   (the kernel's module loader surfaces an unresolved symbol as `-ENOENT`).
-  The mq_\* syscall hooks above are fully self-contained regardless of
-  whether `"mqueue"` is mounted, so dropping the pseudo-filesystem
-  registration does not affect message-queue semantics — it only means a
-  runtime's `mount("mqueue", ...)` call will fail on kernels without
-  `CONFIG_POSIX_MQUEUE` (or another provider of that filesystem type).
+* Instead, `shadow_mqueue` hooks `mount(2)` itself (see "mount(\"mqueue\", ...)
+  fallback" below): it lets the real `mount(2)` run first, and only when that
+  fails with `-ENODEV` for fstype `"mqueue"` does it transparently retry the
+  exact same call as a `tmpfs` mount. This covers both a kernel genuinely
+  missing `CONFIG_POSIX_MQUEUE` *and* the case where `CONFIG_POSIX_MQUEUE` is
+  real/builtin but the mount still fails with `-ENODEV` in the shadow_ns
+  family's fake-namespace environment (pid/mnt/user namespaces reported as
+  "shadow_ns bookkeeping" rather than real by `shadow_ctr_checker` can confuse
+  the real mqueue filesystem's per-namespace tree lookup). No trimmed symbol
+  is ever referenced: the fallback reuses the real `mount(2)` syscall itself
+  (via `vm_mmap()`/`vm_munmap()`, ordinary VFS/ELF-loader helpers that are
+  never trimmed) with its filesystem-type argument swapped for `"tmpfs"`.
+
+### `mount("mqueue", ...)` fallback
+
+Container runtimes (`dockerd`/`containerd`/`runc`) unconditionally attempt
+`mount("mqueue", "/dev/mqueue", "mqueue", MS_NOSUID|MS_NODEV|MS_NOEXEC, ...)`
+during container init; a failure surfaces to users as an OCI runtime error
+such as:
+
+```
+error mounting "mqueue" to rootfs at "/dev/mqueue": ... no such device: unknown
+```
+
+`shadow_mqueue` hooks `mount(2)` and lets the real call run first. Only when
+it fails with `-ENODEV` *and* the requested fstype is exactly `"mqueue"` does
+it retry the identical call with the fstype swapped for `"tmpfs"` (same
+`dev_name`/`dir_name`/`flags`/`data`, so options like `mode=`/`size=` that
+runtimes pass are preserved). Every other fstype, and every other mount
+error, passes straight through untouched. This makes `/dev/mqueue` a real,
+working mountpoint for the runtime regardless of whether the kernel's mqueue
+subsystem is builtin, shadowed, or simply fails to mount in this particular
+namespace-faking setup.
 
 ## What is simulated
 
@@ -88,9 +116,10 @@ Key pieces:
 * The queue implementation is functional, but it is still a simulation: it
   has no persistence beyond module-managed state and does not attempt to
   emulate every edge-case of in-tree `ipc/mqueue.c`. It also does not
-  register a `"mqueue"` filesystem type (see "Architecture" above), so
-  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` still requires
-  `CONFIG_POSIX_MQUEUE` or another provider of that filesystem type.
+  register a real `"mqueue"` filesystem type (see "Architecture" above); a
+  `mount("mqueue", "/dev/mqueue", "mqueue", ...)` call is instead served by
+  the `mount(2)` hook, which mounts `tmpfs` in place of `mqueue` only when the
+  real mount fails with `-ENODEV`.
 
 ## Files
 
