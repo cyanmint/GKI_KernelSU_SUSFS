@@ -43,6 +43,7 @@
  */
 
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -330,7 +331,11 @@ static void shadow_checker_pid(void)
 {
 	int pipefd[2];
 	pid_t pid;
+	pid_t main_pid = getpid();
 	struct shadow_checker_msg msg;
+	char vpidbuf[32];
+	int proc_self_ok = -1, proc_hidden_ok = -1, proc_listing_ok = -1;
+	int have_fresh_proc = 0;
 
 	if (pipe(pipefd)) {
 		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_SKIP,
@@ -362,7 +367,78 @@ static void shadow_checker_pid(void)
 			_exit(0);
 		}
 		if (grandchild == 0) {
-			shadow_checker_send_ok(pipefd[1], "%d", getpid());
+			/*
+			 * /proc isolation check (see shadow_ns_procfs.c):
+			 * from inside the new (real or shadow_ns-simulated)
+			 * PID namespace, /proc/<own vpid> must resolve, the
+			 * outer checker process's real, still-running host
+			 * pid must NOT be visible via /proc/<main_pid>, and
+			 * readdir("/proc") must reflect the same hide/rename.
+			 *
+			 * On a genuine CONFIG_PID_NS kernel this requires a
+			 * *fresh* procfs mount bound to the new namespace --
+			 * exactly what runc/containerd do after
+			 * unshare(CLONE_NEWPID) -- otherwise the ambient
+			 * host /proc mount (inherited unchanged) still shows
+			 * the host's own pid namespace regardless of the new
+			 * pid namespace. shadow_ns's own openat/getdents64
+			 * translation hooks intercept /proc access
+			 * independent of which mount instance is used, so
+			 * this remount is harmless (a no-op from their
+			 * point of view) when shadow_ns is simulating
+			 * CLONE_NEWPID instead of a real kernel doing so.
+			 */
+			pid_t vpid = getpid();
+			char path[64];
+			int fd, have_fresh_proc;
+			DIR *d;
+
+			have_fresh_proc =
+				(unshare(CLONE_NEWNS) == 0 &&
+				 mount(NULL, "/", NULL,
+				       MS_REC | MS_PRIVATE, NULL) == 0 &&
+				 mount("proc", "/proc", "proc", 0, NULL) == 0);
+
+			snprintf(path, sizeof(path), "/proc/%d", (int)vpid);
+			fd = open(path, O_RDONLY | O_DIRECTORY);
+			proc_self_ok = fd >= 0;
+			if (fd >= 0)
+				close(fd);
+
+			snprintf(path, sizeof(path), "/proc/%d",
+				 (int)main_pid);
+			fd = open(path, O_RDONLY | O_DIRECTORY);
+			proc_hidden_ok = (fd < 0 && errno == ENOENT);
+			if (fd >= 0)
+				close(fd);
+
+			d = opendir("/proc");
+			if (d) {
+				struct dirent *de;
+				bool saw_self = false, saw_outer = false;
+				char selfbuf[16];
+
+				snprintf(selfbuf, sizeof(selfbuf), "%d",
+					 (int)vpid);
+				while ((de = readdir(d)) != NULL) {
+					char *end;
+					long v;
+
+					if (!strcmp(de->d_name, selfbuf))
+						saw_self = true;
+					v = strtol(de->d_name, &end, 10);
+					if (*de->d_name && !*end &&
+					    v == (long)main_pid)
+						saw_outer = true;
+				}
+				closedir(d);
+				proc_listing_ok = saw_self && !saw_outer;
+			}
+
+			shadow_checker_send_ok(pipefd[1], "%d;%d;%d;%d;%d",
+						vpid, proc_self_ok,
+						proc_hidden_ok, proc_listing_ok,
+						have_fresh_proc);
 			_exit(0);
 		}
 		waitpid(grandchild, NULL, 0);
@@ -387,13 +463,52 @@ static void shadow_checker_pid(void)
 		return;
 	}
 
-	if (!strcmp(msg.payload, "1"))
-		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_PASS,
-				      "grandchild became pid 1 in new namespace");
-	else
+	if (sscanf(msg.payload, "%31[^;];%d;%d;%d;%d", vpidbuf, &proc_self_ok,
+		   &proc_hidden_ok, &proc_listing_ok, &have_fresh_proc) != 5) {
+		/* Older/unexpected payload shape: keep pre-/proc-check
+		 * behaviour for the PID result itself.
+		 */
+		strncpy(vpidbuf, msg.payload, sizeof(vpidbuf) - 1);
+		vpidbuf[sizeof(vpidbuf) - 1] = '\0';
+		proc_self_ok = proc_hidden_ok = proc_listing_ok = -1;
+		have_fresh_proc = 0;
+	}
+
+	if (strcmp(vpidbuf, "1")) {
 		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_STUB,
 				      "grandchild kept real pid %s (no vpid remap)",
-				      msg.payload);
+				      vpidbuf);
+		shadow_checker_report("ns_pid (/proc isolation)",
+				      SHADOW_CHECKER_SKIP,
+				      "PID namespace was not isolated; nothing meaningful to check");
+		return;
+	}
+
+	shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_PASS,
+			      "grandchild became pid 1 in new namespace");
+
+	if (proc_self_ok < 0) {
+		shadow_checker_report("ns_pid (/proc isolation)",
+				      SHADOW_CHECKER_SKIP,
+				      "child produced no /proc-isolation result");
+	} else if (!have_fresh_proc) {
+		shadow_checker_report("ns_pid (/proc isolation)",
+				      SHADOW_CHECKER_SKIP,
+				      "couldn't mount a fresh /proc to test (needs CAP_SYS_ADMIN); self=%d hidden=%d listing=%d observed against the ambient /proc mount",
+				      proc_self_ok, proc_hidden_ok,
+				      proc_listing_ok);
+	} else if (!proc_self_ok || !proc_hidden_ok || !proc_listing_ok) {
+		shadow_checker_report("ns_pid (/proc isolation)",
+				      SHADOW_CHECKER_FAIL,
+				      "self=%d hidden=%d listing=%d (want all 1: /proc/1 open, host pid %d hidden, readdir filtered)",
+				      proc_self_ok, proc_hidden_ok,
+				      proc_listing_ok, (int)main_pid);
+	} else {
+		shadow_checker_report("ns_pid (/proc isolation)",
+				      SHADOW_CHECKER_PASS,
+				      "/proc/1 resolves to self; host pid %d hidden from open() and readdir(\"/proc\")",
+				      (int)main_pid);
+	}
 }
 
 /*

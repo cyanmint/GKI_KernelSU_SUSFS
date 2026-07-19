@@ -87,6 +87,39 @@ returned `siginfo.si_pid` is not translated back to a vpid (only the pid
 threaded container-init use, but not a byte-for-byte replica of
 multi-threaded nested pid namespace semantics.
 
+**`/proc` isolation** (`shadow_ns_procfs.c`, alongside `/proc/*/setgroups`
+below): a task with an active simulated PID namespace only ever sees its own
+namespace's members under `/proc`, exactly like the real kernel's
+`fs/proc/base.c` consulting `task_active_pid_ns()`:
+
+- `open()`/`openat()`/`openat2()` of an (absolute, or relative to an
+  already-open procfs directory fd) `/proc/<pid>[/...]` path is intercepted
+  *before* the real syscall runs (not call-through-then-fallback, unlike the
+  `setgroups` hook below — a real pid could otherwise coincidentally satisfy
+  a "vpid" lookup and leak a host process outside the namespace). The
+  leading numeric pid component is looked up in the same vpid↔rpid map
+  `getpid()`/`kill()`/`wait4()` use: a registered member's vpid is
+  translated to its real rpid and the open is served (via `filp_open()`/
+  `file_open_root()`, since the translated, kernel-built path string can't
+  be handed to the real syscall as a user pointer); a real pid that isn't a
+  member of the namespace is rejected with `-ENOENT`, hiding it entirely.
+- `getdents64()` on an fd for `/proc`'s own root directory is post-processed
+  after the real syscall fills the caller's buffer: entries for real pids
+  that aren't registered namespace members are dropped, and member entries
+  are renamed from their real rpid to the namespace-local vpid, so `ls
+  /proc`/`readdir(/proc)` only ever lists the namespace's own members.
+
+Known limitations of this `/proc` isolation: only `/proc`'s own root listing
+is filtered (subdirectory listings such as `/proc/<pid>/task/`, thread ids,
+are left untouched); file *contents* are not rewritten (e.g.
+`/proc/<pid>/status`'s `Pid:`/`PPid:` fields still show the real rpid, not
+the vpid — doing so would require intercepting `read()` on procfs files,
+out of scope for this pass); and, like the syscall-level translation above,
+this only ever activates when a simulated PID namespace is actually active
+(i.e. `CONFIG_PID_NS` is genuinely absent on the running kernel) — on a
+kernel with real `CONFIG_PID_NS`, the kernel's own `fs/proc` already scopes
+`/proc` correctly and these hooks no-op for that task.
+
 ### USER namespace isolation details
 
 Rather than implementing arbitrary `uid_map`/`gid_map` parsing (which would
@@ -124,10 +157,13 @@ names a `setgroups` leaf under a procfs-rooted pid directory
 (`.../<pid|self|thread-self>/setgroups`, or a bare `"setgroups"` opened
 relative to a dfd whose superblock is procfs — the shape a detached
 `fsmount()` dirfd takes). Any other `-ENOENT` passes through untouched.
-This only installs when `CLONE_NEWUSER` is already being simulated (i.e.
-`CONFIG_USER_NS` is genuinely absent); on a kernel with real
-`CONFIG_USER_NS` the file already exists natively and these hooks are
-never installed.
+
+`shadow_ns_procfs_hooks` (the `open`/`openat`/`openat2`/`getdents64` hook
+table shared by this and the `/proc` isolation feature above) installs
+whenever *either* `CLONE_NEWUSER` or `CLONE_NEWPID` is being simulated (i.e.
+`CONFIG_USER_NS` and/or `CONFIG_PID_NS` is genuinely absent); on a kernel
+with both real natively, the setgroups file already exists and `/proc`
+already scopes itself correctly, so these hooks are never installed at all.
 
 The fabricated fd is created via `anon_inode_getfd_secure()` (a *private*,
 per-fd inode) rather than the simpler `anon_inode_getfd()` (whose backing
