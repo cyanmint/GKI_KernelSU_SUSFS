@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * shadow_ns_procfs - fabricate /proc/<pid>/setgroups on kernels genuinely
- * missing CONFIG_USER_NS.
+ * missing CONFIG_USER_NS, and isolate /proc for shadow_ns's simulated PID
+ * namespace (CONFIG_PID_NS genuinely absent).
  *
  * fs/proc/base.c only wires up the "setgroups" (and uid_map/gid_map)
  * per-pid dentries when the kernel is built with CONFIG_USER_NS=y (see
@@ -53,15 +54,32 @@
  * therefore uses anon_inode_getfd_secure() instead, which allocates a
  * *private* inode per fd, and explicitly points that inode's ->i_fop at
  * shadow_setgroups_fops so the magic-link reopen succeeds.
+ *
+ * This file also gives shadow_ns's simulated PID namespace real /proc
+ * isolation (see shadow_ns_proc_open()/shadow_ns_hook_getdents64() below):
+ * without it, a task moved into a shadow PID namespace still sees every
+ * host pid under /proc (openat("/proc/<real-host-pid>/...") succeeds and
+ * `ls /proc`/`readdir()` lists them), which is exactly the "pid ns isn't
+ * really isolated" bug reported against this module. Real
+ * kernel/pid_namespace.c gets this for free because fs/proc/base.c and
+ * fs/proc/root.c consult task_active_pid_ns() directly; a simulated
+ * namespace has no such kernel-side hook, so shadow_ns instead translates
+ * /proc/<vpid> paths to their real /proc/<rpid> equivalent (or -ENOENT for
+ * a real pid that isn't a member) on open, and filters+renames /proc's own
+ * root directory listing on getdents64, exactly mirroring the vpid<->rpid
+ * translation shadow_ns_pid.c already performs for getpid()/kill()/wait4().
  */
 #include "shadow_ns_internal.h"
 
 #include <linux/anon_inodes.h>
 #include <linux/ctype.h>
+#include <linux/dirent.h>
 #include <linux/fcntl.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/magic.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
 
 /*
  * The allow/deny latch lives on the *inode*, not in a per-file heap
@@ -217,10 +235,24 @@ static bool shadow_ns_component_is_pid_dir(const char *s)
 	return true;
 }
 
+/* An all-digits, non-empty component of exactly `len` bytes at `s`. */
+static bool shadow_ns_component_is_digits(const char *s, size_t len)
+{
+	size_t i;
+
+	if (!len)
+		return false;
+	for (i = 0; i < len; i++) {
+		if (!isdigit((unsigned char)s[i]))
+			return false;
+	}
+	return true;
+}
+
 /*
- * Bare "setgroups" with no directory component in the path string only
- * makes sense relative to a dfd that is itself rooted somewhere inside a
- * procfs mount (e.g. a detached fsopen("proc")+fsmount() dirfd handed
+ * Bare "setgroups"/numeric-pid path components with no directory prefix
+ * only make sense relative to a dfd that is itself rooted somewhere inside
+ * a procfs mount (e.g. a detached fsopen("proc")+fsmount() dirfd handed
  * straight to openat2(), or an already-open /proc/<pid> directory fd).
  */
 static bool shadow_ns_dfd_is_procfs(int dfd)
@@ -237,6 +269,132 @@ static bool shadow_ns_dfd_is_procfs(int dfd)
 	ret = f.file->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC;
 	fdput(f);
 	return ret;
+}
+
+typedef struct file *(*shadow_filp_open_fn)(const char *, int, umode_t);
+typedef struct file *(*shadow_file_open_root_fn)(const struct path *,
+						  const char *, int, umode_t);
+
+/*
+ * shadow_ns_proc_open() - open a "/proc/<vpid>[/...]" (absolute) or, when
+ * `dfd` is itself an already-open procfs directory fd, a relative
+ * "<vpid>[/...]" path, translating the leading numeric pid component from
+ * the caller's simulated-PID-namespace-local vpid to the real host rpid
+ * before actually resolving it.
+ *
+ * Returns:
+ *   LONG_MIN - not applicable (no active simulated PID namespace, or the
+ *              path isn't a numeric /proc/<pid> access at all); caller must
+ *              fall back to the real syscall unchanged.
+ *   -ENOENT  - the requested vpid is not a registered member of the
+ *              caller's simulated namespace, so it must not be visible --
+ *              exactly what real PID namespace /proc isolation does for a
+ *              pid outside the namespace.
+ *   >= 0     - a freshly installed fd for the translated path.
+ *   < 0      - some other real error translating/opening the path.
+ */
+static long shadow_ns_proc_open(int dfd, const char __user *upath, int flags,
+				 umode_t mode)
+{
+	struct shadow_ns *ns;
+	struct fd dirfd = {NULL};
+	bool have_dirfd = false;
+	char buf[192];
+	char tail[192];
+	char full[224];
+	const char *path, *p, *slash, *rest;
+	size_t len;
+	char pidbuf[12];
+	long vpid;
+	pid_t rpid;
+	shadow_filp_open_fn filp_open_fn;
+	shadow_file_open_root_fn file_open_root_fn;
+	struct file *file;
+	int fd, n;
+
+	if (!upath)
+		return LONG_MIN;
+
+	n = strncpy_from_user(buf, upath, sizeof(buf));
+	if (n <= 0 || (size_t)n >= sizeof(buf))
+		return LONG_MIN;
+
+	if (buf[0] == '/') {
+		if (strncmp(buf, "/proc/", 6))
+			return LONG_MIN;
+		path = buf + 6;
+	} else {
+		if (dfd == AT_FDCWD || !shadow_ns_dfd_is_procfs(dfd))
+			return LONG_MIN;
+		path = buf;
+	}
+
+	p = path;
+	slash = strchr(p, '/');
+	len = slash ? (size_t)(slash - p) : strlen(p);
+	if (!len || len >= sizeof(pidbuf) ||
+	    !shadow_ns_component_is_digits(p, len))
+		return LONG_MIN;
+
+	ns = shadow_ns_current_pidns();
+	if (!ns)
+		return LONG_MIN;
+
+	memcpy(pidbuf, p, len);
+	pidbuf[len] = '\0';
+	if (kstrtol(pidbuf, 10, &vpid) || vpid <= 0 || vpid > INT_MAX) {
+		shadow_ns_put(ns);
+		return LONG_MIN;
+	}
+
+	rpid = shadow_ns_pidns_to_rpid(ns->pid, (pid_t)vpid);
+	shadow_ns_put(ns);
+	if (!rpid)
+		return -ENOENT;
+
+	rest = slash ? slash : "";
+	n = snprintf(tail, sizeof(tail), "%d%s", rpid, rest);
+	if (n < 0 || (size_t)n >= sizeof(tail))
+		return -ENOENT;
+
+	if (buf[0] == '/') {
+		n = snprintf(full, sizeof(full), "/proc/%s", tail);
+		if (n < 0 || (size_t)n >= sizeof(full))
+			return -ENOENT;
+
+		filp_open_fn = (shadow_filp_open_fn)
+			shadow_hook_resolve("filp_open");
+		if (!filp_open_fn)
+			return LONG_MIN;
+		file = filp_open_fn(full, flags, mode);
+	} else {
+		dirfd = fdget(dfd);
+		if (!dirfd.file)
+			return LONG_MIN;
+		have_dirfd = true;
+
+		file_open_root_fn = (shadow_file_open_root_fn)
+			shadow_hook_resolve("file_open_root");
+		if (!file_open_root_fn) {
+			fdput(dirfd);
+			return LONG_MIN;
+		}
+		file = file_open_root_fn(&dirfd.file->f_path, tail, flags,
+					  mode);
+	}
+	if (have_dirfd)
+		fdput(dirfd);
+
+	if (IS_ERR(file))
+		return PTR_ERR(file);
+
+	fd = get_unused_fd_flags(flags);
+	if (fd < 0) {
+		filp_close(file, NULL);
+		return fd;
+	}
+	fd_install(fd, file);
+	return fd;
 }
 
 static bool shadow_ns_path_wants_setgroups(int dfd, const char __user *upath)
@@ -275,8 +433,29 @@ static long shadow_ns_hook_openat2(const struct pt_regs *regs)
 	int dfd = (int)shadow_ns_sys_arg0(regs);
 	const char __user *upath =
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
-	long ret = real_sys_openat2(regs);
+	const void __user *uhow =
+		(const void __user *)(uintptr_t)shadow_ns_sys_arg2(regs);
+	/*
+	 * struct open_how { u64 flags; u64 mode; u64 resolve; } (uapi
+	 * linux/openat2.h) -- only flags/mode are needed here (mode never
+	 * matters for a /proc read, since translated opens never O_CREAT);
+	 * `resolve` is intentionally left unexamined.
+	 */
+	struct {
+		u64 flags;
+		u64 mode;
+	} how = { .flags = O_RDONLY };
+	long ret;
 
+	if (uhow && copy_from_user(&how, uhow, sizeof(how)))
+		how.flags = O_RDONLY;
+
+	ret = shadow_ns_proc_open(dfd, upath, (int)how.flags,
+				   (umode_t)how.mode);
+	if (ret != LONG_MIN)
+		return ret;
+
+	ret = real_sys_openat2(regs);
 	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(dfd, upath))
 		return ret;
 	return shadow_ns_setgroups_create_fd();
@@ -287,8 +466,13 @@ static long shadow_ns_hook_openat(const struct pt_regs *regs)
 	int dfd = (int)shadow_ns_sys_arg0(regs);
 	const char __user *upath =
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
-	long ret = real_sys_openat(regs);
+	int flags = (int)shadow_ns_sys_arg2(regs);
+	long ret = shadow_ns_proc_open(dfd, upath, flags, 0);
 
+	if (ret != LONG_MIN)
+		return ret;
+
+	ret = real_sys_openat(regs);
 	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(dfd, upath))
 		return ret;
 	return shadow_ns_setgroups_create_fd();
@@ -298,8 +482,13 @@ static long shadow_ns_hook_open(const struct pt_regs *regs)
 {
 	const char __user *upath =
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg0(regs);
-	long ret = real_sys_open(regs);
+	int flags = (int)shadow_ns_sys_arg1(regs);
+	long ret = shadow_ns_proc_open(AT_FDCWD, upath, flags, 0);
 
+	if (ret != LONG_MIN)
+		return ret;
+
+	ret = real_sys_open(regs);
 	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(AT_FDCWD, upath))
 		return ret;
 	return shadow_ns_setgroups_create_fd();
@@ -325,9 +514,150 @@ static struct shadow_hook shadow_ns_open_hook =
 	SHADOW_HOOK(shadow_ns_open_names, shadow_ns_hook_open,
 		    &real_sys_open);
 
+/*
+ * shadow_ns_hook_getdents64() - filter+rename /proc's own root directory
+ * listing for a task with an active simulated PID namespace: real host pids
+ * that are not registered members of the namespace are dropped entirely
+ * (mirroring the -ENOENT a direct /proc/<rpid> open gets from
+ * shadow_ns_proc_open() above), and member entries are renamed from their
+ * real rpid to the namespace-local vpid getpid()/kill()/wait4() already
+ * report.
+ *
+ * Deliberately scoped to the /proc root directory only: subdirectory
+ * listings such as /proc/<pid>/task/ (thread ids) are left untouched, same
+ * documented-limitation tradeoff as the rest of shadow_ns's PID simulation
+ * (see README.md).
+ */
+static long (*real_sys_getdents64)(const struct pt_regs *regs);
+
+static bool shadow_ns_fd_is_proc_root(int fd)
+{
+	struct fd f;
+	bool ret;
+
+	f = fdget(fd);
+	if (!f.file)
+		return false;
+	ret = f.file->f_path.dentry->d_sb->s_magic == PROC_SUPER_MAGIC &&
+	      f.file->f_path.dentry == f.file->f_path.dentry->d_sb->s_root;
+	fdput(f);
+	return ret;
+}
+
+static long shadow_ns_hook_getdents64(const struct pt_regs *regs)
+{
+	int fd = (int)shadow_ns_sys_arg0(regs);
+	void __user *udirp =
+		(void __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
+	unsigned int count = (unsigned int)shadow_ns_sys_arg2(regs);
+	long ret = real_sys_getdents64(regs);
+	struct shadow_ns *ns;
+	char *kbuf, *out;
+	long off, outlen;
+
+	if (ret <= 0 || !shadow_ns_fd_is_proc_root(fd))
+		return ret;
+
+	ns = shadow_ns_current_pidns();
+	if (!ns)
+		return ret;
+
+	kbuf = kmalloc(ret, GFP_KERNEL);
+	if (!kbuf)
+		goto out_put;
+	out = kmalloc(ret + 256, GFP_KERNEL);
+	if (!out) {
+		kfree(kbuf);
+		goto out_put;
+	}
+
+	if (copy_from_user(kbuf, udirp, ret))
+		goto out_free;
+
+	outlen = 0;
+	for (off = 0; off < ret; ) {
+		struct linux_dirent64 *d =
+			(struct linux_dirent64 *)(kbuf + off);
+		size_t maxname, namelen;
+		struct linux_dirent64 *nd;
+		char pidbuf[12];
+		long rpid;
+		pid_t vpid;
+		int n;
+		unsigned short new_reclen;
+
+		if (!d->d_reclen || off + d->d_reclen > ret)
+			break;
+
+		maxname = d->d_reclen - offsetof(struct linux_dirent64, d_name);
+		namelen = strnlen(d->d_name, maxname);
+
+		if (!namelen || namelen >= sizeof(pidbuf) ||
+		    !shadow_ns_component_is_digits(d->d_name, namelen)) {
+			memcpy(out + outlen, d, d->d_reclen);
+			outlen += d->d_reclen;
+			off += d->d_reclen;
+			continue;
+		}
+
+		memcpy(pidbuf, d->d_name, namelen);
+		pidbuf[namelen] = '\0';
+		if (kstrtol(pidbuf, 10, &rpid) || rpid <= 0 ||
+		    rpid > INT_MAX) {
+			memcpy(out + outlen, d, d->d_reclen);
+			outlen += d->d_reclen;
+			off += d->d_reclen;
+			continue;
+		}
+
+		vpid = shadow_ns_pidns_to_vpid(ns->pid, (pid_t)rpid);
+		if (!vpid) {
+			/* Not a member of this namespace: hide entirely. */
+			off += d->d_reclen;
+			continue;
+		}
+
+		n = snprintf(pidbuf, sizeof(pidbuf), "%d", vpid);
+		new_reclen = ALIGN(offsetof(struct linux_dirent64, d_name) +
+					n + 1, sizeof(u64));
+		nd = (struct linux_dirent64 *)(out + outlen);
+		nd->d_ino = d->d_ino;
+		nd->d_off = d->d_off;
+		nd->d_reclen = new_reclen;
+		nd->d_type = d->d_type;
+		memset(nd->d_name, 0,
+		       new_reclen - offsetof(struct linux_dirent64, d_name));
+		memcpy(nd->d_name, pidbuf, n);
+		outlen += new_reclen;
+		off += d->d_reclen;
+	}
+
+	if (outlen <= count && !copy_to_user(udirp, out, outlen))
+		ret = outlen;
+	/* else: leave `ret`/buffer untouched -- fail safe to the unfiltered
+	 * real listing rather than risk corrupting the caller's buffer. */
+
+out_free:
+	kfree(kbuf);
+	kfree(out);
+out_put:
+	shadow_ns_put(ns);
+	return ret;
+}
+
+static const char * const shadow_ns_getdents64_names[] = {
+	"__arm64_sys_getdents64", "__x64_sys_getdents64", "sys_getdents64",
+	NULL,
+};
+
+static struct shadow_hook shadow_ns_getdents64_hook =
+	SHADOW_HOOK(shadow_ns_getdents64_names, shadow_ns_hook_getdents64,
+		    &real_sys_getdents64);
+
 struct shadow_hook *shadow_ns_procfs_hooks[] = {
 	&shadow_ns_openat2_hook,
 	&shadow_ns_openat_hook,
 	&shadow_ns_open_hook,
+	&shadow_ns_getdents64_hook,
 	NULL,
 };

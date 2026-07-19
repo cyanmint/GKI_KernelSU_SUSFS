@@ -121,7 +121,7 @@ pid_t shadow_ns_pidns_to_rpid(struct shadow_pidns_priv *pidns, pid_t vpid)
 	return rpid;
 }
 
-static struct shadow_ns *shadow_ns_current_pidns(void)
+struct shadow_ns *shadow_ns_current_pidns(void)
 {
 	return shadow_ns_get_current(SHADOW_NS_TYPE_PID);
 }

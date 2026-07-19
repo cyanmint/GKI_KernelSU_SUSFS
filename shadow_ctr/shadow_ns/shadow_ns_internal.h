@@ -156,6 +156,7 @@ bool shadow_ns_requires_admin(unsigned long shadow_flags);
 
 unsigned long shadow_ns_sys_arg0(const struct pt_regs *regs);
 unsigned long shadow_ns_sys_arg1(const struct pt_regs *regs);
+unsigned long shadow_ns_sys_arg2(const struct pt_regs *regs);
 void shadow_ns_sys_set_arg0(struct pt_regs *regs, unsigned long value);
 void shadow_ns_sys_set_arg1(struct pt_regs *regs, unsigned long value);
 
@@ -207,5 +208,14 @@ extern struct shadow_hook *shadow_ns_uts_hooks[];
 extern struct shadow_hook *shadow_ns_pid_hooks[];
 extern struct shadow_hook *shadow_ns_user_hooks[];
 extern struct shadow_hook *shadow_ns_procfs_hooks[];
+
+/*
+ * shadow_ns_current_pidns() - the caller's active simulated PID namespace
+ * (shadow_ns_pid.c), or NULL if PID_NS is either kernel-native on this
+ * build/boot or the caller was never moved into one. Shared with
+ * shadow_ns_procfs.c so /proc access can be scoped to the same namespace
+ * getpid()/kill()/wait4()/... already translate against.
+ */
+struct shadow_ns *shadow_ns_current_pidns(void);
 
 #endif

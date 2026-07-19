@@ -71,6 +71,11 @@ unsigned long shadow_ns_sys_arg1(const struct pt_regs *regs)
 	return regs->regs[1];
 }
 
+unsigned long shadow_ns_sys_arg2(const struct pt_regs *regs)
+{
+	return regs->regs[2];
+}
+
 void shadow_ns_sys_set_arg0(struct pt_regs *regs, unsigned long value)
 {
 	regs->regs[0] = value;
@@ -89,6 +94,11 @@ unsigned long shadow_ns_sys_arg0(const struct pt_regs *regs)
 unsigned long shadow_ns_sys_arg1(const struct pt_regs *regs)
 {
 	return regs->si;
+}
+
+unsigned long shadow_ns_sys_arg2(const struct pt_regs *regs)
+{
+	return regs->dx;
 }
 
 void shadow_ns_sys_set_arg0(struct pt_regs *regs, unsigned long value)
