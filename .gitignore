@@ -17,7 +17,7 @@
 .tmp_versions/
 
 # shadow_ctr_checker userspace binary build output
-shadow_ctr/shadow_ctr_checker/shadow_ctr_checker
+shadow_ctr_checker/shadow_ctr_checker
 modules.order
 
 # Local scratch dirs used for shadow_ctr QEMU boot-test iteration

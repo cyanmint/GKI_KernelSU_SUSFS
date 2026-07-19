@@ -59,14 +59,9 @@ permissions:
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'shadow_ctr/**'
-      - '.github/workflows/test-shadow-ctr-qemu.yml'
+    branches: [shadow_ctr]
   pull_request:
-    paths:
-      - 'shadow_ctr/**'
-      - '.github/workflows/test-shadow-ctr-qemu.yml'
+    branches: [shadow_ctr]
   workflow_dispatch:
 
 env:
@@ -98,7 +93,7 @@ jobs:
             "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}" \
             bash -euxo pipefail -c '
               KDIR="/opt/ddk/kdir/${KMI}"
-              ROOT="/workspace/shadow_ctr/shadow_ctr"
+              ROOT="/workspace/shadow_ctr"
 
               make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
@@ -124,9 +119,9 @@ jobs:
 
       - name: Build shadow_ctr_checker (arm64, static)
         run: |
-          make -C shadow_ctr/shadow_ctr_checker \
+          make -C shadow_ctr_checker \
             CC=aarch64-linux-gnu-gcc
-          cp shadow_ctr/shadow_ctr_checker/shadow_ctr_checker modules-out/
+          cp shadow_ctr_checker/shadow_ctr_checker modules-out/
           file modules-out/shadow_ctr_checker
           ls -la modules-out
 

@@ -48,14 +48,9 @@ permissions:
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'shadow_ctr/**'
-      - '.github/workflows/build-shadow-ctr.yml'
+    branches: [shadow_ctr]
   pull_request:
-    paths:
-      - 'shadow_ctr/**'
-      - '.github/workflows/build-shadow-ctr.yml'
+    branches: [shadow_ctr]
   workflow_dispatch:
     inputs:
       kmis:
@@ -120,7 +115,7 @@ jobs:
             "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
             bash -euxo pipefail -c '
               KDIR="/opt/ddk/kdir/${KMI}"
-              ROOT="/workspace/shadow_ctr/shadow_ctr"
+              ROOT="/workspace/shadow_ctr"
 
               make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
@@ -178,12 +173,12 @@ jobs:
 
       - name: Build shadow_ctr_checker (arm64, static)
         run: |
-          make -C shadow_ctr/shadow_ctr_checker \
+          make -C shadow_ctr_checker \
             CC=aarch64-linux-gnu-gcc
-          file shadow_ctr/shadow_ctr_checker/shadow_ctr_checker
+          file shadow_ctr_checker/shadow_ctr_checker
 
       - name: Upload shadow_ctr_checker (arm64)
         uses: actions/upload-artifact@v7
         with:
           name: shadow_ctr_checker-arm64
-          path: shadow_ctr/shadow_ctr_checker/shadow_ctr_checker
+          path: shadow_ctr_checker/shadow_ctr_checker
