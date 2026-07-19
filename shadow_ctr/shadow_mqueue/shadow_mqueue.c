@@ -1153,6 +1153,15 @@ static struct shadow_hook *shadow_mqueue_hooks[] = {
 #define SHADOW_MQ_DEV_MQUEUE_PATH "/dev/mqueue"
 #define SHADOW_MQ_DEV_MQUEUE_MODE 0755
 
+/*
+ * vfs_mkdir()'s signature has changed twice upstream: it gained a
+ * struct user_namespace * first parameter in v5.12, which was replaced by a
+ * struct mnt_idmap * in v6.3. Every target KMI's LINUX_VERSION_CODE matches
+ * its nominal upstream base (5.10, 5.15, 6.1, 6.6, 6.12) closely enough that
+ * these two thresholds correctly split them into the three known-verified
+ * groups: 5.10 (no extra parameter), 5.15/6.1 (user_namespace), and
+ * 6.6/6.12 (mnt_idmap).
+ */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 typedef int (*mq_vfs_mkdir_fn)(struct mnt_idmap *, struct inode *,
 				struct dentry *, umode_t);
@@ -1180,6 +1189,12 @@ typedef int (*mq_path_mount_fn)(const char *, struct path *, const char *,
  * mq_dev_mqueue_do_mount() - mount tmpfs at an already-resolved @path.
  * @path is left untouched (caller still owns/puts the reference); returns
  * the underlying path_mount() result.
+ *
+ * The dev_name argument is "mqueue" (not "tmpfs") to mirror what
+ * hook_sys_mount()'s reactive fallback passes through from the original
+ * caller: it is only a cosmetic label recorded in /proc/mounts (tmpfs
+ * itself ignores dev_name), and keeping it consistent with the reactive
+ * path avoids a confusing mismatch between the two code paths' mounts.
  */
 static int mq_dev_mqueue_do_mount(mq_path_mount_fn path_mount_fn,
 				   struct path *path)
