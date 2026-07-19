@@ -5,7 +5,7 @@
 # shadow_hijack.ko is the shared function-hijacking implementation: it
 # EXPORT_SYMBOL_GPL()s the shadow_hook_install/remove/resolve/install_all/
 # remove_all entry points declared in common/shadow_hook.h. Every hooking
-# module (shadow_ns_base, shadow_ns_uts, shadow_sysvipc, shadow_mqueue,
+# module (shadow_ns, shadow_sysvipc, shadow_mqueue,
 # shadow_cgdevices) resolves those symbols at modpost time via
 # KBUILD_EXTRA_SYMBOLS=<shadow_hijack>/Module.symvers, so it must be built
 # (and, at load time, inserted) before any of them.

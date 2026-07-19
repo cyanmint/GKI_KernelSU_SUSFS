@@ -3,7 +3,7 @@
 `shadow_hijack.ko` is a small, standalone kernel module that hosts the
 `shadow_hook_resolve()/install()/remove()/install_all()/remove_all()`
 implementation shared by every syscall-hooking module in the `shadow_ctr`
-family: `shadow_ns_base`, `shadow_ns_uts`, `shadow_sysvipc`, `shadow_mqueue`
+family: `shadow_ns`, `shadow_sysvipc`, `shadow_mqueue`
 and `shadow_cgdevices`. See `../common/shadow_hook.h` for the full ABI
 contract (struct layout, `SHADOW_HOOK()` initialiser macro, function
 prototypes) that this module implements and every caller includes.

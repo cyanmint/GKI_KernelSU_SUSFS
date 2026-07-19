@@ -10,7 +10,7 @@
  * shadow_hook_remove_all) used to be `static inline` helpers in
  * common/shadow_hook.h, duplicated into every module TU that needed them so
  * that no shared .ko was required. Now that more than one module hooks
- * syscalls (shadow_ns_base, shadow_ns_uts, shadow_sysvipc, shadow_mqueue,
+ * syscalls (shadow_ns, shadow_sysvipc, shadow_mqueue,
  * shadow_cgdevices), that duplication is wasteful and, more importantly, made
  * the recursion guard fragile (see below). The logic now lives here as a
  * single shared implementation; common/shadow_hook.h is a purely declarative

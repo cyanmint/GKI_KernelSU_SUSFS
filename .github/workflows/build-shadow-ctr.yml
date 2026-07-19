@@ -25,24 +25,24 @@
 # Modules built (per KMI, in this order):
 #   shadow_hijack             -- shared ftrace/kprobe function-hijacking
 #                                implementation; built FIRST because
-#                                shadow_ns_base, shadow_ns_uts, shadow_sysvipc,
-#                                shadow_mqueue and shadow_cgdevices all resolve
-#                                its EXPORT_SYMBOL_GPL symbols at modpost time
+#                                shadow_ns, shadow_sysvipc, shadow_mqueue and
+#                                shadow_cgdevices all resolve its
+#                                EXPORT_SYMBOL_GPL symbols at modpost time
 #                                via KBUILD_EXTRA_SYMBOLS=<hijack>/Module.symvers.
-#   shadow_ns_base            -- generic registry + hooks; built next because
-#                                the shadow_ns_* per-type modules resolve its
-#                                EXPORT_SYMBOL_GPL symbols at modpost time via
-#                                KBUILD_EXTRA_SYMBOLS=<base>/Module.symvers.
-#   shadow_ns_{uts,net,ipc,pid,mnt,user,cgroup}
-#                             -- per-type plugins depending on shadow_ns_base
-#                                (and, for shadow_ns_uts, also shadow_hijack).
+#   shadow_ns                 -- single, standalone namespace system (no
+#                                submodules); real UTS/PID/USER isolation plus
+#                                IPC/NET bookkeeping fallback, only for
+#                                whichever types this KMI's kernel build
+#                                genuinely lacks. Depends only on
+#                                shadow_hijack.
 #   shadow_sysvipc, shadow_mqueue, shadow_cgdevices
 #                             -- no inter-module deps, except they also depend
 #                                on shadow_hijack for their hook implementation.
-#   shadow_ctr_checker        -- depends on shadow_ns_base's EXPORT_SYMBOL_GPL
-#                                query API via KBUILD_EXTRA_SYMBOLS=<base>/
-#                                Module.symvers; built/loaded last so it can
-#                                observe all of the other modules.
+#   shadow_ctr_checker        -- pure standalone diagnostics module, no
+#                                dependency on any other shadow_ctr module;
+#                                built/loaded last purely so it can observe
+#                                all of the other modules that happen to be
+#                                loaded (not a hard requirement).
 #   shadow_overlay2           -- vendored fs/overlayfs; ONLY built for
 #                                android14-6.1 (its VFS ABI is incompatible
 #                                with the other KMIs), mirroring the old
@@ -148,26 +148,20 @@ jobs:
               build shadow_hijack
               HIJACK_SYMS="$ROOT/shadow_hijack/Module.symvers"
 
-              # 1) base next -- produces the Module.symvers the ns_* need, and
-              #    itself depends on shadow_hijack.
-              build shadow_ns_base KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              # 1) shadow_ns next -- single standalone namespace system;
+              #    depends only on shadow_hijack.
+              build shadow_ns KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
 
-              # 2) per-type plugins, resolving base (and, for uts, hijack)
-              #    symbols at modpost time.
-              BASE_SYMS="$ROOT/shadow_ns_base/Module.symvers"
-              build shadow_ns_uts KBUILD_EXTRA_SYMBOLS="$BASE_SYMS $HIJACK_SYMS"
-              for t in net ipc pid mnt user cgroup; do
-                build "shadow_ns_$t" KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
-              done
-
-              # 3) standalone modules (no inter-module deps, but they all
+              # 2) standalone modules (no inter-module deps, but they all
               #    depend on shadow_hijack for their hook implementation).
               build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_ctr_checker KBUILD_EXTRA_SYMBOLS="$BASE_SYMS"
+              # shadow_ctr_checker is a pure standalone diagnostics tool with
+              # no dependency on any other shadow_ctr module.
+              build shadow_ctr_checker
 
-              # 4) overlay2 only on android14-6.1.
+              # 3) overlay2 only on android14-6.1.
               if [ "$BUILD_OVERLAY" = "1" ]; then
                 build shadow_overlay2
               fi

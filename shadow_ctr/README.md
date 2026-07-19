@@ -14,40 +14,34 @@ and so a deployer can ship exactly the subset a given kernel needs.
 
 | Module                | Directory            | `/dev` node             | Depends on        | Summary |
 |-----------------------|----------------------|-------------------------|-------------------|---------|
-| `shadow_ns_base`      | `shadow_ns_base/`    | —                       | —                 | Generic shadow-namespace registry + `unshare/setns/clone/fork` hooks + plugin API. Bookkeeping for all 7 types works even with no submodules loaded. |
-| `shadow_ns_uts`       | `shadow_ns_uts/`     | —                       | `shadow_ns_base`  | **Real** per-namespace UTS `nodename`/`domainname` + `sethostname`/`setdomainname`/`uname` hooks. |
-| `shadow_ns_net`       | `shadow_ns_net/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for NET (bookkeeping only). |
-| `shadow_ns_ipc`       | `shadow_ns_ipc/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for IPC (bookkeeping only). |
-| `shadow_ns_pid`       | `shadow_ns_pid/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for PID (bookkeeping only). |
-| `shadow_ns_mnt`       | `shadow_ns_mnt/`     | —                       | `shadow_ns_base`  | Thin presence/extension slot for MNT (bookkeeping only). |
-| `shadow_ns_user`      | `shadow_ns_user/`    | —                       | `shadow_ns_base`  | Thin presence/extension slot for USER (bookkeeping only). |
-| `shadow_ns_cgroup`    | `shadow_ns_cgroup/`  | —                       | `shadow_ns_base`  | Thin presence/extension slot for CGROUP (bookkeeping only). |
+| `shadow_ns`           | `shadow_ns/`         | —                       | —                 | Single, standalone namespace system: `unshare/setns/clone/clone3/fork/vfork` hooks. Real per-namespace isolation for UTS (nodename/domainname), PID (vpid↔rpid remapping) and USER (uid/gid=0 remapping); bookkeeping only for IPC/NET (MNT/CGROUP are always builtin). |
 | `shadow_sysvipc`      | `shadow_sysvipc/`    | —                       | —                 | Simulated System V IPC (msg/sem/shm) via transparent syscall hooks. |
 | `shadow_mqueue`       | `shadow_mqueue/`     | —                       | —                 | Simulated POSIX mqueue via transparent syscall hooks. |
 | `shadow_cgdevices`    | `shadow_cgdevices/`  | —                       | —                 | Transparent device-open hook shim for the cgroup-device compatibility slot. |
 | `shadow_overlay2`     | `shadow_overlay2/`   | (registers `overlay` fs)| —                 | **Real** vendored `fs/overlayfs`. **android14-6.1 only.** |
-| `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | `shadow_ns_base`  | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. |
+| `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | —                | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. Pure standalone tool, no dependency on any other module. |
 
 Shared, header-only helpers live in `common/`:
 
 | File                          | Purpose |
 |-------------------------------|---------|
 | `common/shadow_hook.h`        | ftrace/kprobe syscall-hijack helper used by every hooking module. |
-| `common/shadow_ns_base.h`     | The `shadow_ns_base` plugin API contract (used by base, all `shadow_ns_*`, and the checker). |
 | `common/shadow_ctr_compat.h`  | `fd_file()`/`fd_empty()` compat shims for kernels < 6.8 (used by `shadow_mqueue`). |
 | `common/shadow_hook.README.md`| Documentation for the hook helper. |
 
 ## Dependencies & load order
 
-The `shadow_ns_*` per-type modules and `shadow_ctr_checker` depend on
-`shadow_ns_base`; everything else is fully standalone.
+Every module in this family, including `shadow_ns` and `shadow_ctr_checker`,
+is fully standalone — none of them has a build-time or load-time dependency
+on any other `shadow_ctr` module. (`shadow_ns`/`shadow_sysvipc`/
+`shadow_mqueue`/`shadow_cgdevices` do each resolve `shadow_hijack`'s
+`EXPORT_SYMBOL_GPL` hook-install/-remove API via `KBUILD_EXTRA_SYMBOLS`, so
+`shadow_hijack` should be loaded first for those.) They can therefore be
+loaded in any order, and any subset of them can be present.
 
 ```sh
-# namespaces (load base first, then whichever types you want):
-insmod shadow_ns_base/shadow_ns_base.ko
-insmod shadow_ns_uts/shadow_ns_uts.ko        # real UTS
-insmod shadow_ns_net/shadow_ns_net.ko        # optional presence markers
-# ... shadow_ns_{ipc,pid,mnt,user,cgroup}.ko as desired
+insmod shadow_hijack/shadow_hijack.ko        # needed by shadow_ns/sysvipc/mqueue/cgdevices
+insmod shadow_ns/shadow_ns.ko                # single namespace system
 
 # standalone subsystems (any order, independent):
 insmod shadow_sysvipc/shadow_sysvipc.ko
@@ -55,18 +49,19 @@ insmod shadow_mqueue/shadow_mqueue.ko
 insmod shadow_cgdevices/shadow_cgdevices.ko
 insmod shadow_overlay2/shadow_overlay2.ko    # android14-6.1 only
 
-# diagnostics (load last so it sees everything):
+# diagnostics (any order; a pure standalone tool with no dependencies):
 insmod shadow_ctr_checker/shadow_ctr_checker.ko
 cat /dev/shadow_ctr_checker
 ```
 
-At build time the `shadow_ns_*` submodules and `shadow_ctr_checker` resolve
-`shadow_ns_base`'s exported symbols via `KBUILD_EXTRA_SYMBOLS`, which each of
-their `Makefile`s defaults to the sibling `../shadow_ns_base/Module.symvers`.
-**Build `shadow_ns_base` first.** (An earlier revision had
-`shadow_ctr_checker` detect `shadow_ns_base` and the other optional modules
-purely at runtime via `symbol_get()`/`symbol_put()` with no build-time
-dependency at all — but `__symbol_get()`/`__symbol_put()` are themselves
+`shadow_ctr_checker` has no build-time (`KBUILD_EXTRA_SYMBOLS`/
+`Module.symvers`) or load-time dependency on any other module: it derives its
+namespace-related report lines purely from the same compile-time
+`IS_ENABLED(CONFIG_*)` checks `shadow_ns.c` itself uses, instead of calling
+into `shadow_ns` at runtime. (An earlier revision took a hard dependency on
+`shadow_ns`'s `EXPORT_SYMBOL_GPL` query API, and before that used
+`symbol_get()`/`symbol_put()` to detect modules purely at runtime with no
+build-time dependency — but `__symbol_get()`/`__symbol_put()` are themselves
 trimmed from production GKI kernels' exported-symbol table, which made
 `insmod` of the checker fail unconditionally with "Unknown symbol
 __symbol_get" / `-ENOENT`. See `shadow_ctr_checker/README.md` for details.)
@@ -78,12 +73,11 @@ out-of-tree via `make KDIR=...` and embedded in an in-tree
 `obj-$(CONFIG_...)` build). Out-of-tree, against a prepared kernel build tree:
 
 ```sh
-# base first (produces Module.symvers the ns_* modules need):
-make -C /path/to/kernel/build M="$PWD/shadow_ns_base" modules
+# shadow_ns:
+make -C /path/to/kernel/build M="$PWD/shadow_ns" modules
 
-# a dependent ns module (Makefile auto-points KBUILD_EXTRA_SYMBOLS at base):
-make -C /path/to/kernel/build M="$PWD/shadow_ns_uts" \
-     KBUILD_EXTRA_SYMBOLS="$PWD/shadow_ns_base/Module.symvers" modules
+# the checker (no dependencies at all):
+make -C /path/to/kernel/build M="$PWD/shadow_ctr_checker" modules
 
 # a standalone module:
 make -C /path/to/kernel/build M="$PWD/shadow_sysvipc" modules
@@ -114,6 +108,10 @@ exists from Linux v6.8 onward; `common/shadow_ctr_compat.h` provides shims so
 the same source builds unmodified against older GKI branches (e.g. 6.1).
 
 See each module's own README for its honest scope/limitations. In particular,
-only UTS (`shadow_ns_uts`) and overlayfs (`shadow_overlay2`) provide genuine
-functional behaviour; the other `shadow_ns_*` types are reference-counted
-bookkeeping only.
+`shadow_ns` only ever simulates a namespace type genuinely absent from this
+kernel build (`IS_ENABLED(CONFIG_*_NS)`, which collapses correctly even when
+`CONFIG_NAMESPACES` is disabled entirely) — when it does simulate, UTS/PID/USER
+get real functional isolation and overlayfs (`shadow_overlay2`) is a real
+vendored filesystem; IPC/NET simulation (when needed) remains reference-counted
+bookkeeping only. See [`shadow_ns/README.md`](shadow_ns/README.md) for the full
+design rationale.

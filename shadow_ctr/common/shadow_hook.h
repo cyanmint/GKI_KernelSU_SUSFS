@@ -47,7 +47,7 @@
  * file. This header is now purely declarative: it defines the ABI (struct
  * shadow_hook, the SHADOW_HOOK() initialiser macro, and the extern function
  * prototypes) that both shadow_hijack.ko and its callers agree on. Every
- * hooking module (shadow_ns_base, shadow_ns_uts, shadow_sysvipc,
+ * hooking module (shadow_ns, shadow_sysvipc,
  * shadow_mqueue, shadow_cgdevices) must therefore be built against
  * shadow_hijack's Module.symvers and, at runtime, insmod'd after
  * shadow_hijack.ko. See shadow_hijack/README.md for the full rationale

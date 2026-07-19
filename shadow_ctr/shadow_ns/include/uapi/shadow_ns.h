@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * shadow_ns - simulated ("shadow") namespace subsystem UAPI
+ * shadow_ns - namespace subsystem UAPI
  *
- * Shared namespace-type constants and UTS payload layout used by the
- * shadow_ns module family. The shadow_ns_base module now exposes no userspace
- * ioctl ABI; only the transparent syscall-hook path remains.
+ * Shared namespace-type constants and UTS payload layout used by shadow_ns.
+ * shadow_ns exposes no userspace ioctl ABI; only the transparent syscall-hook
+ * path exists.
  */
 #ifndef _UAPI_SHADOW_NS_H
 #define _UAPI_SHADOW_NS_H
@@ -32,9 +32,10 @@ enum shadow_ns_type {
 /*
  * struct shadow_ns_uts - UTS namespace payload (nodename/domainname).
  *
- * Used internally by shadow_ns_uts for its per-namespace nodename/domainname
- * storage. Strings are NUL-terminated; the kernel truncates to
- * SHADOW_NS_UTS_LEN characters.
+ * Used internally by shadow_ns's UTS-simulation fallback for its
+ * per-namespace nodename/domainname storage, only ever active on a kernel
+ * build that lacks real CONFIG_UTS_NS support. Strings are NUL-terminated;
+ * the kernel truncates to SHADOW_NS_UTS_LEN characters.
  */
 struct shadow_ns_uts {
 	char nodename[SHADOW_NS_UTS_LEN + 1];

@@ -41,11 +41,11 @@
  * during container init. That call is expected to work whenever
  * CONFIG_POSIX_MQUEUE is real/builtin - but in practice it can still fail
  * with -ENODEV ("no such device") in the shadow_ns family's fake-namespace
- * environment (see shadow_ns_mnt/shadow_ns_pid/shadow_ns_user: pid/mnt/user
- * namespaces are refcounted bookkeeping only, not real, on kernels lacking
- * those Kconfig options), which confuses the real mqueue filesystem's
- * per-namespace tree lookup even though mqueue itself is genuinely
- * registered. hook_sys_mount() lets the real mount(2) run first and, only if
+ * environment (see shadow_ns/README.md: pid/mnt/user namespaces get real or
+ * bookkeeping-only simulation depending on whether this kernel build's
+ * CONFIG_PID_NS/USER_NS are absent; mount namespaces (CLONE_NEWNS) are always
+ * builtin), which can confuse the real mqueue filesystem's per-namespace tree
+ * lookup even though mqueue itself is genuinely registered. hook_sys_mount() lets the real mount(2) run first and, only if
  * it fails with -ENODEV for fstype "mqueue", transparently retries the exact
  * same call with the filesystem type swapped for "tmpfs" (which accepts the
  * same handful of mount options runtimes pass here, e.g. "mode=", "size=",
