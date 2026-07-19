@@ -64,11 +64,12 @@
 #include <linux/types.h>
 #include <linux/minmax.h>
 /*
- * <linux/stdarg.h> (a thin wrapper the kernel uses so in-tree code doesn't
+ * <linux/stdarg.h> (a thin wrapper the kernel ships so in-tree code doesn't
  * pull in the compiler's freestanding <stdarg.h> directly) was only added in
- * v5.18 (commit d1b6289217645c22e0d0b1d6d38e11221a2f6db). It doesn't exist on
- * the android12-5.10/android13-5.10 GKI kernels this module also targets, so
- * fall back to the compiler-provided <stdarg.h> there.
+ * v5.15 (commit c0891ac15f0428ffa81b2e818d416bdf3cb74ab6, "isystem: ship and
+ * use stdarg.h"). It doesn't exist on the android12-5.10/android13-5.10 GKI
+ * kernels this module also targets, so fall back to the compiler-provided
+ * <stdarg.h> there.
  */
 #if __has_include(<linux/stdarg.h>)
 #include <linux/stdarg.h>
