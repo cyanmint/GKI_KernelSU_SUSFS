@@ -31,7 +31,13 @@ runs:
 
         CACHE_PATH="${{ inputs.cache_path }}"
         TAG_NAME="${{ inputs.cache_bucket }}"
-        CACHE_FILE="cache-${{ inputs.cache_key }}.tar.zst"
+        # Cache keys may include the branch name (e.g. via github.ref_name),
+        # which can contain "/" (such as "copilot/create-standalone-lkm-module").
+        # Since CACHE_FILE is used as a plain filename (not a path), any "/"
+        # would make tar/curl treat it as a nested path with a non-existent
+        # directory, so replace "/" with "_" first.
+        SAFE_CACHE_KEY="$(echo "${{ inputs.cache_key }}" | tr '/' '_')"
+        CACHE_FILE="cache-${SAFE_CACHE_KEY}.tar.zst"
 
         echo "Checking if cache already exists..."
 

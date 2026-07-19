@@ -1,0 +1,27 @@
+# Stray GOPATH / Go module cache artifacts that have accidentally been
+# committed in the past (e.g. a self-referential gitlink under
+# root/src/github.com/<owner>/<repo> with no matching .gitmodules entry).
+# Keep local GOPATH/Go build caches out of version control.
+/root/
+
+# Kernel module build output
+*.o
+*.ko
+*.mod
+*.mod.c
+*.symvers
+*.order
+*.o.d
+*.o.cmd
+.*.cmd
+.tmp_versions/
+
+# shadow_ctr_checker userspace binary build output
+shadow_ctr/shadow_ctr_checker/shadow_ctr_checker
+modules.order
+
+# Local scratch dirs used for shadow_ctr QEMU boot-test iteration
+# (staged built .ko output + an extracted/repacked test ramdisk root).
+# Never commit these; they are large, throwaway, and regenerated on demand.
+/modules-out/
+/ramdisk-root/

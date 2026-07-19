@@ -112,6 +112,7 @@ class BuildConfig:
     set_default_bbr: bool = False
     use_containerd: bool = True
     use_sukisu_susfs: bool = True
+    verbose_module_loading: bool = False
     make_release: bool = True
     custom_version: Optional[str] = None
     revision: Optional[str] = None
@@ -183,6 +184,7 @@ class BuildConfig:
             "support_op8e": self.support_op8e,
             "set_default_bbr": self.set_default_bbr,
             "use_containerd": self.use_containerd,
+            "verbose_module_loading": self.verbose_module_loading,
             "make_release": self.make_release,
             "custom_version": self.custom_version,
             "revision": self.revision,

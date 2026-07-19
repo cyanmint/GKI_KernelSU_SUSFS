@@ -137,6 +137,22 @@ CONFIG_NULL_TTY=y
 CONFIG_LTO_CLANG_THIN=y
 """
 
+    # Verbose module loading: raises the default printk/console loglevel and
+    # enables dynamic_debug so that kernel/module.c's pr_debug() traces (e.g.
+    # vermagic/module_layout mismatches, relocation/symbol resolution steps)
+    # as well as any pr_debug()/dev_dbg() calls added to out-of-tree modules
+    # (such as shadow_ctr) show up in dmesg without needing to
+    # manually poke debugfs on the device.
+    VERBOSE_MODULE_CONFIG = """
+# === Verbose module loading Config ===
+CONFIG_DYNAMIC_DEBUG=y
+CONFIG_DYNAMIC_DEBUG_CORE=y
+CONFIG_MESSAGE_LOGLEVEL_DEFAULT=7
+CONFIG_CONSOLE_LOGLEVEL_DEFAULT=15
+CONFIG_CONSOLE_LOGLEVEL_QUIET=15
+CONFIG_KALLSYMS_ALL=y
+"""
+
     # android version short names for ctr_patches directory mapping
     _ANDROID_SHORT = {
         "android12": "a12",
@@ -494,6 +510,10 @@ CONFIG_LTO_CLANG_THIN=y
         if self.config.use_containerd:
             self._configure_containerd(config_file)
 
+        if self.config.verbose_module_loading:
+            with open(config_file, "a") as f:
+                f.write(self.VERBOSE_MODULE_CONFIG)
+
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
             with open(build_config, "r") as f:
@@ -674,6 +694,7 @@ CONFIG_LTO_CLANG_THIN=y
             "CONFIG_BBR": "BBR",
             "CONFIG_ZRAM": "ZRAM",
             "CONFIG_UTS_NS": "Containerd",
+            "CONFIG_DYNAMIC_DEBUG": "Verbose module loading",
         }
         
         logger.info("关键配置状态:")

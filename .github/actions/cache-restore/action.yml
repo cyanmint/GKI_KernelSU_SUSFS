@@ -38,7 +38,13 @@ runs:
 
         echo "Searching for cache: ${{ inputs.cache_key }}"
 
-        CACHE_FILE="cache-${{ inputs.cache_key }}.tar.zst"
+        # Cache keys may include the branch name (e.g. via github.ref_name),
+        # which can contain "/" (such as "copilot/create-standalone-lkm-module").
+        # Since CACHE_FILE is used as a plain filename (not a path), any "/"
+        # would make tar/curl treat it as a nested path with a non-existent
+        # directory, so replace "/" with "_" first.
+        SAFE_CACHE_KEY="$(echo "${{ inputs.cache_key }}" | tr '/' '_')"
+        CACHE_FILE="cache-${SAFE_CACHE_KEY}.tar.zst"
 
         echo "Downloading cache..."
         if curl -sL --fail -o "$CACHE_FILE" "$BASE_URL/$CACHE_FILE"; then
