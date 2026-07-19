@@ -101,9 +101,8 @@ Out-of-tree modules for GKI **must** be built inside the matching
 `vmlinux`/`Module.symvers`, not a bare `gki_defconfig` tree, or `insmod` will
 panic on the real kernel. See
 [`../.github/workflows/build-shadow-ctr.yml`](../.github/workflows/build-shadow-ctr.yml)
-(merged-module build matrix) and
-[`../.github/workflows/test-shadow-ctr-qemu.yml`](../.github/workflows/test-shadow-ctr-qemu.yml)
-(QEMU boot/load test).
+(merged-module build matrix, plus a QEMU boot/load test of the android14-6.1
+build).
 
 ## Kernel compatibility
 

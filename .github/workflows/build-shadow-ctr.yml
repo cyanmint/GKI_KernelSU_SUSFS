@@ -1,10 +1,11 @@
-# Kernel-version-matrix build for the merged shadow_ctr out-of-tree module.
+# Build the merged shadow_ctr out-of-tree module across a KMI matrix, then
+# boot-test the build for TEST_KMI under QEMU.
 #
-# shadow_ctr is again a single combined shadow_ctr.ko built from subsystem
-# sources under shadow_ctr/shadow_ctr/ (see shadow_ctr/README.md). This
-# workflow builds that module, for every KMI in the matrix, inside
-# SukiSU-Ultra's prebuilt "DDK" (Driver Development Kit)
-# container image (ghcr.io/ylarod/ddk-min:<kmi>-<release>, see
+# shadow_ctr is a single combined shadow_ctr.ko built from subsystem sources
+# under shadow_ctr/shadow_ctr/ (see shadow_ctr/README.md). This workflow
+# builds that module, for every KMI in the matrix, inside SukiSU-Ultra's
+# prebuilt "DDK" (Driver Development Kit) container image
+# (ghcr.io/ylarod/ddk-min:<kmi>-<release>, see
 # https://github.com/SukiSU-Ultra/SukiSU-Ultra/blob/main/.github/workflows/ddk-lkm.yml
 # and .../build-lkm.yml for the KMI list). Each image ships a genuine
 # vmlinux + Module.symvers + matching clang toolchain for that KMI (arm64
@@ -20,7 +21,7 @@
 #     core kernel symbols (no real Module.symvers), and android16-6.12's
 #     gendwarfksyms needed libdw-dev, which wasn't installed.
 # Building against the DDK's real vmlinux/Module.symvers/toolchain avoids
-# all of the above, exactly as it did for the QEMU boot-test workflow.
+# all of the above.
 #
 # Module built (per KMI):
 #   shadow_ctr                -- merged module containing the shared
@@ -39,9 +40,34 @@
 # headers), uploaded as its own artifact, and also copied into every per-KMI
 # bundle above so a single download has everything needed to test a device.
 #
+# Boot test (QEMU)
+# -----------------
+# Once the TEST_KMI (android14-6.1) build finishes, its artifact bundle is
+# booted under qemu-system-aarch64 with a prebuilt test kernel + ramdisk,
+# insmod'd, and exercised with shadow_ctr_checker, exactly as the previous
+# standalone "Test shadow_ctr module (QEMU)" workflow did (now merged into
+# this one so build and boot-test results show up in a single workflow run).
+# The test ramdisk is a standalone (system-as-root) recovery image published
+# at the v2.1.0 release specifically for this kind of smoke test; it ships
+# busybox/toybox utilities and does not require any additional block
+# devices, so it can boot directly from an initramfs under QEMU's "virt"
+# machine type.
+#
+# The boot step runs as a matrix of two kernel variants, both paired with the
+# same v2.1.0 ramdisk:
+#   - "stock": the "kernel" file bundled inside the very same
+#     testkernelramdisk.zip release asset as the ramdisk. This is a stock,
+#     unpatched Android GKI kernel (no SukiSU/SUSFS/shadow_ctr patches at
+#     all), used as a baseline sanity check of the QEMU boot environment
+#     itself, independent of any kernel-side patches.
+#   - "current": the kernel extracted from the android14-6.1.124-2025-02
+#     boot.img published at the v2.2.0 release, i.e. the current
+#     SukiSU/SUSFS-patched GKI kernel build that the shadow_ctr modules are
+#     actually built and meant to be insmod'd against.
+#
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
-name: Build shadow_ctr module
+name: Build and test shadow_ctr module
 
 permissions:
   contents: read
@@ -61,11 +87,14 @@ on:
 
 env:
   # KMIs published by SukiSU-Ultra's ghcr.io/ylarod/ddk-min image at this
-  # DDK_RELEASE (see .../build-lkm.yml's matrix); kept in sync with the QEMU
-  # test workflow's DDK_RELEASE.
+  # DDK_RELEASE (see .../build-lkm.yml's matrix).
   DEFAULT_KMIS: >-
     android12-5.10,android13-5.10,android13-5.15,android14-5.15,android14-6.1,android15-6.6,android16-6.12
   DDK_RELEASE: '20260313'
+  # KMI whose build is boot-tested under QEMU below.
+  TEST_KMI: android14-6.1
+  TEST_RAMDISK_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
+  TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.124-2025-02-boot.img
 
 jobs:
   prepare:
@@ -86,6 +115,36 @@ jobs:
           print(json.dumps(kmis))
           " "$kmis")
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
+
+  # shadow_ctr_checker is a plain userspace diagnostic binary (see
+  # shadow_ctr_checker/README.md): it has no kernel-module build dependency
+  # at all (no DDK image, no KDIR, no Module.symvers), so it is built once
+  # for arm64 with a standard cross toolchain, independent of the per-KMI
+  # kernel-module matrix below, then bundled into every per-KMI artifact by
+  # the "build" job (and also uploaded standalone here, for consumers who
+  # only want the checker without any kernel modules).
+  build-checker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install aarch64 cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build shadow_ctr_checker (arm64, static)
+        run: |
+          make -C shadow_ctr_checker \
+            CC=aarch64-linux-gnu-gcc
+          file shadow_ctr_checker/shadow_ctr_checker
+
+      - name: Upload shadow_ctr_checker (arm64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr_checker-arm64
+          path: shadow_ctr_checker/shadow_ctr_checker
 
   build:
     needs: [prepare, build-checker]
@@ -136,7 +195,7 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" modules-out
 
       # Bundle the userspace shadow_ctr_checker diagnostic binary (built once
-      # by build-checker, see below) into this KMI's artifact too, so a
+      # by build-checker, see above) into this KMI's artifact too, so a
       # single downloaded bundle contains everything needed to both load the
       # modules and diagnose real isolation on-device.
       - name: Add shadow_ctr_checker to the ${{ matrix.kmi }} bundle
@@ -153,32 +212,152 @@ jobs:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
 
-  # shadow_ctr_checker is a plain userspace diagnostic binary (see
-  # shadow_ctr_checker/README.md): it has no kernel-module build dependency
-  # at all (no DDK image, no KDIR, no Module.symvers), so it is built once
-  # for arm64 with a standard cross toolchain, independent of the per-KMI
-  # kernel-module matrix above, then bundled into every per-KMI artifact by
-  # the "build" job (and also uploaded standalone here, for consumers who
-  # only want the checker without any kernel modules).
-  build-checker:
+  # Boot-test the TEST_KMI (android14-6.1) build under QEMU: insmod
+  # shadow_ctr.ko, run shadow_ctr_checker, and collect the serial console log
+  # (including the insmod attempt, resulting kernel messages, and the
+  # checker's PASS/STUB/FAIL report) as a build artifact for inspection.
+  #
+  # Skipped (not failed) if a custom `kmis` workflow_dispatch input excluded
+  # TEST_KMI from the build matrix above, since there is then no matching
+  # artifact to download.
+  test:
+    needs: [prepare, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), env.TEST_KMI) }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel_variant: [stock, current]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install aarch64 cross toolchain
+      - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y cpio qemu-system-arm
 
-      - name: Build shadow_ctr_checker (arm64, static)
+      - name: Download built modules (arm64)
+        uses: actions/download-artifact@v7
+        with:
+          name: shadow_ctr-modules-${{ env.TEST_KMI }}-arm64
+          path: modules-out/
+
+      - name: Mark checker binary executable
+        run: chmod +x modules-out/shadow_ctr_checker
+
+      # --- 1. Fetch the test ramdisk and the kernel image under test ---
+      #
+      # The ramdisk always comes from the v2.1.0 testkernelramdisk.zip. The
+      # kernel booted alongside it depends on kernel_variant:
+      #   - "stock": use the "kernel" file bundled in that same zip verbatim
+      #     (a stock, unpatched Android GKI kernel).
+      #   - "current": extract the kernel from the current
+      #     SukiSU/SUSFS-patched android14-6.1.124-2025-02 boot.img (v2.2.0
+      #     release), i.e. the kernel the shadow_ctr modules are actually
+      #     built against.
+
+      - name: Download test ramdisk + kernel zip (v2.1.0)
         run: |
-          make -C shadow_ctr_checker \
-            CC=aarch64-linux-gnu-gcc
-          file shadow_ctr_checker/shadow_ctr_checker
+          curl -fL -o testkernelramdisk.zip "$TEST_RAMDISK_URL"
+          mkdir -p test-image
+          unzip -o testkernelramdisk.zip -d test-image
+          ls -la test-image
 
-      - name: Upload shadow_ctr_checker (arm64)
+      - name: Download test kernel boot image (v2.2.0)
+        if: matrix.kernel_variant == 'current'
+        run: |
+          curl -fL -o test-kernel-boot.img "$TEST_KERNEL_URL"
+
+      - name: Extract kernel from boot image
+        if: matrix.kernel_variant == 'current'
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/system/tools/mkbootimg \
+            -b main-kernel-build-2024 mkbootimg-tools
+          python3 mkbootimg-tools/unpack_bootimg.py \
+            --boot_img test-kernel-boot.img --out out-bootimg --format mkbootimg
+          cp out-bootimg/kernel test-image/kernel
+          ls -la test-image
+
+      # For the "stock" variant, test-image/kernel is left as-is: the
+      # "kernel" file that was already unzipped from testkernelramdisk.zip.
+
+      # --- 2. Inject the freshly built modules into the ramdisk ---
+
+      - name: Inject shadow_ctr module into ramdisk
+        run: |
+          set -e
+          workdir="$GITHUB_WORKSPACE/ramdisk-root"
+          mkdir -p "$workdir"
+          (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
+
+          # Drop the freshly built merged .ko at the ramdisk root, plus the
+          # standalone shadow_ctr_checker userspace binary.
+          mkdir -p "$workdir/modules"
+          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr.ko" "$workdir/modules/"
+          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr_checker" "$workdir/"
+          chmod 755 "$workdir/shadow_ctr_checker"
+          ls -la "$workdir/modules" "$workdir/shadow_ctr_checker"
+
+          # Minimal PID-1 test script, executed directly via the kernel's
+          # rdinit= command line option (bypassing the image's real Android
+          # init, which expects a full device environment). It mounts the
+          # pseudo-filesystems bionic needs, inserts the merged module, and
+          # dumps the resulting kernel log + status. All utilities
+          # are invoked with absolute paths: bionic's dynamic linker requires
+          # /proc/self/exe (or a resolvable argv[0]) to load shared objects,
+          # which only holds once /proc is mounted and the path is absolute.
+          cat > "$workdir/test_init.sh" <<'EOF'
+          #!/system/bin/sh
+          /system/bin/mount -t proc proc /proc
+          /system/bin/mount -t sysfs sysfs /sys
+          /system/bin/mount -t devtmpfs devtmpfs /dev
+          M=/modules
+          echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
+          /system/bin/insmod $M/shadow_ctr.ko
+          echo "insmod shadow_ctr.ko -> $?"
+
+          echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
+          /system/bin/dmesg
+          # checker runs last, as a plain userspace binary (statically
+          # linked, no dependency on this ramdisk's libc), so it observes
+          # everything already loaded.
+          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker ==="
+          /shadow_ctr_checker
+          echo "shadow_ctr_checker -> $?"
+          echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+          echo o > /proc/sysrq-trigger
+          while true; do :; done
+          EOF
+          chmod 755 "$workdir/test_init.sh"
+
+          (cd "$workdir" && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio")
+          ls -la "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio"
+
+      # --- 3. Boot under QEMU and collect the serial log ---
+
+      - name: Boot test kernel (${{ matrix.kernel_variant }}) + ramdisk under QEMU
+        run: |
+          set +e
+          timeout --signal=KILL 120 \
+            qemu-system-aarch64 \
+              -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
+              -kernel test-image/kernel \
+              -initrd test-image/ramdisk-test.cpio \
+              -append "console=ttyAMA0 rdinit=/test_init.sh earlycon panic=-1" \
+            > qemu-console.log 2>&1
+          echo "QEMU exited with status $?"
+          tail -n 200 qemu-console.log
+
+      - name: Assemble QEMU test artifact bundle
+        if: always()
+        run: |
+          mkdir -p qemu-test-bundle
+          cp test-image/kernel qemu-test-bundle/tested-kernel 2>/dev/null || true
+          cp test-image/ramdisk-test.cpio qemu-test-bundle/injected-ramdisk.cpio 2>/dev/null || true
+          cp qemu-console.log qemu-test-bundle/qemu-console.log 2>/dev/null || true
+          ls -la qemu-test-bundle
+
+      - name: Upload tested kernel, injected ramdisk and QEMU log
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr_checker-arm64
-          path: shadow_ctr_checker/shadow_ctr_checker
+          name: shadow_ctr-qemu-test-bundle-${{ matrix.kernel_variant }}
+          path: qemu-test-bundle/
