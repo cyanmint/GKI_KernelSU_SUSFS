@@ -3,11 +3,12 @@
 # shadow_ctr used to be a single combined shadow_ctr.ko; it is now split into
 # several independently loadable modules under shadow_ctr/ (see
 # shadow_ctr/README.md). This workflow builds ALL of the android14-6.1 arm64
-# modules, injects the freshly built .ko files into a prebuilt test kernel +
-# ramdisk image, boots it under qemu-system-aarch64, insmods them in
-# dependency order, and collects the serial console log (including the insmod
-# attempts, resulting kernel messages, and the contents of
-# /dev/shadow_ctr_checker) as a build artifact for inspection.
+# modules, injects the freshly built .ko files (plus the cross-compiled
+# shadow_ctr_checker userspace binary) into a prebuilt test kernel + ramdisk
+# image, boots it under qemu-system-aarch64, insmods the modules in
+# dependency order, runs shadow_ctr_checker directly, and collects the serial
+# console log (including the insmod attempts, resulting kernel messages, and
+# the checker's PASS/STUB/FAIL report) as a build artifact for inspection.
 #
 # The test ramdisk is a standalone (system-as-root) recovery image published
 # at the v2.1.0 release specifically for this kind of smoke test; it ships
@@ -30,15 +31,20 @@
 # match a real build. Using the DDK sysroot's real vmlinux/Module.symvers
 # fixes this; this was confirmed by local QEMU boot testing.
 #
+# shadow_ctr_checker is a plain userspace diagnostic *binary*, not a kernel
+# module: it is cross-compiled separately (static, standard aarch64 gcc
+# toolchain, no DDK/kernel headers involved) and simply executed by the test
+# init script after the modules are insmod'd, instead of being insmod'd or
+# `cat`'d from a /dev node itself.
+#
 # Dependency note: shadow_hijack.ko hosts the shared shadow_hook_install()/
 # remove() implementation that shadow_ns, shadow_sysvipc, shadow_mqueue and
 # shadow_cgdevices all resolve at modpost time via KBUILD_EXTRA_SYMBOLS, so it
 # is built (and insmod'd) first. shadow_ns is a single, standalone namespace
 # system (no per-type submodules); it depends only on shadow_hijack and is
-# built/insmod'd right after. shadow_ctr_checker is a pure standalone
-# diagnostics module with no dependency on any other shadow_ctr module; it is
-# built and loaded last purely so it can observe all of the other modules
-# that happen to be loaded (not a hard requirement).
+# built/insmod'd right after. shadow_ctr_checker runs last purely so it can
+# observe all of the other modules that happen to be loaded (not a hard
+# requirement).
 
 name: Test shadow_ctr modules (QEMU)
 
@@ -107,9 +113,6 @@ jobs:
               build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              # shadow_ctr_checker is a pure standalone diagnostics tool with
-              # no dependency on any other shadow_ctr module.
-              build shadow_ctr_checker
 
               # collect all built .ko into one staging dir for injection/upload
               mkdir -p /workspace/modules-out
@@ -117,6 +120,20 @@ jobs:
               echo "=== staged modules ==="
               ls -la /workspace/modules-out
             '
+
+      # shadow_ctr_checker is a plain userspace binary (not a kernel module):
+      # cross-compile it separately with a standard aarch64 gcc toolchain, no
+      # DDK image / kernel headers needed.
+      - name: Install aarch64 cross toolchain
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build shadow_ctr_checker (arm64, static)
+        run: |
+          make -C shadow_ctr/shadow_ctr_checker \
+            CC=aarch64-linux-gnu-gcc
+          cp shadow_ctr/shadow_ctr_checker/shadow_ctr_checker modules-out/
+          file modules-out/shadow_ctr_checker
           ls -la modules-out
 
       - name: Upload built modules (arm64)
@@ -156,10 +173,13 @@ jobs:
           mkdir -p "$workdir"
           (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
 
-          # Drop every freshly built .ko at the ramdisk root.
+          # Drop every freshly built .ko at the ramdisk root, plus the
+          # standalone shadow_ctr_checker userspace binary.
           mkdir -p "$workdir/modules"
           cp "$GITHUB_WORKSPACE"/modules-out/*.ko "$workdir/modules/"
-          ls -la "$workdir/modules"
+          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr_checker" "$workdir/"
+          chmod 755 "$workdir/shadow_ctr_checker"
+          ls -la "$workdir/modules" "$workdir/shadow_ctr_checker"
 
           # Minimal PID-1 test script, executed directly via the kernel's
           # rdinit= command line option (bypassing the image's real Android
@@ -188,16 +208,15 @@ jobs:
               echo "insmod $m.ko -> $?"
             fi
           done
-          # checker last so it observes everything already loaded.
-          /system/bin/insmod $M/shadow_ctr_checker.ko
-          echo "insmod shadow_ctr_checker.ko -> $?"
 
           echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
-          echo "=== SHADOW_CTR_QEMU_TEST: /dev nodes ==="
-          /system/bin/ls -la /dev/shadow_ctr_checker
-          echo "=== SHADOW_CTR_QEMU_TEST: cat /dev/shadow_ctr_checker ==="
-          /system/bin/cat /dev/shadow_ctr_checker
+          # checker runs last, as a plain userspace binary (statically
+          # linked, no dependency on this ramdisk's libc), so it observes
+          # everything already loaded.
+          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker ==="
+          /shadow_ctr_checker
+          echo "shadow_ctr_checker -> $?"
           echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
           echo o > /proc/sysrq-trigger
           while true; do :; done

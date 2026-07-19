@@ -38,14 +38,16 @@
 #   shadow_sysvipc, shadow_mqueue, shadow_cgdevices
 #                             -- no inter-module deps, except they also depend
 #                                on shadow_hijack for their hook implementation.
-#   shadow_ctr_checker        -- pure standalone diagnostics module, no
-#                                dependency on any other shadow_ctr module;
-#                                built/loaded last purely so it can observe
-#                                all of the other modules that happen to be
-#                                loaded (not a hard requirement).
 # All resulting .ko files for a given KMI are uploaded together as a single
 # artifact (shadow_ctr-modules-<kmi>-arm64), so consumers download one bundle
 # per kernel version instead of stitching together per-module artifacts.
+#
+# shadow_ctr_checker is a plain userspace diagnostic *binary*, not a kernel
+# module: it performs real syscalls to observe whether isolation actually
+# works, rather than reporting compile-time Kconfig facts, so it is not tied
+# to any particular KMI/kernel build at all -- it is cross-compiled once for
+# arm64 using a standard aarch64 gcc cross toolchain (no DDK image, no kernel
+# headers) and uploaded as its own artifact.
 #
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
@@ -145,9 +147,6 @@ jobs:
               build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
               build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              # shadow_ctr_checker is a pure standalone diagnostics tool with
-              # no dependency on any other shadow_ctr module.
-              build shadow_ctr_checker
 
               # collect every built .ko into one staging dir so all modules
               # for this KMI can be uploaded together as a single artifact.
@@ -166,3 +165,31 @@ jobs:
         with:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
+
+  # shadow_ctr_checker is a plain userspace diagnostic binary (see
+  # shadow_ctr_checker/README.md): it has no kernel-module build dependency
+  # at all (no DDK image, no KDIR, no Module.symvers), so it is built once
+  # for arm64 with a standard cross toolchain, independent of the per-KMI
+  # kernel-module matrix above.
+  build-checker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install aarch64 cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build shadow_ctr_checker (arm64, static)
+        run: |
+          make -C shadow_ctr/shadow_ctr_checker \
+            CC=aarch64-linux-gnu-gcc
+          file shadow_ctr/shadow_ctr_checker/shadow_ctr_checker
+
+      - name: Upload shadow_ctr_checker (arm64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr_checker-arm64
+          path: shadow_ctr/shadow_ctr_checker/shadow_ctr_checker

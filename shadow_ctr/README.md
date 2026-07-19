@@ -18,7 +18,7 @@ and so a deployer can ship exactly the subset a given kernel needs.
 | `shadow_sysvipc`      | `shadow_sysvipc/`    | —                       | —                 | System V IPC (msg/sem/shm) via transparent syscall hooks: real, functioning object registry with ids/keys/lifecycle — not just a stub returning success. |
 | `shadow_mqueue`       | `shadow_mqueue/`     | —                       | —                 | POSIX mqueue via transparent syscall hooks: real message transfer (priority-ordered queue, blocking send/receive with timeouts, real fds) — not just a stub. |
 | `shadow_cgdevices`    | `shadow_cgdevices/`  | —                       | —                 | Transparent device-open hook shim for the cgroup-device compatibility slot: currently a pass-through stub that preserves native behaviour rather than enforcing rules. |
-| `shadow_ctr_checker`  | `shadow_ctr_checker/`| `/dev/shadow_ctr_checker` | —                | Diagnostics: `cat /dev/shadow_ctr_checker` reports what's supported/hijacked. Pure standalone tool, no dependency on any other module. |
+| `shadow_ctr_checker`  | `shadow_ctr_checker/`| n/a — userspace binary, no `/dev` node | —                | **Userspace** diagnostic binary (not a kernel module): performs real syscalls (`unshare`/`fork`, `mq_*`, `msg*`, `mount`) and reports PASS/STUB/FAIL per feature. No dependency on any other module. |
 
 ### Real vs. bookkeeping vs. stub — a quick reference
 
@@ -45,7 +45,7 @@ change anything). See each module's own README for the full rationale.
 | `shadow_mqueue` (POSIX mqueue)        | **Real**        | Real message transfer: priority-ordered queue, blocking send/receive with timeout semantics, real anon-inode-backed fds. |
 | `shadow_cgdevices` (`chrdev_open`)     | **Stub**        | Hook installed but currently only preserves native behaviour; no rule enforcement yet. |
 | `shadow_cgdevices` (`blkdev_open`)     | **Stub, best-effort** | Same as above, and only installed if the symbol exists with the expected prototype on that KMI. |
-| `shadow_ctr_checker`                  | n/a (diagnostics) | Read-only reporting tool; does not simulate or hook any container-relevant behaviour itself. |
+| `shadow_ctr_checker`                  | n/a (diagnostics) | **Userspace binary**, not a kernel module: actually attempts the relevant syscalls and reports PASS/STUB/FAIL based on the observed effect, rather than reporting compile-time config alone. |
 
 Shared, header-only helpers live in `common/`:
 
@@ -57,13 +57,13 @@ Shared, header-only helpers live in `common/`:
 
 ## Dependencies & load order
 
-Every module in this family, including `shadow_ns` and `shadow_ctr_checker`,
-is fully standalone — none of them has a build-time or load-time dependency
-on any other `shadow_ctr` module. (`shadow_ns`/`shadow_sysvipc`/
-`shadow_mqueue`/`shadow_cgdevices` do each resolve `shadow_hijack`'s
-`EXPORT_SYMBOL_GPL` hook-install/-remove API via `KBUILD_EXTRA_SYMBOLS`, so
-`shadow_hijack` should be loaded first for those.) They can therefore be
-loaded in any order, and any subset of them can be present.
+Every kernel module in this family is fully standalone — none of them has a
+build-time or load-time dependency on any other `shadow_ctr` module.
+(`shadow_ns`/`shadow_sysvipc`/`shadow_mqueue`/`shadow_cgdevices` do each
+resolve `shadow_hijack`'s `EXPORT_SYMBOL_GPL` hook-install/-remove API via
+`KBUILD_EXTRA_SYMBOLS`, so `shadow_hijack` should be loaded first for those.)
+They can therefore be loaded in any order, and any subset of them can be
+present. `shadow_ctr_checker` is not a kernel module at all — see below.
 
 ```sh
 insmod shadow_hijack/shadow_hijack.ko        # needed by shadow_ns/sysvipc/mqueue/cgdevices
@@ -74,38 +74,41 @@ insmod shadow_sysvipc/shadow_sysvipc.ko
 insmod shadow_mqueue/shadow_mqueue.ko
 insmod shadow_cgdevices/shadow_cgdevices.ko
 
-# diagnostics (any order; a pure standalone tool with no dependencies):
-insmod shadow_ctr_checker/shadow_ctr_checker.ko
-cat /dev/shadow_ctr_checker
+# diagnostics: a plain userspace binary, run any time, no insmod needed:
+./shadow_ctr_checker/shadow_ctr_checker
 ```
 
-`shadow_ctr_checker` has no build-time (`KBUILD_EXTRA_SYMBOLS`/
-`Module.symvers`) or load-time dependency on any other module: it derives its
-namespace-related report lines purely from the same compile-time
-`IS_ENABLED(CONFIG_*)` checks `shadow_ns.c` itself uses, instead of calling
-into `shadow_ns` at runtime. (An earlier revision took a hard dependency on
-`shadow_ns`'s `EXPORT_SYMBOL_GPL` query API, and before that used
-`symbol_get()`/`symbol_put()` to detect modules purely at runtime with no
-build-time dependency — but `__symbol_get()`/`__symbol_put()` are themselves
-trimmed from production GKI kernels' exported-symbol table, which made
-`insmod` of the checker fail unconditionally with "Unknown symbol
-__symbol_get" / `-ENOENT`. See `shadow_ctr_checker/README.md` for details.)
+`shadow_ctr_checker` is a **userspace** diagnostic program, not a kernel
+module: it has no build-time (`KBUILD_EXTRA_SYMBOLS`/`Module.symvers`) or
+load-time dependency on any other module, and instead of reporting
+compile-time `IS_ENABLED(CONFIG_*)` facts, it directly performs the relevant
+syscalls (`unshare`/`fork`/`setns`, `mq_*`, `msg*`, `mount`) and reports
+PASS/STUB/FAIL based on their actual observed effect. See
+`shadow_ctr_checker/README.md` for the full methodology and why this
+replaced the earlier kernel-module version.
 
 ## Building
 
-Each directory is a self-contained dual-purpose kbuild module (works both
-out-of-tree via `make KDIR=...` and embedded in an in-tree
-`obj-$(CONFIG_...)` build). Out-of-tree, against a prepared kernel build tree:
+Each kernel-module directory (`shadow_hijack`, `shadow_ns`, `shadow_sysvipc`,
+`shadow_mqueue`, `shadow_cgdevices`) is a self-contained dual-purpose kbuild
+module (works both out-of-tree via `make KDIR=...` and embedded in an
+in-tree `obj-$(CONFIG_...)` build). Out-of-tree, against a prepared kernel
+build tree:
 
 ```sh
 # shadow_ns:
 make -C /path/to/kernel/build M="$PWD/shadow_ns" modules
 
-# the checker (no dependencies at all):
-make -C /path/to/kernel/build M="$PWD/shadow_ctr_checker" modules
-
 # a standalone module:
 make -C /path/to/kernel/build M="$PWD/shadow_sysvipc" modules
+```
+
+`shadow_ctr_checker` is a plain userspace program and builds with a normal C
+compiler — no `KDIR`/kernel build tree involved:
+
+```sh
+make -C shadow_ctr_checker                          # host toolchain
+make -C shadow_ctr_checker CC="clang --target=aarch64-linux-gnu"  # cross build
 ```
 
 Out-of-tree modules for GKI **must** be built inside the matching

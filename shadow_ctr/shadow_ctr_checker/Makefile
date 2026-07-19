@@ -1,46 +1,46 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Dual-purpose kbuild Makefile for the shadow_ctr_checker out-of-tree module.
+# shadow_ctr_checker is a plain userspace diagnostic binary (NOT a kernel
+# module): it performs real syscalls (unshare/fork/setns, mq_*, msg*,
+# mount(2)) to observe whether container-relevant isolation actually works
+# on the running kernel, rather than only reporting compile-time
+# IS_ENABLED(CONFIG_*) facts. See shadow_ctr_checker.c and README.md.
 #
-# shadow_ctr_checker.ko is a pure, standalone diagnostics tool: it has NO
-# build-time (KBUILD_EXTRA_SYMBOLS/Module.symvers) or load-time dependency on
-# any other shadow_ctr module (shadow_ns, shadow_mqueue, shadow_sysvipc,
-# shadow_cgdevices, shadow_hijack, ...). It can be built and
-# insmod'd entirely on its own, in any order. (An earlier revision took a
-# hard dependency on shadow_ns's EXPORT_SYMBOL_GPL query API, and before that
-# used symbol_get()/symbol_put() to detect modules purely at runtime - but
-# __symbol_get()/__symbol_put() are themselves trimmed from production GKI
-# kernels' exported-symbol table, which made insmod of this module fail
-# unconditionally with "Unknown symbol __symbol_get"/-ENOENT. See the comment
-# at the top of shadow_ctr_checker.c for the full history and rationale.)
+# Built statically by default (no dynamic libc dependency at runtime): the
+# binary is routinely cross-compiled on one libc (e.g. glibc on an x86_64 CI
+# runner) and then copied onto a device running a different one (e.g.
+# Android's bionic), so it must not rely on a dynamic linker/libc.so being
+# present or ABI-compatible on the target at all.
 #
-# Out-of-tree build (produces shadow_ctr_checker.ko):
-#   make -C /path/to/kernel/build M=$(pwd) modules
-#   make KDIR=/path/to/kernel/build
+# Native build (host toolchain, static):
+#   make
+#
+# Cross build for an Android/arm64 device target, e.g. via the NDK or the
+# same clang toolchain used to build the other shadow_ctr kernel modules:
+#   make CC=aarch64-linux-android30-clang
+#   make CC="clang --target=aarch64-linux-gnu"
+#
+# Dynamic build (only if a matching libc/dynamic linker is guaranteed to be
+# present on the target and a static one isn't available/desired):
+#   make LDFLAGS=
 
-ifneq ($(KERNELRELEASE),)
+CC      ?= cc
+CFLAGS  ?= -O2 -Wall -Wextra -std=gnu11
+LDFLAGS ?= -static
+LDLIBS  ?= -lrt
 
-# --- kbuild pass ---
-obj-$(CONFIG_SHADOW_CTR_CHECKER) += shadow_ctr_checker.o
-ifeq ($(CONFIG_SHADOW_CTR_CHECKER),)
-obj-m += shadow_ctr_checker.o
-endif
+TARGET  := shadow_ctr_checker
+SRC     := shadow_ctr_checker.c
 
-else
+.PHONY: all clean install
 
-# --- command-line pass (out-of-tree convenience wrapper) ---
-KDIR ?= /lib/modules/$(shell uname -r)/build
-PWD  := $(shell pwd)
+all: $(TARGET)
 
-all:
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
-modules_install:
-	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
+install: $(TARGET)
+	install -Dm755 $(TARGET) $(DESTDIR)/usr/bin/$(TARGET)
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
-
-.PHONY: all modules_install clean
-
-endif
+	rm -f $(TARGET)

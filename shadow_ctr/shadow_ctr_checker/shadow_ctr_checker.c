@@ -1,308 +1,798 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * shadow_ctr_checker - runtime diagnostics for the shadow_ctr module family
+ * shadow_ctr_checker - userspace diagnostic tool for the shadow_ctr module
+ * family.
  *
- * Registers a read-only character device /dev/shadow_ctr_checker. Reading it
- * (e.g. `cat /dev/shadow_ctr_checker`) produces a plain, greppable one-line-
- * per-check report describing, for each container-relevant kernel feature,
- * whether it is supported natively by this kernel build (compile-time
- * IS_ENABLED(), since this module is compiled against the exact target
- * kernel's config via the same DDK image as the other shadow modules), and/or
- * provided by a registered "overlay" filesystem type.
+ * This used to be a small kernel module that read back its own compile-time
+ * IS_ENABLED(CONFIG_*) view of the target kernel. That could only ever prove
+ * what the kernel was *built* to support, never what actually happens at
+ * runtime once shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices hooks
+ * (or their absence) are in the loop - which is exactly what matters when
+ * diagnosing a real container-start failure such as:
  *
- * ---------------------------------------------------------------------------
- * This module has NO dependency on any other shadow_ctr module
- * ---------------------------------------------------------------------------
- * shadow_ctr_checker is a pure, standalone diagnostics tool: it has no
- * build-time (KBUILD_EXTRA_SYMBOLS/Module.symvers) or load-time dependency on
- * shadow_ns, shadow_mqueue, shadow_sysvipc, shadow_cgdevices, shadow_hijack or
- * any other shadow_ctr module, and can be built and insmod'd entirely on its
- * own, in any order, regardless of which (if any) other shadow modules are
- * present.
+ *   failed to create task for container: failed to create shim task: OCI
+ *   runtime create failed: runc create failed: unable to start container
+ *   process: can't get final child's PID from pipe: EOF; runc init error(s):
+ *   nsexec-1[19437]: failed to unshare remaining namespaces: Invalid
+ *   argument; nsexec-0[19436]: failed to sync with stage-1: next state (got
+ *   0 of 4 bytes): unknown
  *
- * An earlier revision resolved shadow_mqueue_is_active()/_sysvipc_/
- * _cgdevices_is_active() and shadow_ns's query API purely at runtime via
- * symbol_get()/symbol_put() (backed by __symbol_get()/__symbol_put()).
- * However, __symbol_get()/__symbol_put() are trimmed from the exported-
- * symbol table of production GKI kernels (unreferenced by any built-in code,
- * so CONFIG_TRIM_UNUSED_KSYMS drops their EXPORT_SYMBOL entries even though
- * the functions themselves remain in the kernel image). Merely *referencing*
- * symbol_get()/symbol_put() anywhere in this module - even in a branch that
- * is never taken - makes the whole module fail to load with "Unknown symbol
- * __symbol_get"/"Unknown symbol __symbol_put" (insmod surfaces this as
- * -ENOENT, i.e. "No such file or directory"), since the kernel's module
- * loader must resolve every referenced symbol before the module can be
- * loaded at all, regardless of runtime control flow.
+ * This tool is a plain userspace binary (no kernel module, no /dev node): it
+ * directly performs the same system calls runc's nsexec does
+ * (unshare/clone/fork + setns), observes their *actual effect* (not just
+ * whether the syscall returned 0), and prints one PASS/FAIL/STUB line per
+ * feature:
  *
- * A later revision instead took a normal build+load-time dependency on
- * shadow_ns's EXPORT_SYMBOL_GPL query API via KBUILD_EXTRA_SYMBOLS. That has
- * been removed too: this checker is meant to work standalone with zero
- * dependencies, so it no longer calls into shadow_ns at all. Since
- * shadow_ns.c computes whether it simulates (and whether that simulation is
- * functionally real vs. bookkeeping-only) a given namespace type using the
- * exact same IS_ENABLED(CONFIG_{UTS,IPC,USER,PID,NET}_NS) checks this module
- * already performs (both are built against the identical target kernel
- * config in the same DDK image), that same information can be derived here
- * directly at compile time without calling into shadow_ns at all - so the
- * "is it builtin" line already implies "if not builtin, shadow_ns.ko (if
- * loaded) provides real/bookkeeping isolation for it"; see
- * shadow_checker_ns() below and shadow_ctr/shadow_ns/README.md for which
- * types get real vs. bookkeeping-only simulation.
+ *   PASS  - the syscall succeeded AND a real, observable side effect proves
+ *           genuine isolation (e.g. a child's hostname change after
+ *           unshare(CLONE_NEWUTS) is NOT visible to the parent).
+ *   STUB  - the syscall succeeded but no isolation was actually observed
+ *           (bookkeeping-only fallback: bit accepted, nothing isolated).
+ *   FAIL  - the syscall itself failed (e.g. EINVAL/ENOSYS/EPERM) - this is
+ *           the exact failure mode runc's nsexec surfaces as "failed to
+ *           unshare remaining namespaces: Invalid argument".
  *
- * The shadow_mqueue/shadow_sysvipc/shadow_cgdevices "is this specific .ko
- * providing it" distinction has also been dropped (there is no safe way left
- * to query optional, independently-loadable modules without symbol_get());
- * this checker now only reports whether the underlying kernel feature is
- * built in. Use `cat /proc/modules` (or `lsmod`) to see which shadow_*
- * modules are actually loaded.
+ * Every syscall requiring CLONE_NEW* is attempted inside a throwaway
+ * fork(2)'d child, so a FAIL/STUB result never disturbs this process (or the
+ * calling shell)'s own namespaces.
  *
- * For overlayfs specifically the checker additionally consults
- * get_fs_type("overlay") as ground truth, because that (not IS_ENABLED alone)
- * is what determines whether mount(2) of an overlay will actually work: overlay
- * could be builtin (=y) or provided by a genuine loadable overlay.ko, and
- * get_fs_type() is the authoritative signal.
+ * Usage:
+ *   shadow_ctr_checker            # human-readable report to stdout
+ *   shadow_ctr_checker -q         # same, but exit status reflects overall
+ *                                 # result (0 = all PASS, 1 = any FAIL)
  */
 
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/miscdevice.h>
-#include <linux/slab.h>
-#include <linux/uaccess.h>
-#include <linux/types.h>
-#include <linux/minmax.h>
-/*
- * <linux/stdarg.h> (a thin wrapper the kernel ships so in-tree code doesn't
- * pull in the compiler's freestanding <stdarg.h> directly) was only added in
- * v5.15 (commit c0891ac15f0428ffa81b2e818d416bdf3cb74ab6, "isystem: ship and
- * use stdarg.h"). It doesn't exist on the android12-5.10/android13-5.10 GKI
- * kernels this module also targets, so fall back to the compiler-provided
- * <stdarg.h> there.
- */
-#if __has_include(<linux/stdarg.h>)
-#include <linux/stdarg.h>
-#else
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <sched.h>
+#include <signal.h>
 #include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mount.h>
+#include <sys/msg.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#if __has_include(<mqueue.h>)
+#include <mqueue.h>
+#define SHADOW_CHECKER_HAVE_MQUEUE 1
 #endif
 
-#define SHADOW_CTR_CHECKER_VERSION "2.0"
-#define SHADOW_CHECKER_REPORT_MAX  4096
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 64
+#endif
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
-struct shadow_checker_buf {
-	char	data[SHADOW_CHECKER_REPORT_MAX];
-	size_t	len;
+#ifndef CLONE_NEWNS
+#define CLONE_NEWNS 0x00020000
+#endif
+#ifndef CLONE_NEWUTS
+#define CLONE_NEWUTS 0x04000000
+#endif
+#ifndef CLONE_NEWIPC
+#define CLONE_NEWIPC 0x08000000
+#endif
+#ifndef CLONE_NEWUSER
+#define CLONE_NEWUSER 0x10000000
+#endif
+#ifndef CLONE_NEWPID
+#define CLONE_NEWPID 0x20000000
+#endif
+#ifndef CLONE_NEWNET
+#define CLONE_NEWNET 0x40000000
+#endif
+#ifndef CLONE_NEWCGROUP
+#define CLONE_NEWCGROUP 0x02000000
+#endif
+
+#define SHADOW_CTR_CHECKER_VERSION "3.0"
+
+enum shadow_checker_result {
+	SHADOW_CHECKER_PASS = 0,
+	SHADOW_CHECKER_STUB,
+	SHADOW_CHECKER_FAIL,
+	SHADOW_CHECKER_SKIP,
 };
 
-static __printf(2, 3) void
-shadow_checker_add(struct shadow_checker_buf *b, const char *fmt, ...)
+static const char *const shadow_checker_result_str[] = {
+	[SHADOW_CHECKER_PASS] = "PASS",
+	[SHADOW_CHECKER_STUB] = "STUB",
+	[SHADOW_CHECKER_FAIL] = "FAIL",
+	[SHADOW_CHECKER_SKIP] = "SKIP",
+};
+
+static int g_fail_count;
+static int g_stub_count;
+static bool g_quiet;
+
+static void shadow_checker_report(const char *label,
+				   enum shadow_checker_result result,
+				   const char *fmt, ...)
 {
+	char detail[256] = "";
+
+	if (fmt) {
+		va_list args;
+
+		va_start(args, fmt);
+		vsnprintf(detail, sizeof(detail), fmt, args);
+		va_end(args);
+	}
+
+	if (result == SHADOW_CHECKER_FAIL)
+		g_fail_count++;
+	else if (result == SHADOW_CHECKER_STUB)
+		g_stub_count++;
+
+	if (g_quiet)
+		return;
+
+	if (detail[0])
+		printf("%-28s %-4s  %s\n", label,
+		       shadow_checker_result_str[result], detail);
+	else
+		printf("%-28s %-4s\n", label,
+		       shadow_checker_result_str[result]);
+}
+
+/*
+ * Reads a single "\n"-terminated status line (either "OK <payload>" or
+ * "ERR <errno>") back from a child process through a pipe. Returns true and
+ * fills ok/payload on success, false on a broken pipe / malformed message.
+ */
+struct shadow_checker_msg {
+	bool ok;
+	int err;
+	char payload[128];
+};
+
+static bool shadow_checker_read_msg(int fd, struct shadow_checker_msg *out)
+{
+	char buf[256];
+	ssize_t n;
+
+	memset(out, 0, sizeof(*out));
+	n = read(fd, buf, sizeof(buf) - 1);
+	if (n <= 0)
+		return false;
+	buf[n] = '\0';
+	if (n > 0 && buf[n - 1] == '\n')
+		buf[n - 1] = '\0';
+
+	if (!strncmp(buf, "OK ", 3)) {
+		out->ok = true;
+		snprintf(out->payload, sizeof(out->payload), "%.*s",
+			 (int)sizeof(out->payload) - 1, buf + 3);
+	} else if (!strncmp(buf, "ERR ", 4)) {
+		out->ok = false;
+		out->err = atoi(buf + 4);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+static void shadow_checker_send_ok(int fd, const char *fmt, ...)
+{
+	char buf[256];
 	va_list args;
 	int n;
 
-	if (b->len >= sizeof(b->data))
-		return;
+	n = snprintf(buf, sizeof(buf), "OK ");
 	va_start(args, fmt);
-	n = vsnprintf(b->data + b->len, sizeof(b->data) - b->len, fmt, args);
+	n += vsnprintf(buf + n, sizeof(buf) - n, fmt, args);
 	va_end(args);
-	if (n > 0)
-		b->len += min_t(size_t, (size_t)n, sizeof(b->data) - b->len - 1);
+	buf[n] = '\n';
+	if (write(fd, buf, n + 1) < 0) {
+		/* best effort; parent side treats a closed pipe as SKIP */
+	}
 }
 
-/* Emit a "<label>: ..." line for a feature that is either builtin or not. */
-static void shadow_checker_feature(struct shadow_checker_buf *b,
-				  const char *label, bool builtin)
+static void shadow_checker_send_err(int fd, int err)
 {
-	if (builtin)
-		shadow_checker_add(b, "%s: supported (builtin)\n", label);
-	else
-		shadow_checker_add(b,
-			"%s: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider\n",
-			label);
-}
+	char buf[64];
+	int n = snprintf(buf, sizeof(buf), "ERR %d\n", err);
 
-/* Namespace type: whether shadow_ns's fallback simulation (if loaded) for
- * this type performs genuine functional isolation or bookkeeping only. See
- * shadow_ctr/shadow_ns/README.md.
- */
-enum shadow_checker_ns_sim {
-	SHADOW_CHECKER_NS_SIM_NONE,		/* always builtin; no fallback needed */
-	SHADOW_CHECKER_NS_SIM_REAL,		/* shadow_ns provides real isolation */
-	SHADOW_CHECKER_NS_SIM_BOOKKEEPING,	/* shadow_ns provides bookkeeping only */
-};
+	if (write(fd, buf, n) < 0) {
+		/* best effort; nothing to recover here */
+	}
+}
 
 /*
- * Namespace line: builtin config, plus (if not builtin) what shadow_ns.ko -
- * if loaded - would provide for it. This module has no build/load-time
- * dependency on shadow_ns, so it cannot query whether shadow_ns.ko is
- * actually loaded right now; it only states what it *would* provide, since
- * that is fully determined at compile time by the same IS_ENABLED(CONFIG_*)
- * checks shadow_ns.c itself uses.
+ * ---------------------------------------------------------------------
+ * UTS namespace: unshare(CLONE_NEWUTS), then set a unique hostname inside
+ * the child. Real isolation means the parent's own gethostname() never
+ * observes the child's change; bookkeeping-only (or no isolation at all)
+ * means it does.
+ * ---------------------------------------------------------------------
  */
-static void shadow_checker_ns(struct shadow_checker_buf *b, const char *label,
-			     bool builtin, enum shadow_checker_ns_sim sim)
+static void shadow_checker_uts(void)
 {
-	if (builtin) {
-		shadow_checker_add(b, "%s: supported (builtin)\n", label);
+	char before[HOST_NAME_MAX + 1] = "";
+	char after[HOST_NAME_MAX + 1] = "";
+	char newname[64];
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (gethostname(before, sizeof(before) - 1))
+		before[0] = '\0';
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
 		return;
 	}
-	switch (sim) {
-	case SHADOW_CHECKER_NS_SIM_REAL:
-		shadow_checker_add(b,
-			"%s: not supported (not builtin); shadow_ns.ko provides real isolation if loaded - check lsmod\n",
-			label);
-		break;
-	case SHADOW_CHECKER_NS_SIM_BOOKKEEPING:
-		shadow_checker_add(b,
-			"%s: not supported (not builtin); shadow_ns.ko provides bookkeeping-only fallback if loaded - check lsmod\n",
-			label);
-		break;
-	default:
-		shadow_checker_add(b, "%s: not supported\n", label);
-		break;
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
 	}
-}
 
-static void shadow_checker_build_report(struct shadow_checker_buf *b)
-{
-	struct file_system_type *ovl;
-	bool ovl_registered, ovl_builtin;
+	if (pid == 0) {
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWUTS)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		snprintf(newname, sizeof(newname), "shadowchk-%d", getpid());
+		if (sethostname(newname, strlen(newname))) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		/* Signal parent that the child's hostname has been changed;
+		 * parent samples its own hostname now, before we exit.
+		 */
+		shadow_checker_send_ok(pipefd[1], "%s", newname);
+		_exit(0);
+	}
 
-	b->len = 0;
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
 
-	shadow_checker_add(b,
-		"shadow_ctr_checker v%s - shadow container-support status\n",
-		SHADOW_CTR_CHECKER_VERSION);
-	shadow_checker_add(b, "----------------------------------------\n");
+	if (!msg.ok) {
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_FAIL,
+				      "unshare(CLONE_NEWUTS): %s",
+				      strerror(msg.err));
+		return;
+	}
 
-	/* --- IPC-ish subsystems --------------------------------------- */
-	shadow_checker_feature(b, "mqueue", IS_ENABLED(CONFIG_POSIX_MQUEUE));
-	shadow_checker_feature(b, "sysvipc", IS_ENABLED(CONFIG_SYSVIPC));
-	shadow_checker_feature(b, "cgroup_device", IS_ENABLED(CONFIG_CGROUP_DEVICE));
+	if (gethostname(after, sizeof(after) - 1))
+		after[0] = '\0';
 
-	/* --- overlayfs: get_fs_type() is ground truth ----------------- */
-	ovl = get_fs_type("overlay");
-	ovl_registered = (ovl != NULL);
-	ovl_builtin = ovl_registered && (ovl->owner == NULL);
-	if (ovl)
-		module_put(ovl->owner); /* balance get_fs_type()'s ref; NULL-safe */
-
-	if (!ovl_registered)
-		shadow_checker_add(b, "overlay2: not supported\n");
-	else if (ovl_builtin)
-		shadow_checker_add(b, "overlay2: supported (builtin)\n");
+	if (!strcmp(before, after))
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_PASS,
+				      "child set '%s', parent still '%s'",
+				      msg.payload, after);
 	else
-		shadow_checker_add(b,
-			"overlay2: supported (module: %s)\n", ovl->owner->name);
-
-	/* --- namespaces: builtin config; shadow_ns.ko is optional -------- */
-	shadow_checker_add(b,
-		"# namespaces (task explicitly requests net/pid/ipc/uts; mnt/user/cgroup shown for completeness)\n");
-
-	shadow_checker_ns(b, "ns_net", IS_ENABLED(CONFIG_NET_NS),
-			 SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
-	shadow_checker_ns(b, "ns_pid", IS_ENABLED(CONFIG_PID_NS),
-			 SHADOW_CHECKER_NS_SIM_REAL);
-	shadow_checker_ns(b, "ns_ipc", IS_ENABLED(CONFIG_IPC_NS),
-			 SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
-	shadow_checker_ns(b, "ns_uts", IS_ENABLED(CONFIG_UTS_NS),
-			 SHADOW_CHECKER_NS_SIM_REAL);
-	/*
-	 * Mount namespaces (CLONE_NEWNS) have no dedicated per-type Kconfig
-	 * gate anywhere in mainline Linux -- fs/namespace.c/kernel/nsproxy.c
-	 * compile them in unconditionally, so there is no CONFIG_MNT_NS
-	 * symbol to check (unlike every other CLONE_NEW* type). shadow_ns.c
-	 * instead keys MNT's builtin status off CONFIG_NAMESPACES itself (the
-	 * parent menuconfig, "default !EXPERT" i.e. effectively always on) as
-	 * a defensive fallback -- if that is ever off, shadow_ns transparently
-	 * falls back to bookkeeping-only for MNT too. See shadow_ns/README.md.
-	 */
-	shadow_checker_ns(b, "ns_mnt", IS_ENABLED(CONFIG_NAMESPACES),
-			 SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
-	/* User namespace: called out separately/explicitly per the task. */
-	shadow_checker_ns(b, "ns_user (user namespace)",
-			 IS_ENABLED(CONFIG_USER_NS), SHADOW_CHECKER_NS_SIM_REAL);
-	/*
-	 * cgroup namespace has no dedicated Kconfig gate in mainline; CONFIG_
-	 * CGROUPS is used as its proxy for the "builtin" column here. Unlike
-	 * mnt, this one genuinely can be absent (a kernel built with
-	 * CONFIG_CGROUPS=n, though every GKI defconfig sets it), and
-	 * shadow_ns.c already falls back to the same reference-counted
-	 * bookkeeping-only registry it uses for ipc/net in that case.
-	 */
-	shadow_checker_ns(b, "ns_cgroup (proxy: CONFIG_CGROUPS)",
-			 IS_ENABLED(CONFIG_CGROUPS), SHADOW_CHECKER_NS_SIM_BOOKKEEPING);
+		shadow_checker_report("ns_uts (UTS)", SHADOW_CHECKER_STUB,
+				      "child's hostname change leaked to parent ('%s')",
+				      after);
 }
 
-static int shadow_checker_open(struct inode *inode, struct file *file)
+/*
+ * ---------------------------------------------------------------------
+ * PID namespace: unshare(CLONE_NEWPID) does NOT move the calling task; only
+ * a subsequently forked child joins the new pid namespace. A genuinely new,
+ * empty pid namespace always numbers its very first task as pid 1 (as
+ * observed by that task's own getpid()). If the grandchild does not see
+ * itself as pid 1, no real isolation happened.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_pid(void)
 {
-	struct shadow_checker_buf *b;
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
 
-	b = kzalloc(sizeof(*b), GFP_KERNEL);
-	if (!b)
-		return -ENOMEM;
-
-	/* Snapshot the report fresh on every open. */
-	shadow_checker_build_report(b);
-	file->private_data = b;
-	return 0;
-}
-
-static int shadow_checker_release(struct inode *inode, struct file *file)
-{
-	kfree(file->private_data);
-	file->private_data = NULL;
-	return 0;
-}
-
-static ssize_t shadow_checker_read(struct file *file, char __user *buf,
-				  size_t count, loff_t *ppos)
-{
-	struct shadow_checker_buf *b = file->private_data;
-
-	return simple_read_from_buffer(buf, count, ppos, b->data, b->len);
-}
-
-static const struct file_operations shadow_checker_fops = {
-	.owner		= THIS_MODULE,
-	.open		= shadow_checker_open,
-	.read		= shadow_checker_read,
-	.release	= shadow_checker_release,
-	.llseek		= default_llseek,
-};
-
-static struct miscdevice shadow_checker_misc = {
-	.minor	= MISC_DYNAMIC_MINOR,
-	.name	= "shadow_ctr_checker",
-	.fops	= &shadow_checker_fops,
-	.mode	= 0444,
-};
-
-static int __init shadow_ctr_checker_init(void)
-{
-	int ret;
-
-	ret = misc_register(&shadow_checker_misc);
-	if (ret) {
-		pr_err("shadow_ctr_checker: misc_register() failed: %d\n", ret);
-		return ret;
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
 	}
 
-	pr_info("shadow_ctr_checker: loaded (version %s); read /dev/shadow_ctr_checker for status\n",
-		SHADOW_CTR_CHECKER_VERSION);
-	return 0;
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		pid_t grandchild;
+
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWPID)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		grandchild = fork();
+		if (grandchild < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (grandchild == 0) {
+			shadow_checker_send_ok(pipefd[1], "%d", getpid());
+			_exit(0);
+		}
+		waitpid(grandchild, NULL, 0);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_FAIL,
+				      "unshare(CLONE_NEWPID): %s",
+				      strerror(msg.err));
+		return;
+	}
+
+	if (!strcmp(msg.payload, "1"))
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_PASS,
+				      "grandchild became pid 1 in new namespace");
+	else
+		shadow_checker_report("ns_pid (PID)", SHADOW_CHECKER_STUB,
+				      "grandchild kept real pid %s (no vpid remap)",
+				      msg.payload);
 }
 
-static void __exit shadow_ctr_checker_exit(void)
+/*
+ * ---------------------------------------------------------------------
+ * USER namespace: unshare(CLONE_NEWUSER) always changes the calling task's
+ * apparent uid/gid inside the new namespace *before* any uid_map/gid_map is
+ * written - either to the overflow uid (genuine, unmapped kernel
+ * namespace: typically 65534) or to 0 (shadow_ns's docker-like
+ * single-mapping remap of the creator to root). Both are a real, observable
+ * change; only an unchanged uid indicates no isolation at all. This test is
+ * only meaningful when run as a non-root user - see the SKIP case.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_user(void)
 {
-	misc_deregister(&shadow_checker_misc);
-	pr_info("shadow_ctr_checker: unloaded\n");
+	uid_t before = getuid();
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (before == 0) {
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_SKIP,
+				      "running as uid 0; test needs a non-root uid to be conclusive");
+		return;
+	}
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWUSER)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		shadow_checker_send_ok(pipefd[1], "%u", geteuid());
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_FAIL,
+				      "unshare(CLONE_NEWUSER): %s",
+				      strerror(msg.err));
+		return;
+	}
+
+	if (atoi(msg.payload) != (int)before)
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_PASS,
+				      "uid remapped %u -> %s inside namespace",
+				      before, msg.payload);
+	else
+		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_STUB,
+				      "uid unchanged (%s) - no remap performed",
+				      msg.payload);
 }
 
-module_init(shadow_ctr_checker_init);
-module_exit(shadow_ctr_checker_exit);
+/*
+ * ---------------------------------------------------------------------
+ * IPC / NET / MNT / CGROUP namespaces: none of these has a cheap, safe,
+ * universal in-process "did isolation really happen" signal the way UTS/
+ * PID/USER do (see shadow_ctr/shadow_ns/README.md: shadow_ns's fallback for
+ * these four is bookkeeping-only by design, and genuine kernel isolation for
+ * them touches subsystems this tool must not perturb - e.g. mounting/
+ * networking). So this tool only reports whether the unshare(2) syscall
+ * itself succeeds; a successful-but-unverifiable-isolation namespace is
+ * still reported STUB unless the child can observe a distinct
+ * /proc/self/ns/<type> identity from the parent, which is a reliable
+ * indicator that the kernel actually allocated a new namespace object
+ * (rather than just accepting the flag and doing nothing).
+ * ---------------------------------------------------------------------
+ */
+static bool shadow_checker_read_ns_id(pid_t pid, const char *type, char *out,
+				       size_t outlen)
+{
+	char path[64];
+	ssize_t n;
 
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("GKI_KernelSU_SUSFS contributors");
-MODULE_DESCRIPTION("Runtime diagnostics for the shadow_ctr module family via /dev/shadow_ctr_checker (standalone; no dependency on any other shadow_ctr module)");
-MODULE_VERSION(SHADOW_CTR_CHECKER_VERSION);
+	if (pid)
+		snprintf(path, sizeof(path), "/proc/%d/ns/%s", pid, type);
+	else
+		snprintf(path, sizeof(path), "/proc/self/ns/%s", type);
+
+	n = readlink(path, out, outlen - 1);
+	if (n < 0)
+		return false;
+	out[n] = '\0';
+	return true;
+}
+
+static void shadow_checker_generic_ns(const char *label, const char *ns_file,
+				       int clone_flag)
+{
+	char before[128], after[128];
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+	bool have_before;
+
+	have_before = shadow_checker_read_ns_id(0, ns_file, before,
+						 sizeof(before));
+
+	if (pipe(pipefd)) {
+		shadow_checker_report(label, SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report(label, SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		char id[64];
+
+		close(pipefd[0]);
+		if (unshare(clone_flag)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (!shadow_checker_read_ns_id(0, ns_file, id, sizeof(id)))
+			id[0] = '\0';
+		shadow_checker_send_ok(pipefd[1], "%s", id);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report(label, SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report(label, SHADOW_CHECKER_FAIL,
+				      "unshare(): %s", strerror(msg.err));
+		return;
+	}
+
+	snprintf(after, sizeof(after), "%s", msg.payload);
+
+	if (have_before && after[0] && strcmp(before, after))
+		shadow_checker_report(label, SHADOW_CHECKER_PASS,
+				      "namespace id changed (%s -> %s)",
+				      before, after);
+	else
+		shadow_checker_report(label, SHADOW_CHECKER_STUB,
+				      "unshare() succeeded but namespace id unchanged (bookkeeping only)");
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * POSIX message queues: real functional test (mq_open + send + receive),
+ * not just "does mq_open() succeed".
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_mqueue(void)
+{
+#ifdef SHADOW_CHECKER_HAVE_MQUEUE
+	char name[64];
+	mqd_t mq;
+	char msgbuf[16] = "hi";
+	char rcvbuf[16] = "";
+	struct mq_attr attr = {
+		.mq_maxmsg = 4,
+		.mq_msgsize = sizeof(msgbuf),
+	};
+
+	snprintf(name, sizeof(name), "/shadowchk-%d", getpid());
+	mq = mq_open(name, O_CREAT | O_RDWR | O_EXCL, 0600, &attr);
+	if (mq == (mqd_t)-1) {
+		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_FAIL,
+				      "mq_open(): %s", strerror(errno));
+		return;
+	}
+
+	if (mq_send(mq, msgbuf, strlen(msgbuf), 0)) {
+		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_FAIL,
+				      "mq_send(): %s", strerror(errno));
+		mq_close(mq);
+		mq_unlink(name);
+		return;
+	}
+
+	if (mq_receive(mq, rcvbuf, sizeof(rcvbuf), NULL) < 0) {
+		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_FAIL,
+				      "mq_receive(): %s", strerror(errno));
+		mq_close(mq);
+		mq_unlink(name);
+		return;
+	}
+
+	mq_close(mq);
+	mq_unlink(name);
+
+	if (!strcmp(rcvbuf, msgbuf))
+		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_PASS,
+				      "message round-tripped through the queue");
+	else
+		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_STUB,
+				      "queue accepted send/receive but payload mismatched");
+#else
+	shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_SKIP,
+			      "<mqueue.h> unavailable in this libc");
+#endif
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * System V IPC: real functional test via a message queue (msgget/msgsnd/
+ * msgrcv), matching what shadow_sysvipc actually hooks.
+ * ---------------------------------------------------------------------
+ */
+struct shadow_checker_sysv_msg {
+	long mtype;
+	char mtext[16];
+};
+
+static void shadow_checker_sysvipc(void)
+{
+	int id;
+	struct shadow_checker_sysv_msg out = { .mtype = 1, .mtext = "hi" };
+	struct shadow_checker_sysv_msg in = { 0 };
+
+	id = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+	if (id < 0) {
+		shadow_checker_report("sysvipc (SysV msg)", SHADOW_CHECKER_FAIL,
+				      "msgget(): %s", strerror(errno));
+		return;
+	}
+
+	if (msgsnd(id, &out, strlen(out.mtext) + 1, 0)) {
+		shadow_checker_report("sysvipc (SysV msg)", SHADOW_CHECKER_FAIL,
+				      "msgsnd(): %s", strerror(errno));
+		msgctl(id, IPC_RMID, NULL);
+		return;
+	}
+
+	if (msgrcv(id, &in, sizeof(in.mtext), 1, 0) < 0) {
+		shadow_checker_report("sysvipc (SysV msg)", SHADOW_CHECKER_FAIL,
+				      "msgrcv(): %s", strerror(errno));
+		msgctl(id, IPC_RMID, NULL);
+		return;
+	}
+
+	msgctl(id, IPC_RMID, NULL);
+
+	if (!strcmp(in.mtext, out.mtext))
+		shadow_checker_report("sysvipc (SysV msg)", SHADOW_CHECKER_PASS,
+				      "message round-tripped through msgget/msgsnd/msgrcv");
+	else
+		shadow_checker_report("sysvipc (SysV msg)", SHADOW_CHECKER_STUB,
+				      "queue accepted send/receive but payload mismatched");
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * overlay2: attempt a real mount(2) of an overlay filesystem in a private
+ * mount namespace (so nothing leaks onto the host), using throwaway tmpfs
+ * dirs for lower/upper/work.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_overlay(void)
+{
+	char base[] = "/tmp/shadowchk-ovl-XXXXXX";
+	char lower[PATH_MAX], upper[PATH_MAX], work[PATH_MAX], merged[PATH_MAX];
+	char opts[PATH_MAX * 4];
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("overlay2", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("overlay2", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		close(pipefd[0]);
+
+		/* Isolate into a private mount namespace so the test mount
+		 * never leaks onto the host, regardless of pass/fail.
+		 */
+		if (unshare(CLONE_NEWNS)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		if (!mkdtemp(base)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		snprintf(lower, sizeof(lower), "%s/lower", base);
+		snprintf(upper, sizeof(upper), "%s/upper", base);
+		snprintf(work, sizeof(work), "%s/work", base);
+		snprintf(merged, sizeof(merged), "%s/merged", base);
+		mkdir(lower, 0700);
+		mkdir(upper, 0700);
+		mkdir(work, 0700);
+		mkdir(merged, 0700);
+
+		snprintf(opts, sizeof(opts),
+			 "lowerdir=%s,upperdir=%s,workdir=%s", lower, upper,
+			 work);
+
+		if (mount("overlay", merged, "overlay", 0, opts)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		umount2(merged, MNT_DETACH);
+		shadow_checker_send_ok(pipefd[1], "mounted");
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("overlay2", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (msg.ok)
+		shadow_checker_report("overlay2", SHADOW_CHECKER_PASS,
+				      "mount(2) of an overlay filesystem succeeded");
+	else if (msg.err == ENODEV || msg.err == ENOENT)
+		shadow_checker_report("overlay2", SHADOW_CHECKER_FAIL,
+				      "overlay filesystem type not registered: %s",
+				      strerror(msg.err));
+	else
+		shadow_checker_report("overlay2", SHADOW_CHECKER_FAIL,
+				      "mount(): %s", strerror(msg.err));
+}
+
+static void shadow_checker_usage(const char *argv0)
+{
+	fprintf(stderr,
+		"usage: %s [-q]\n"
+		"  -q  quiet: no report, exit status only (0 = all PASS, 1 = any FAIL)\n",
+		argv0);
+}
+
+int main(int argc, char **argv)
+{
+	int opt;
+
+	while ((opt = getopt(argc, argv, "qh")) != -1) {
+		switch (opt) {
+		case 'q':
+			g_quiet = true;
+			break;
+		default:
+			shadow_checker_usage(argv[0]);
+			return 2;
+		}
+	}
+
+	if (!g_quiet) {
+		printf("shadow_ctr_checker v%s - userspace container-isolation diagnostics\n",
+		       SHADOW_CTR_CHECKER_VERSION);
+		printf("PASS = real isolation observed, STUB = bookkeeping only (no real isolation), FAIL = syscall itself failed\n");
+		printf("--------------------------------------------------------------------------------------------------------\n");
+	}
+
+	shadow_checker_uts();
+	shadow_checker_pid();
+	shadow_checker_user();
+	shadow_checker_generic_ns("ns_ipc (IPC)", "ipc", CLONE_NEWIPC);
+	shadow_checker_generic_ns("ns_net (NET)", "net", CLONE_NEWNET);
+	shadow_checker_generic_ns("ns_mnt (MNT)", "mnt", CLONE_NEWNS);
+	shadow_checker_generic_ns("ns_cgroup (CGROUP)", "cgroup", CLONE_NEWCGROUP);
+	shadow_checker_mqueue();
+	shadow_checker_sysvipc();
+	shadow_checker_overlay();
+
+	if (!g_quiet) {
+		printf("--------------------------------------------------------------------------------------------------------\n");
+		printf("summary: %d FAIL, %d STUB (bookkeeping-only)\n", g_fail_count,
+		       g_stub_count);
+	}
+
+	return g_fail_count ? 1 : 0;
+}

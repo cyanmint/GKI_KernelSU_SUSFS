@@ -1,137 +1,126 @@
 # shadow_ctr_checker
 
-`shadow_ctr_checker.ko` is a **pure, standalone diagnostics module** for the
-`shadow_ctr` family. It has **no build-time or load-time dependency on any
-other shadow_ctr module** — it can be built and `insmod`'d entirely on its
-own, in any order, regardless of which (if any) other `shadow_*` modules are
-present. It registers a read-only character device, `/dev/shadow_ctr_checker`
-(mode `0444`); reading it produces a plain, greppable, one-line-per-check
-report of which container-relevant kernel features are available and whether
-that support is native to the kernel (compile-time) or, for namespaces, would
-be provided by `shadow_ns.ko` if it happens to be loaded.
+`shadow_ctr_checker` is a **plain userspace diagnostic binary** — it is
+**not** a kernel module and installs no `/dev` node. It performs the same
+kind of system calls `runc`'s `nsexec` does (`unshare(2)`/`fork(2)`/
+`setns(2)`, plus `mq_*`/`msg*`/`mount(2)` for the other container-relevant
+subsystems) and reports, for each feature, whether it observed:
+
+* **PASS** — the syscall succeeded *and* a real, verifiable side effect
+  proves genuine isolation (e.g. a child's hostname change after
+  `unshare(CLONE_NEWUTS)` is never visible to the parent).
+* **STUB** — the syscall succeeded, but no isolation was actually
+  observed: a "bookkeeping-only" fallback accepted the flag/call and did
+  nothing behind it.
+* **FAIL** — the syscall itself failed (`EINVAL`/`ENOSYS`/`EPERM`/…). This
+  is exactly the failure class that surfaces to a container runtime as
+  errors like:
+
+  ```
+  failed to create task for container: failed to create shim task: OCI
+  runtime create failed: runc create failed: unable to start container
+  process: can't get final child's PID from pipe: EOF; runc init error(s):
+  nsexec-1[19437]: failed to unshare remaining namespaces: Invalid
+  argument; nsexec-0[19436]: failed to sync with stage-1: next state (got
+  0 of 4 bytes): unknown
+  ```
+
+  If `shadow_ctr_checker` reports **FAIL** for `ns_uts`/`ns_pid`/`ns_ipc`/
+  `ns_net`/`ns_user`/`ns_mnt`/`ns_cgroup`, that is the concrete, reproducible
+  root cause of a `runc`/`nsexec` "failed to unshare remaining namespaces"
+  error for that namespace type: the kernel refused the exact syscall
+  `nsexec` needs, on this device, right now — independent of whatever
+  `shadow_ns`/`shadow_*` modules happen to be loaded. A prior revision of
+  this tool could only report compile-time `IS_ENABLED(CONFIG_*)` facts,
+  which cannot detect this: a kernel can be built with `CONFIG_*_NS=y` and
+  still refuse the syscall at runtime (e.g. a container/sandbox that itself
+  lacks `CAP_SYS_ADMIN`, a seccomp filter, an LSM policy, or — on some
+  Android GKI builds — the syscall wrapper being present but a namespace
+  subsystem it depends on being incompletely wired up). Only actually
+  attempting the syscall, from the exact environment `runc` will run in,
+  tells you the truth.
+
+Every syscall requiring `CLONE_NEW*` is attempted inside a throwaway
+`fork(2)`'d child (and further forked grandchildren where needed, e.g. for
+the PID-namespace test), so a `FAIL`/`STUB` result never disturbs this
+process's own namespaces, mounts, or hostname.
+
+## Usage
 
 ```sh
-insmod shadow_ctr_checker.ko
-cat /dev/shadow_ctr_checker
+./shadow_ctr_checker            # human-readable report on stdout
+./shadow_ctr_checker -q          # no report; exit status only
+echo $?                          # 0 = no FAILs, 1 = at least one FAIL
 ```
 
-Example output:
+Run it as `root` (or with `CAP_SYS_ADMIN`) — the same privilege level
+`runc`/`containerd` itself runs `nsexec` with — for a meaningful result;
+unprivileged `unshare(2)` calls will legitimately report `FAIL` with
+`EPERM`, which is expected and not a bug in the checker.
+
+Example output (privileged, on a kernel with full native namespace support):
 
 ```
-shadow_ctr_checker v2.0 - shadow container-support status
-----------------------------------------
-mqueue: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
-sysvipc: not supported (not builtin); check `lsmod`/`/proc/modules` for a shadow_* provider
-cgroup_device: supported (builtin)
-overlay2: supported (module: overlay)
-# namespaces (task explicitly requests net/pid/ipc/uts; mnt/user/cgroup shown for completeness)
-ns_net: not supported (not builtin); shadow_ns.ko provides bookkeeping-only fallback if loaded - check lsmod
-ns_pid: not supported (not builtin); shadow_ns.ko provides real isolation if loaded - check lsmod
-ns_ipc: not supported (not builtin); shadow_ns.ko provides bookkeeping-only fallback if loaded - check lsmod
-ns_uts: not supported (not builtin); shadow_ns.ko provides real isolation if loaded - check lsmod
-ns_mnt: supported (builtin)
-ns_user (user namespace): supported (builtin)
-ns_cgroup (proxy: CONFIG_CGROUPS): supported (builtin)
+shadow_ctr_checker v3.0 - userspace container-isolation diagnostics
+PASS = real isolation observed, STUB = bookkeeping only (no real isolation), FAIL = syscall itself failed
+--------------------------------------------------------------------------------------------------------
+ns_uts (UTS)                 PASS  child set 'shadowchk-4733', parent still 'myhost'
+ns_pid (PID)                 PASS  grandchild became pid 1 in new namespace
+ns_user (USER)               SKIP  running as uid 0; test needs a non-root uid to be conclusive
+ns_ipc (IPC)                 PASS  namespace id changed (ipc:[4026531839] -> ipc:[4026532267])
+ns_net (NET)                 PASS  namespace id changed (net:[4026531833] -> net:[4026532268])
+ns_mnt (MNT)                 PASS  namespace id changed (mnt:[4026531832] -> mnt:[4026532327])
+ns_cgroup (CGROUP)           PASS  namespace id changed (cgroup:[4026531835] -> cgroup:[4026532327])
+mqueue (POSIX)               PASS  message round-tripped through the queue
+sysvipc (SysV msg)           PASS  message round-tripped through msgget/msgsnd/msgrcv
+overlay2                     PASS  mount(2) of an overlay filesystem succeeded
+--------------------------------------------------------------------------------------------------------
+summary: 0 FAIL, 0 STUB (bookkeeping-only)
 ```
 
-The report is generated fresh on every `open()`.
+## What it checks, and how
 
-## What it checks
+| Line                  | Test methodology |
+|-----------------------|-------------------|
+| `ns_uts (UTS)`        | Fork a child, child `unshare(CLONE_NEWUTS)` then `sethostname()`s a unique name; PASS only if the **parent's own** `gethostname()` never observes that change. |
+| `ns_pid (PID)`        | Fork a child that `unshare(CLONE_NEWPID)`s, then forks a grandchild; PASS only if the grandchild's own `getpid()` is `1` (a genuinely new, empty pid namespace always numbers its first task 1). |
+| `ns_user (USER)`      | Fork a child that `unshare(CLONE_NEWUSER)`s; PASS if `geteuid()` inside changed from the caller's real (non-root) uid (either remapped to `0`, matching a docker-style single mapping, or to the kernel's overflow uid `65534` when unmapped) — both are real, observable isolation. `SKIP`ped when run as uid 0, since the test can't distinguish "remapped to 0" from "not remapped, still 0". |
+| `ns_ipc`/`ns_net`/`ns_mnt`/`ns_cgroup` | Fork a child that `unshare()`s the corresponding `CLONE_NEW*` flag, then compares `readlink("/proc/self/ns/<type>")` between parent and child. A genuinely new kernel namespace object always gets a distinct `type:[inode]` id; an accepted-but-inert (bookkeeping-only) fallback leaves it unchanged. These four have no cheap additional functional test the way UTS/PID/USER do — see `shadow_ctr/shadow_ns/README.md`, they are documented as bookkeeping-only whenever `shadow_ns` has to simulate them at all. |
+| `mqueue (POSIX)`      | Real `mq_open()` + `mq_send()` + `mq_receive()` round trip of an actual payload, not just checking `mq_open()`'s return value. |
+| `sysvipc (SysV msg)`  | Real `msgget()` + `msgsnd()` + `msgrcv()` round trip of an actual payload. |
+| `overlay2`            | A real `mount(2)` of an `overlay` filesystem (lower/upper/work dirs under a fresh `mkdtemp()`), performed inside a private `unshare(CLONE_NEWNS)`'d mount namespace so nothing is ever left mounted on the host — cleaned up with `umount2(MNT_DETACH)` regardless of the result. |
 
-| Line                | Native (compile-time) check          | Namespace fallback (if not builtin) |
-|---------------------|--------------------------------------|------------------------|
-| `mqueue`            | `IS_ENABLED(CONFIG_POSIX_MQUEUE)`    | n/a (see below) |
-| `sysvipc`           | `IS_ENABLED(CONFIG_SYSVIPC)`         | n/a (see below) |
-| `cgroup_device`     | `IS_ENABLED(CONFIG_CGROUP_DEVICE)`   | n/a (see below) |
-| `overlay2`          | `get_fs_type("overlay")` ground truth| distinguishes builtin / loadable module |
-| `ns_net`            | `IS_ENABLED(CONFIG_NET_NS)`          | bookkeeping-only, if `shadow_ns.ko` loaded |
-| `ns_pid`            | `IS_ENABLED(CONFIG_PID_NS)`          | real isolation, if `shadow_ns.ko` loaded |
-| `ns_ipc`            | `IS_ENABLED(CONFIG_IPC_NS)`          | bookkeeping-only, if `shadow_ns.ko` loaded |
-| `ns_uts`            | `IS_ENABLED(CONFIG_UTS_NS)`          | real isolation, if `shadow_ns.ko` loaded |
-| `ns_mnt`            | `IS_ENABLED(CONFIG_NAMESPACES)` (proxy; no dedicated `CONFIG_MNT_NS` symbol exists) | bookkeeping-only, if `shadow_ns.ko` loaded (only if `CONFIG_NAMESPACES=n`, effectively never in practice) |
-| `ns_user`           | `IS_ENABLED(CONFIG_USER_NS)`         | real isolation, if `shadow_ns.ko` loaded (called out explicitly) |
-| `ns_cgroup`         | `IS_ENABLED(CONFIG_CGROUPS)` (proxy) | bookkeeping-only, if `shadow_ns.ko` loaded (only if `CONFIG_CGROUPS=n`, rare) |
+## Why this replaced the old kernel-module version
 
-`mqueue`/`sysvipc`/`cgroup_device` have no runtime "which `.ko` provides it"
-column (see "Why there is no cross-module runtime detection at all" below);
-use `lsmod`/`cat /proc/modules` to see whether
-`shadow_mqueue`/`shadow_sysvipc`/`shadow_cgdevices` is loaded.
-
-`net`, `pid`, `ipc` and `uts` are the four namespaces the task explicitly asks
-about; `mnt`, `user` and `cgroup` are included for completeness. `user` gets
-its own clearly labelled line. cgroup namespace has no dedicated Kconfig gate
-in mainline, so `CONFIG_CGROUPS` is used as its "builtin" proxy (documented in
-the report line).
-
-## Why `IS_ENABLED()` is trustworthy here
-
-Because this module is compiled against the **exact target kernel's config**
-via the same `ghcr.io/ylarod/ddk-min:<kmi>-<release>` DDK image as every other
-`shadow_*` module, its compile-time `IS_ENABLED(CONFIG_*)` results reflect the
-real running kernel — there is no config-vs-behaviour mismatch of the kind the
-old `/proc/config.gz` spoofing risked. This is also what lets the namespace
-lines describe what `shadow_ns.ko` *would* provide without ever calling into
-`shadow_ns` itself: `shadow_ns.c` computes whether it simulates a given
-namespace type (and whether that simulation is real vs. bookkeeping-only)
-using the exact same `IS_ENABLED(CONFIG_{UTS,IPC,USER,PID,NET}_NS)` checks —
-since both modules are built against the identical config, the two
-independently-computed answers are guaranteed to agree.
-
-For **overlayfs specifically** the checker prefers `get_fs_type("overlay")`
-over `IS_ENABLED(CONFIG_OVERLAY_FS)`, because `get_fs_type()` is the
-ground-truth answer to "will `mount(2)` of an overlay actually succeed": overlay
-could be builtin (`=y`) or provided by a genuine loadable `overlay.ko`. The
-checker inspects the returned `file_system_type->owner` to distinguish builtin
-(owner `NULL`) from a module, and reports the owning module's name. The
-reference `get_fs_type()` takes is released with `module_put()`.
-
-## Why there is no cross-module runtime detection at all
-
-An earlier revision resolved every cross-module check —
-`shadow_mqueue_is_active`, `shadow_sysvipc_is_active`,
-`shadow_cgdevices_is_active`, and a namespace-registry module's
-`*_type_loaded` / `*_type_real` query API — purely at runtime via
-`symbol_get()` / `symbol_put()` (backed by `__symbol_get()`/
-`__symbol_put()`), so the checker had **no** build-time dependency
-(`KBUILD_EXTRA_SYMBOLS` / `Module.symvers`) on any other module and would
-load standalone regardless of which subset of them was present.
-
-However, `__symbol_get()`/`__symbol_put()` are themselves trimmed from
-production GKI kernels' exported-symbol table (`CONFIG_TRIM_UNUSED_KSYMS`
-drops `EXPORT_SYMBOL` entries unreferenced by any built-in code, even though
-the functions remain compiled into the kernel image). Merely *referencing*
-`symbol_get()`/`symbol_put()` anywhere in the module — even in a branch never
-taken at runtime — makes the whole module fail `insmod` with "Unknown symbol
-__symbol_get"/"Unknown symbol __symbol_put" (surfaced by `insmod` as
-`-ENOENT`, i.e. "No such file or directory"), because the kernel's module
-loader resolves every referenced symbol up front before the module can load
-at all, regardless of runtime control flow.
-
-A later revision instead took an ordinary build+load-time dependency on
-`shadow_ns`'s `EXPORT_SYMBOL_GPL` query API via `KBUILD_EXTRA_SYMBOLS`. That
-has been removed too: this checker is meant to be a pure, dependency-free
-diagnostics tool, so it now derives the namespace lines purely from its own
-`IS_ENABLED()` checks (see "Why `IS_ENABLED()` is trustworthy here" above)
-instead of calling into `shadow_ns` at all. As a result it no longer knows
-*whether* `shadow_ns.ko` is actually loaded right now — only what it *would*
-provide for a non-builtin type if loaded — so use `lsmod`/`/proc/modules` to
-confirm `shadow_ns.ko` itself is present.
-
-`shadow_mqueue`/`shadow_sysvipc`/`shadow_cgdevices`'s "which `.ko`" runtime
-detection column was dropped for the same reason (no safe symbol-free query
-mechanism is available); their compile-time `IS_ENABLED()` line is
-unaffected. Use `lsmod`/`/proc/modules` to check whether an optional module is
-loaded.
+Earlier revisions of `shadow_ctr_checker` were a small out-of-tree kernel
+module (`shadow_ctr_checker.ko`) exposing a read-only `/dev/shadow_ctr_checker`
+character device whose `cat`'able report was built purely from compile-time
+`IS_ENABLED(CONFIG_*)` checks. That could only ever answer "was this kernel
+*built* with this feature configured on" — never "does this actually work,
+right now, in the environment `containerd`/`runc` will run in". A kernel can
+have `CONFIG_UTS_NS=y`/`CONFIG_PID_NS=y`/… (as this project's
+`CONTAINERD_CONFIG` in `kernel_builder.py` forces) and container start can
+still fail with `unshare(2)` returning `EINVAL`/`EPERM` for reasons the
+Kconfig snapshot alone cannot see (missing capabilities, seccomp/LSM
+restrictions, a namespace subsystem that's compiled in but not fully wired
+up, etc.). A plain userspace binary that just makes the syscalls and checks
+their *effects* answers the real question directly, needs no `insmod`, and
+requires no kernel-module build toolchain (DDK image, `Module.symvers`,
+matching KMI, …) at all — it is a normal C program buildable with any C
+compiler for the target's libc/ABI.
 
 ## Build
 
 ```sh
-make -C /path/to/kernel/build M="$PWD" modules   # produces shadow_ctr_checker.ko
-# or
-make KDIR=/path/to/kernel/build
+make                                   # host toolchain
+make CC="clang --target=aarch64-linux-gnu"   # cross build for arm64
+make LDFLAGS=-static                   # static binary (handy for a bare
+                                        # ramdisk/rootfs with no shared libc)
 ```
 
-No `KBUILD_EXTRA_SYMBOLS`/`Module.symvers` from any other module is needed —
-this module has zero build dependencies. Build inside the matching
-`ghcr.io/ylarod/ddk-min:<kmi>-<release>` DDK image so its `IS_ENABLED()`
-checks reflect the real target kernel config.
+Produces a single `shadow_ctr_checker` executable; no kernel headers,
+`KDIR`, `Module.symvers`, or DDK image are required — this is unrelated to
+the rest of the `shadow_ctr` module family's kernel-module build pipeline
+(see `../README.md`), and can be run on any device (rooted or with
+`CAP_SYS_ADMIN`) independent of whether any `shadow_*` kernel module is
+loaded.
