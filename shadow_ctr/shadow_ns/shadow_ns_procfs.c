@@ -50,7 +50,7 @@
  * the single, shared anon_inode_inode, whose ->i_fop is never touched by
  * anon_inode_getfd() and so remains fs/inode.c's default no_open_fops
  * (->open() == no_open(), unconditionally -ENXIO). shadow_ns_procfs.c
- * therefore uses anon_inode_getfile_secure() instead, which allocates a
+ * therefore uses anon_inode_getfd_secure() instead, which allocates a
  * *private* inode per fd, and explicitly points that inode's ->i_fop at
  * shadow_setgroups_fops so the magic-link reopen succeeds.
  */
@@ -139,10 +139,6 @@ static long shadow_ns_setgroups_create_fd(void)
 	struct file *file;
 	int fd;
 
-	fd = get_unused_fd_flags(O_CLOEXEC);
-	if (fd < 0)
-		return fd;
-
 	/*
 	 * anon_inode_getfd()'s shared, singleton anon_inode_inode cannot be
 	 * used here: its default file_operations (fs/inode.c's
@@ -156,22 +152,33 @@ static long shadow_ns_setgroups_create_fd(void)
 	 * reopen is a genuine VFS open() that goes through the inode's own
 	 * ->i_fop, not the fabricated file's ->f_op. Against the shared
 	 * singleton inode this reopen would fail every caller in the kernel
-	 * with "no such device or address", so anon_inode_getfile_secure()
-	 * is used instead to get a private, per-fd inode whose ->i_fop can
+	 * with "no such device or address", so anon_inode_getfd_secure() is
+	 * used instead to get a private, per-fd inode whose ->i_fop can
 	 * safely be pointed at shadow_setgroups_fops without affecting any
 	 * other anon-inode-backed fd on the system.
+	 *
+	 * NOTE: anon_inode_getfile_secure() (the struct-file-returning
+	 * sibling of this call, which would avoid the fget()/fput() below)
+	 * is deliberately *not* used: unlike anon_inode_getfd()/
+	 * anon_inode_getfd_secure()/anon_inode_getfile(), it has no
+	 * EXPORT_SYMBOL(_GPL) in fs/anon_inodes.c, so referencing it here
+	 * makes the whole module fail to insmod with "Unknown symbol
+	 * anon_inode_getfile_secure". anon_inode_getfd_secure() is fully
+	 * exported and returns the fd directly; the backing struct file is
+	 * then retrieved with fget() purely to reach its inode.
 	 */
-	file = anon_inode_getfile_secure("[shadow_setgroups]",
-					  &shadow_setgroups_fops, NULL,
-					  O_RDWR | O_CLOEXEC, NULL);
-	if (IS_ERR(file)) {
-		put_unused_fd(fd);
-		return PTR_ERR(file);
+	fd = anon_inode_getfd_secure("[shadow_setgroups]",
+				      &shadow_setgroups_fops, NULL,
+				      O_RDWR | O_CLOEXEC, NULL);
+	if (fd < 0)
+		return fd;
+
+	file = fget(fd);
+	if (file) {
+		file_inode(file)->i_fop = &shadow_setgroups_fops;
+		fput(file);
 	}
 
-	file_inode(file)->i_fop = &shadow_setgroups_fops;
-
-	fd_install(fd, file);
 	return fd;
 }
 

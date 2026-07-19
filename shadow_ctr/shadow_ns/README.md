@@ -129,25 +129,34 @@ This only installs when `CLONE_NEWUSER` is already being simulated (i.e.
 `CONFIG_USER_NS` the file already exists natively and these hooks are
 never installed.
 
-The fabricated fd is created via `anon_inode_getfile_secure()` (a
-*private*, per-fd inode) rather than the simpler `anon_inode_getfd()`
-(whose backing inode is a single instance shared by every anon-inode fd on
-the system), and that private inode's `->i_fop` is explicitly pointed at
-the module's own `file_operations`. This matters because modern
-runc/containerd (via `securejoin`/`pathrs-lite`'s `ReopenFd()`) always
-"reopen" a just-opened procfs fd a second time through the
-`/proc/thread-self/fd/<n>` magic link, as a defensive check against
-symlink races — and that reopen is a genuine VFS `open()` that goes through
-the inode's `->i_fop`, not the already-open file's `->f_op`.
-`anon_inode_getfd()`'s shared singleton inode never has its `->i_fop`
-touched, so it keeps `fs/inode.c`'s default `no_open_fops`
-(`->open() == no_open()`, unconditionally `-ENXIO`) — surfaced by
-runc/containerd as `unable to setup user: reopen
+The fabricated fd is created via `anon_inode_getfd_secure()` (a *private*,
+per-fd inode) rather than the simpler `anon_inode_getfd()` (whose backing
+inode is a single instance shared by every anon-inode fd on the system),
+and that private inode's `->i_fop` is explicitly pointed at the module's
+own `file_operations` (fetched back via a `fget()`/`fput()` pair around the
+freshly-installed fd, since `anon_inode_getfd_secure()` only returns the
+fd, not the `struct file`). This matters because modern runc/containerd
+(via `securejoin`/`pathrs-lite`'s `ReopenFd()`) always "reopen" a
+just-opened procfs fd a second time through the `/proc/thread-self/fd/<n>`
+magic link, as a defensive check against symlink races — and that reopen
+is a genuine VFS `open()` that goes through the inode's `->i_fop`, not the
+already-open file's `->f_op`. `anon_inode_getfd()`'s shared singleton
+inode never has its `->i_fop` touched, so it keeps `fs/inode.c`'s default
+`no_open_fops` (`->open() == no_open()`, unconditionally `-ENXIO`) —
+surfaced by runc/containerd as `unable to setup user: reopen
 fsmount:fscontext:proc/self/setgroups: reopen fd N: no such device or
 address`. The allow/deny latch state itself lives on that private inode's
 `i_private` (not a separate heap allocation in `file->private_data`), so
 both the original and the reopened `struct file` — which share the same
 inode — observe the same state.
+
+Note: the struct-file-returning sibling `anon_inode_getfile_secure()` is
+deliberately *not* used here even though it would avoid the extra
+`fget()`/`fput()` round trip — unlike `anon_inode_getfd()`/
+`anon_inode_getfd_secure()`/`anon_inode_getfile()`, it has no
+`EXPORT_SYMBOL(_GPL)` in `fs/anon_inodes.c`, so referencing it makes the
+whole `shadow_ctr.ko` fail to `insmod` with "Unknown symbol
+anon_inode_getfile_secure".
 
 ## Build
 
