@@ -58,6 +58,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -171,6 +172,11 @@ static bool shadow_checker_read_msg(int fd, struct shadow_checker_msg *out)
 
 	if (!strncmp(buf, "OK ", 3)) {
 		out->ok = true;
+		/* Explicit precision (in addition to the destination size
+		 * snprintf() already respects) purely to silence a
+		 * -Wformat-truncation false positive: snprintf() always
+		 * truncates+NUL-terminates safely on its own.
+		 */
 		snprintf(out->payload, sizeof(out->payload), "%.*s",
 			 (int)sizeof(out->payload) - 1, buf + 3);
 	} else if (!strncmp(buf, "ERR ", 4)) {
@@ -249,7 +255,8 @@ static void shadow_checker_uts(void)
 			shadow_checker_send_err(pipefd[1], errno);
 			_exit(0);
 		}
-		snprintf(newname, sizeof(newname), "shadowchk-%d", getpid());
+		snprintf(newname, sizeof(newname), "shadowchk-%d-%lx", getpid(),
+			 (unsigned long)time(NULL));
 		if (sethostname(newname, strlen(newname))) {
 			shadow_checker_send_err(pipefd[1], errno);
 			_exit(0);
@@ -568,7 +575,8 @@ static void shadow_checker_mqueue(void)
 		.mq_msgsize = sizeof(msgbuf),
 	};
 
-	snprintf(name, sizeof(name), "/shadowchk-%d", getpid());
+	snprintf(name, sizeof(name), "/shadowchk-%d-%lx", getpid(),
+		 (unsigned long)time(NULL));
 	mq = mq_open(name, O_CREAT | O_RDWR | O_EXCL, 0600, &attr);
 	if (mq == (mqd_t)-1) {
 		shadow_checker_report("mqueue (POSIX)", SHADOW_CHECKER_FAIL,
@@ -705,10 +713,11 @@ static void shadow_checker_overlay(void)
 		snprintf(upper, sizeof(upper), "%s/upper", base);
 		snprintf(work, sizeof(work), "%s/work", base);
 		snprintf(merged, sizeof(merged), "%s/merged", base);
-		mkdir(lower, 0700);
-		mkdir(upper, 0700);
-		mkdir(work, 0700);
-		mkdir(merged, 0700);
+		if (mkdir(lower, 0700) || mkdir(upper, 0700) ||
+		    mkdir(work, 0700) || mkdir(merged, 0700)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
 
 		snprintf(opts, sizeof(opts),
 			 "lowerdir=%s,upperdir=%s,workdir=%s", lower, upper,
@@ -719,7 +728,10 @@ static void shadow_checker_overlay(void)
 			_exit(0);
 		}
 
-		umount2(merged, MNT_DETACH);
+		if (umount2(merged, MNT_DETACH))
+			fprintf(stderr,
+				"shadow_ctr_checker: warning: umount2(%s) failed: %s\n",
+				merged, strerror(errno));
 		shadow_checker_send_ok(pipefd[1], "mounted");
 		_exit(0);
 	}
