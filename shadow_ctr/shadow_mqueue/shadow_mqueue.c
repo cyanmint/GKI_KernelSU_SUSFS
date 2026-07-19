@@ -921,13 +921,18 @@ out_put:
  * pair used by an earlier revision to register a real "mqueue" pseudo-fs are
  * trimmed from production GKI kernels' exported-symbol table - see the
  * top-of-file comment). Instead we reuse the *real* mount(2) syscall
- * unmodified, just with its filesystem-type argument swapped out: we map a
- * throwaway anonymous page into the calling process's address space with
- * vm_mmap(), write "tmpfs" into it, point a copy of the original pt_regs at
- * that page instead of the caller's "mqueue" string, and call through to
+ * unmodified, just with its filesystem-type argument swapped out: vm_mmap()
+ * (like mmap(2) itself) maps a throwaway anonymous page into the *calling
+ * process's* address space - i.e. it returns an ordinary userspace address,
+ * not a kernel one, so copy_to_user() below is the correct way to populate
+ * it. We write "tmpfs" into that page, point a copy of the original pt_regs
+ * at it instead of the caller's "mqueue" string, and call through to
  * @real_sys_mount with the copy. vm_mmap()/vm_munmap() are ordinary
  * EXPORT_SYMBOL() helpers used throughout the VFS/ELF loader, so - unlike
- * get_tree_nodev()/simple_fill_super() - they are never trimmed.
+ * get_tree_nodev()/simple_fill_super() - they are never trimmed. The mapping
+ * is a full page because do_mmap() internally requires (and rounds up to) a
+ * page-aligned length regardless of what is requested; only the first few
+ * bytes are ever written or read.
  *
  * The original dev_name/dir_name/flags/data arguments are passed through
  * unchanged: tmpfs accepts the same handful of options ("mode=", "size=",
@@ -976,7 +981,13 @@ static long hook_sys_mount(const struct pt_regs *regs)
 		return ret;
 
 	copied = strncpy_from_user(type, utype, sizeof(type));
-	if (copied < 0 || copied >= sizeof(type) || strcmp(type, "mqueue"))
+	if (copied < 0 || copied >= sizeof(type))
+		return ret;
+	/* Belt-and-braces: strncpy_from_user() already NUL-terminates on the
+	 * success path above, but make it explicit so strcmp() below can
+	 * never run past the buffer regardless of kernel version quirks. */
+	type[copied] = '\0';
+	if (strcmp(type, "mqueue"))
 		return ret;
 
 	pr_info_ratelimited(
