@@ -1210,16 +1210,21 @@ static void mq_dev_mqueue_ensure(void)
 
 	if (!kern_path_fn || !kern_path_create_fn || !done_path_create_fn ||
 	    !vfs_mkdir_fn || !path_mount_fn) {
-		pr_info("shadow_mqueue: init: could not resolve VFS helpers for "
-			 "proactive " SHADOW_MQ_DEV_MQUEUE_PATH " mount; falling "
-			 "back to the reactive mount(2) hook only\n");
+		pr_info("shadow_mqueue: init: could not resolve VFS helpers for proactive "
+			SHADOW_MQ_DEV_MQUEUE_PATH " mount; falling back to the reactive mount(2) hook only\n");
 		return;
 	}
 
 	ret = kern_path_fn(SHADOW_MQ_DEV_MQUEUE_PATH, LOOKUP_DIRECTORY, &path);
 	if (!ret) {
-		/* Something is already mounted at this path (real mqueue, a
-		 * previous tmpfs fallback, ...): leave it alone. */
+		/*
+		 * Something is already mounted at this path (real mqueue, a
+		 * previous tmpfs fallback, ...): leave it alone. A dentry
+		 * returned by a successful kern_path() always has a valid
+		 * ->d_sb (every dentry belongs to a superblock for as long as
+		 * it exists), so path.dentry->d_sb is safe to dereference
+		 * here without a NULL check.
+		 */
 		if (path.dentry == path.dentry->d_sb->s_root) {
 			pr_info("shadow_mqueue: init: " SHADOW_MQ_DEV_MQUEUE_PATH
 				" is already a mountpoint; leaving it as-is\n");
