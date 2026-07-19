@@ -39,20 +39,15 @@
  * Where the implementation lives (this changed!)
  * ----------------------------------------------
  * This header used to be intentionally include-only, with every helper marked
- * `static inline` so each standalone module TU got its own private copy and
- * there was no shared .ko to link against. That is no longer the case: now
- * that more than one module needs the hook logic, the single source of truth
- * lives in the standalone shadow_hijack.ko module (shadow_hijack/), which
- * EXPORT_SYMBOL_GPL()s the five entry points declared at the bottom of this
- * file. This header is now purely declarative: it defines the ABI (struct
- * shadow_hook, the SHADOW_HOOK() initialiser macro, and the extern function
- * prototypes) that both shadow_hijack.ko and its callers agree on. Every
- * hooking module (shadow_ns, shadow_sysvipc,
- * shadow_mqueue, shadow_cgdevices) must therefore be built against
- * shadow_hijack's Module.symvers and, at runtime, insmod'd after
- * shadow_hijack.ko. See shadow_hijack/README.md for the full rationale
- * (including the compile-time ftrace-vs-kprobe backend selection and the
- * owner-based recursion guard).
+ * `static inline` so each caller TU got its own private copy. That is no
+ * longer the case: now that more than one subsystem needs the hook logic, the
+ * single source of truth lives in
+ * shadow_ctr/shadow_hijack/shadow_hijack.c inside the merged shadow_ctr.ko
+ * module, which still EXPORT_SYMBOL_GPL()s the five entry points declared at
+ * the bottom of this file for any future external consumers. This header is
+ * now purely declarative: it defines the ABI (struct shadow_hook, the
+ * SHADOW_HOOK() initialiser macro, and the extern function prototypes) that
+ * the unified module's subsystems share.
  *
  * Notes preserved from the original design (still true, still worth reading):
  * - The ftrace path is only usable for functions ftrace can trace (must have
@@ -61,15 +56,15 @@
  *   *when that option is enabled*.
  * - Several real-world "certified"/production Android GKI boot images ship
  *   with CONFIG_FUNCTION_TRACER (and therefore CONFIG_DYNAMIC_FTRACE,
- *   register_ftrace_function(), ...) compiled out entirely. shadow_hijack.ko
- *   therefore picks its hooking backend at *compile time*: the ftrace
+ *   register_ftrace_function(), ...) compiled out entirely. The shadow_hijack
+ *   subsystem therefore picks its hooking backend at *compile time*: the ftrace
  *   ops/IPMODIFY backend when CONFIG_FUNCTION_TRACER (and
  *   CONFIG_DYNAMIC_FTRACE) are available, otherwise a kprobe pre_handler
  *   backend. Both backends expose the identical shadow_hook_install/remove
  *   API declared below, so none of the calling modules need to know or care
  *   which one is active. The struct shadow_hook layout below likewise selects
  *   its backend field (ops vs kp) on the same compile-time condition, and is
- *   shared verbatim by shadow_hijack.ko and its callers.
+ *   shared verbatim by all unified-module subsystems.
  * - IPMODIFY/kprobe hooks are exclusive per-symbol: only one shadow_hook may
  *   target a given symbol at a time. This is fine for our use (each module
  *   owns a disjoint set of syscalls).
@@ -104,9 +99,10 @@
  *            @original. The recursion guard uses within_module(caller_pc,
  *            @owner) to distinguish that pass-through call (which must fall
  *            through to the genuine function) from a fresh external call
- *            (which must be redirected). This MUST be the *calling* module's
- *            THIS_MODULE, not shadow_hijack.ko's -- the SHADOW_HOOK() macro
- *            below plumbs it through automatically from each caller's TU.
+ *            (which must be redirected). In the merged build this is the
+ *            unified shadow_ctr.ko module for every subsystem; the
+ *            SHADOW_HOOK() macro plumbs it through automatically from each
+ *            caller's TU.
  * @address:  resolved address of the hooked symbol.
  * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
  * @kp:       kprobe instance driving the hook (kprobe backend only).
@@ -132,10 +128,9 @@ struct shadow_hook {
  *
  * @owner is deliberately not a macro parameter: it is hard-wired to
  * THIS_MODULE so that each expansion picks up the *calling* translation
- * unit's own module. This is essential for the recursion guard now that the
- * hook logic lives in a separate .ko (shadow_hijack.ko): the guard must match
- * against the module whose replacement function calls through to @original,
- * which is the caller's module, never shadow_hijack.ko itself.
+ * unit's own module. In the merged build that is always shadow_ctr.ko, which
+ * is sufficient for the recursion guard's "call originated from inside the
+ * unified module" check.
  */
 #define SHADOW_HOOK(_names, _function, _original_storage)		\
 	{								\
@@ -146,9 +141,9 @@ struct shadow_hook {
 	}
 
 /*
- * The hook implementation lives in shadow_hijack.ko and is reached through
- * these EXPORT_SYMBOL_GPL()'d entry points. See shadow_hijack/shadow_hijack.c
- * for their full contracts.
+ * The hook implementation lives in shadow_ctr/shadow_hijack/shadow_hijack.c
+ * and is reached through these entry points. See that file for their full
+ * contracts.
  *
  * shadow_hook_resolve()      - resolve a kernel symbol's runtime address (0 if
  *                              not found), via the register_kprobe() trick.

@@ -477,7 +477,7 @@ static void shadow_checker_user(void)
  * ---------------------------------------------------------------------
  * IPC / NET / MNT / CGROUP namespaces: none of these has a cheap, safe,
  * universal in-process "did isolation really happen" signal the way UTS/
- * PID/USER do (see shadow_ctr/shadow_ns/README.md: shadow_ns's fallback for
+ * PID/USER do (see shadow_ctr/shadow_ctr/shadow_ns/README.md: shadow_ns's fallback for
  * these four is bookkeeping-only by design, and genuine kernel isolation for
  * them touches subsystems this tool must not perturb - e.g. mounting/
  * networking). So this tool only reports whether the unshare(2) syscall

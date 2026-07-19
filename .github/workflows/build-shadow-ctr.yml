@@ -1,9 +1,9 @@
-# Kernel-version-matrix build for the shadow_ctr out-of-tree module family.
+# Kernel-version-matrix build for the merged shadow_ctr out-of-tree module.
 #
-# shadow_ctr used to be a single combined shadow_ctr.ko; it is now split into
-# several independently loadable modules under shadow_ctr/ (see
-# shadow_ctr/README.md). This workflow builds every module, for every KMI in
-# the matrix, inside SukiSU-Ultra's prebuilt "DDK" (Driver Development Kit)
+# shadow_ctr is again a single combined shadow_ctr.ko built from subsystem
+# sources under shadow_ctr/shadow_ctr/ (see shadow_ctr/README.md). This
+# workflow builds that module, for every KMI in the matrix, inside
+# SukiSU-Ultra's prebuilt "DDK" (Driver Development Kit)
 # container image (ghcr.io/ylarod/ddk-min:<kmi>-<release>, see
 # https://github.com/SukiSU-Ultra/SukiSU-Ultra/blob/main/.github/workflows/ddk-lkm.yml
 # and .../build-lkm.yml for the KMI list). Each image ships a genuine
@@ -22,26 +22,14 @@
 # Building against the DDK's real vmlinux/Module.symvers/toolchain avoids
 # all of the above, exactly as it did for the QEMU boot-test workflow.
 #
-# Modules built (per KMI, in this order):
-#   shadow_hijack             -- shared ftrace/kprobe function-hijacking
-#                                implementation; built FIRST because
-#                                shadow_ns, shadow_sysvipc, shadow_mqueue and
-#                                shadow_cgdevices all resolve its
-#                                EXPORT_SYMBOL_GPL symbols at modpost time
-#                                via KBUILD_EXTRA_SYMBOLS=<hijack>/Module.symvers.
-#   shadow_ns                 -- single, standalone namespace system (no
-#                                submodules); real UTS/PID/USER isolation plus
-#                                IPC/NET bookkeeping fallback, only for
-#                                whichever types this KMI's kernel build
-#                                genuinely lacks. Depends only on
-#                                shadow_hijack.
-#   shadow_sysvipc, shadow_mqueue, shadow_cgdevices
-#                             -- no inter-module deps, except they also depend
-#                                on shadow_hijack for their hook implementation.
-# All resulting .ko files for a given KMI are uploaded together (along with
-# the shadow_ctr_checker userspace binary, see below) as a single artifact
-# (shadow_ctr-modules-<kmi>-arm64), so consumers download one bundle
-# per kernel version instead of stitching together per-module artifacts.
+# Module built (per KMI):
+#   shadow_ctr                -- merged module containing the shared
+#                                shadow_hijack hook engine plus shadow_ns,
+#                                shadow_sysvipc, shadow_mqueue and
+#                                shadow_cgdevices.
+# The resulting .ko for a given KMI is uploaded together with the
+# shadow_ctr_checker userspace binary (see below) as a single artifact
+# (shadow_ctr-modules-<kmi>-arm64).
 #
 # shadow_ctr_checker is a plain userspace diagnostic *binary*, not a kernel
 # module: it performs real syscalls to observe whether isolation actually
@@ -53,7 +41,7 @@
 #
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
-name: Build shadow_ctr modules
+name: Build shadow_ctr module
 
 permissions:
   contents: read
@@ -125,44 +113,24 @@ jobs:
         run: |
           docker pull "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}"
 
-      - name: Build all shadow_ctr modules (arm64, via DDK container)
+      - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
             -e KMI="${{ matrix.kmi }}" \
             "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
             bash -euxo pipefail -c '
               KDIR="/opt/ddk/kdir/${KMI}"
-              ROOT="/workspace/shadow_ctr"
-              J="$(nproc)"
+              ROOT="/workspace/shadow_ctr/shadow_ctr"
 
-              build() { # <module-dir> [extra make args...]
-                local dir="$1"; shift
-                make -C "$KDIR" M="$ROOT/$dir" modules -j"$J" "$@"
-              }
-
-              # 0) shadow_hijack first -- shared hook implementation; produces
-              #    the Module.symvers that every hooking module resolves via
-              #    KBUILD_EXTRA_SYMBOLS.
-              build shadow_hijack
-              HIJACK_SYMS="$ROOT/shadow_hijack/Module.symvers"
-
-              # 1) shadow_ns next -- single standalone namespace system;
-              #    depends only on shadow_hijack.
-              build shadow_ns KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-
-              # 2) standalone modules (no inter-module deps, but they all
-              #    depend on shadow_hijack for their hook implementation).
-              build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
               # collect every built .ko into one staging dir so all modules
               # for this KMI can be uploaded together as a single artifact.
               mkdir -p /workspace/modules-out
-              find "$ROOT" -name "*.ko" -exec cp {} /workspace/modules-out/ \;
+              cp "$ROOT/shadow_ctr.ko" /workspace/modules-out/
 
               echo "=== built modules ==="
-              find "$ROOT" -name "*.ko" -printf "%p\n" | sort
+              printf "%s\n" "$ROOT/shadow_ctr.ko"
               echo "=== staged modules ==="
               ls -la /workspace/modules-out
             '

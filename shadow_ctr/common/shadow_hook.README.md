@@ -14,21 +14,17 @@ instead of `-ENOSYS`, because the module has redirected the kernel's own
 ## Where the implementation lives
 
 This header used to be intentionally include-only, with every helper marked
-`static inline` so each standalone module translation unit got its own
-private copy and there was no shared `.ko` to link against. That is no
-longer the case: the single source of truth for `shadow_hook_resolve()`,
-`shadow_hook_install()`, `shadow_hook_remove()`, `shadow_hook_install_all()`
-and `shadow_hook_remove_all()` now lives in the standalone
-**`shadow_hijack.ko`** module (`../shadow_hijack/`), which
-`EXPORT_SYMBOL_GPL()`s all five. This header is now purely declarative: it
+`static inline` so each caller translation unit got its own private copy.
+That is no longer the case: the single source of truth for
+`shadow_hook_resolve()`, `shadow_hook_install()`, `shadow_hook_remove()`,
+`shadow_hook_install_all()` and `shadow_hook_remove_all()` now lives in the
+`shadow_hijack` subsystem source inside the merged **`shadow_ctr.ko`** module
+(`../shadow_ctr/shadow_hijack/`). This header is now purely declarative: it
 defines the ABI (`struct shadow_hook`, the `SHADOW_HOOK()` initialiser macro,
-and the `extern` function prototypes) that both `shadow_hijack.ko` and its
-callers agree on. Every hooking module must therefore be built against
-`shadow_hijack`'s `Module.symvers` (via `KBUILD_EXTRA_SYMBOLS`) and, at
-runtime, `insmod`'d after `shadow_hijack.ko`. See
-[`../shadow_hijack/README.md`](../shadow_hijack/README.md) for the full
-rationale, including the compile-time ftrace-vs-kprobe backend selection and
-the owner-based recursion guard.
+and the `extern` function prototypes) that the unified module's subsystems
+share. See [`../shadow_ctr/shadow_hijack/README.md`](../shadow_ctr/shadow_hijack/README.md)
+for the full rationale, including the compile-time ftrace-vs-kprobe backend
+selection and the recursion guard.
 
 ## How it works
 
@@ -52,7 +48,7 @@ and the owning module). `shadow_hook_install()`:
    the subsystem is natively present, or to chain into it after doing shadow
    bookkeeping). An owner-based recursion guard distinguishes that
    pass-through call from a fresh external call — see
-   [`../shadow_hijack/README.md`](../shadow_hijack/README.md) for details.
+   [`../shadow_ctr/shadow_hijack/README.md`](../shadow_ctr/shadow_hijack/README.md) for details.
 
 Both the pre- and post-`CONFIG_DYNAMIC_FTRACE_WITH_ARGS` ftrace callback
 signatures are supported so the exact same source builds unmodified across

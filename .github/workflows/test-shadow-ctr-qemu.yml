@@ -1,14 +1,14 @@
-# Boot-test the shadow_ctr module family under QEMU.
+# Boot-test the merged shadow_ctr.ko module under QEMU.
 #
-# shadow_ctr used to be a single combined shadow_ctr.ko; it is now split into
-# several independently loadable modules under shadow_ctr/ (see
-# shadow_ctr/README.md). This workflow builds ALL of the android14-6.1 arm64
-# modules, injects the freshly built .ko files (plus the cross-compiled
-# shadow_ctr_checker userspace binary) into a prebuilt test kernel + ramdisk
-# image, boots it under qemu-system-aarch64, insmods the modules in
-# dependency order, runs shadow_ctr_checker directly, and collects the serial
-# console log (including the insmod attempts, resulting kernel messages, and
-# the checker's PASS/STUB/FAIL report) as a build artifact for inspection.
+# shadow_ctr is again a single combined shadow_ctr.ko built from subsystem
+# sources under shadow_ctr/shadow_ctr/ (see shadow_ctr/README.md). This
+# workflow builds that android14-6.1 arm64 module, injects the freshly built
+# .ko (plus the cross-compiled shadow_ctr_checker userspace binary) into a
+# prebuilt test kernel + ramdisk image, boots it under qemu-system-aarch64,
+# insmods only shadow_ctr.ko, runs shadow_ctr_checker directly, and collects
+# the serial console log (including the insmod attempt, resulting kernel
+# messages, and the checker's PASS/STUB/FAIL report) as a build artifact for
+# inspection.
 #
 # The test ramdisk is a standalone (system-as-root) recovery image published
 # at the v2.1.0 release specifically for this kind of smoke test; it ships
@@ -47,16 +47,12 @@
 # init script after the modules are insmod'd, instead of being insmod'd or
 # `cat`'d from a /dev node itself.
 #
-# Dependency note: shadow_hijack.ko hosts the shared shadow_hook_install()/
-# remove() implementation that shadow_ns, shadow_sysvipc, shadow_mqueue and
-# shadow_cgdevices all resolve at modpost time via KBUILD_EXTRA_SYMBOLS, so it
-# is built (and insmod'd) first. shadow_ns is a single, standalone namespace
-# system (no per-type submodules); it depends only on shadow_hijack and is
-# built/insmod'd right after. shadow_ctr_checker runs last purely so it can
-# observe all of the other modules that happen to be loaded (not a hard
-# requirement).
+# shadow_ctr.ko contains the shared shadow_hijack hook engine plus the
+# namespace, SysV IPC, POSIX mqueue and cgroup-device compatibility
+# subsystems. shadow_ctr_checker runs last purely so it can observe the fully
+# loaded merged module (not a hard requirement).
 
-name: Test shadow_ctr modules (QEMU)
+name: Test shadow_ctr module (QEMU)
 
 permissions:
   contents: read
@@ -86,42 +82,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # --- 1. Build all shadow_ctr modules for android14-6.1 arm64 ---
+      # --- 1. Build shadow_ctr.ko for android14-6.1 arm64 ---
       #
-      # Built inside the DDK container so the resulting .ko files link against
+      # Built inside the DDK container so the resulting .ko links against
       # a real vmlinux/Module.symvers instead of a bare gki_defconfig tree.
 
       - name: Pull DDK build image (${{ env.DDK_KMI }}-${{ env.DDK_RELEASE }})
         run: |
           docker pull "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}"
 
-      - name: Build all shadow_ctr modules (arm64, via DDK container)
+      - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
             -e KMI="${DDK_KMI}" \
             "ghcr.io/ylarod/ddk-min:${DDK_KMI}-${DDK_RELEASE}" \
             bash -euxo pipefail -c '
               KDIR="/opt/ddk/kdir/${KMI}"
-              ROOT="/workspace/shadow_ctr"
-              J="$(nproc)"
+              ROOT="/workspace/shadow_ctr/shadow_ctr"
 
-              build() { local dir="$1"; shift; make -C "$KDIR" M="$ROOT/$dir" modules -j"$J" "$@"; }
-
-              # shadow_hijack first (produces Module.symvers every hooking
-              # module resolves via KBUILD_EXTRA_SYMBOLS)
-              build shadow_hijack
-              HIJACK_SYMS="$ROOT/shadow_hijack/Module.symvers"
-
-              # shadow_ns next (single standalone namespace system; depends
-              # only on shadow_hijack)
-              build shadow_ns KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_sysvipc KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_mqueue KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
-              build shadow_cgdevices KBUILD_EXTRA_SYMBOLS="$HIJACK_SYMS"
+              make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
               # collect all built .ko into one staging dir for injection/upload
               mkdir -p /workspace/modules-out
-              find "$ROOT" -name "*.ko" -exec cp {} /workspace/modules-out/ \;
+              cp "$ROOT/shadow_ctr.ko" /workspace/modules-out/
               echo "=== staged modules ==="
               ls -la /workspace/modules-out
             '
@@ -147,7 +130,7 @@ jobs:
           file modules-out/shadow_ctr_checker
           ls -la modules-out
 
-      - name: Upload built modules (arm64)
+      - name: Upload built module (arm64)
         uses: actions/upload-artifact@v7
         with:
           name: shadow_ctr-modules-${{ env.DDK_KMI }}-arm64
@@ -213,17 +196,17 @@ jobs:
 
       # --- 3. Inject the freshly built modules into the ramdisk ---
 
-      - name: Inject shadow_ctr modules into ramdisk
+      - name: Inject shadow_ctr module into ramdisk
         run: |
           set -e
           workdir="$GITHUB_WORKSPACE/ramdisk-root"
           mkdir -p "$workdir"
           (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
 
-          # Drop every freshly built .ko at the ramdisk root, plus the
+          # Drop the freshly built merged .ko at the ramdisk root, plus the
           # standalone shadow_ctr_checker userspace binary.
           mkdir -p "$workdir/modules"
-          cp "$GITHUB_WORKSPACE"/modules-out/*.ko "$workdir/modules/"
+          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr.ko" "$workdir/modules/"
           cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr_checker" "$workdir/"
           chmod 755 "$workdir/shadow_ctr_checker"
           ls -la "$workdir/modules" "$workdir/shadow_ctr_checker"
@@ -231,8 +214,8 @@ jobs:
           # Minimal PID-1 test script, executed directly via the kernel's
           # rdinit= command line option (bypassing the image's real Android
           # init, which expects a full device environment). It mounts the
-          # pseudo-filesystems bionic needs, inserts the modules in dependency
-          # order, and dumps the resulting kernel log + status. All utilities
+          # pseudo-filesystems bionic needs, inserts the merged module, and
+          # dumps the resulting kernel log + status. All utilities
           # are invoked with absolute paths: bionic's dynamic linker requires
           # /proc/self/exe (or a resolvable argv[0]) to load shared objects,
           # which only holds once /proc is mounted and the path is absolute.
@@ -242,19 +225,9 @@ jobs:
           /system/bin/mount -t sysfs sysfs /sys
           /system/bin/mount -t devtmpfs devtmpfs /dev
           M=/modules
-          echo "=== SHADOW_CTR_QEMU_TEST: inserting modules (dependency order) ==="
-          # shadow_hijack MUST go first (every hooking module depends on it).
-          /system/bin/insmod $M/shadow_hijack.ko
-          echo "insmod shadow_hijack.ko -> $?"
-          # shadow_ns MUST go next (single standalone namespace system).
-          /system/bin/insmod $M/shadow_ns.ko
-          echo "insmod shadow_ns.ko -> $?"
-          for m in shadow_sysvipc shadow_mqueue shadow_cgdevices; do
-            if [ -f "$M/$m.ko" ]; then
-              /system/bin/insmod "$M/$m.ko"
-              echo "insmod $m.ko -> $?"
-            fi
-          done
+          echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
+          /system/bin/insmod $M/shadow_ctr.ko
+          echo "insmod shadow_ctr.ko -> $?"
 
           echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
