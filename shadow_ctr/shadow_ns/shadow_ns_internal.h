@@ -206,5 +206,6 @@ extern struct shadow_hook *shadow_ns_core_hooks[];
 extern struct shadow_hook *shadow_ns_uts_hooks[];
 extern struct shadow_hook *shadow_ns_pid_hooks[];
 extern struct shadow_hook *shadow_ns_user_hooks[];
+extern struct shadow_hook *shadow_ns_procfs_hooks[];
 
 #endif

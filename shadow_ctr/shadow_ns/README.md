@@ -98,6 +98,37 @@ namespace — matching the default single-mapping shape used by
 `docker run --userns-remap`/runc when nothing more specific is configured.
 `setuid`/`setgid` are deliberately left as passthrough (not virtualized).
 
+### `/proc/*/setgroups` (`shadow_ns_procfs.c`)
+
+On a kernel that genuinely lacks `CONFIG_USER_NS`, `fs/proc/base.c` never
+wires up the per-pid `uid_map`/`gid_map`/`setgroups` dentries at all (they
+are `#ifdef CONFIG_USER_NS` entries in `tgid_base_stuff[]`/`tid_base_stuff[]`),
+so `open()`/`openat2()` of `.../setgroups` fails with plain `-ENOENT`.
+Recent runc/containerd unconditionally open their own `self/setgroups`
+(often relative to a private, detached `fsopen("proc")`+`fsmount()`
+descriptor rather than the real `/proc` mount) as a defensive procfs sanity
+check before ever touching `uid_map`/`gid_map`, independent of whether the
+container itself asked for a new user namespace — so the missing file
+aborts *every* container start with "unsafe procfs detected ...
+proc/self/setgroups: no such file or directory", not just ones that use
+`CLONE_NEWUSER`.
+
+Unlike `uid_map`/`gid_map`, `setgroups` needs no real per-namespace id-map
+state to fake convincingly: real `setgroups(7)` semantics are just a
+one-way "allow" → "deny" latch. `shadow_ns_procfs.c` hooks the raw
+`open()`/`openat()`/`openat2()` syscalls the same way every other
+`shadow_ns` hook does — call through to the real syscall first, and only
+fabricate an anonymous, `anon_inode_getfd()`-backed file (implementing that
+same read/write latch) when the real open genuinely failed with `-ENOENT`
+*and* the path unambiguously names a `setgroups` leaf under a procfs-rooted
+pid directory (`.../<pid|self|thread-self>/setgroups`, or a bare
+`"setgroups"` opened relative to a dfd whose superblock is procfs — the
+shape a detached `fsmount()` dirfd takes). Any other `-ENOENT` passes
+through untouched. This only installs when `CLONE_NEWUSER` is already being
+simulated (i.e. `CONFIG_USER_NS` is genuinely absent); on a kernel with real
+`CONFIG_USER_NS` the file already exists natively and these hooks are
+never installed.
+
 ## Build
 
 ```sh

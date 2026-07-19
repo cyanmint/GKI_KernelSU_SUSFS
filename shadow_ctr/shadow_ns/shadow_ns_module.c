@@ -289,6 +289,22 @@ int shadow_ns_init(void)
 		}
 		pr_info("shadow_ns: init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)\n",
 			hooked);
+
+		hooked = shadow_hook_install_all(shadow_ns_procfs_hooks, "shadow_ns_procfs");
+		if (hooked < 0) {
+			ret = hooked;
+			pr_err("shadow_ns: init: procfs shadow_hook_install_all() failed: %d\n",
+			       ret);
+			shadow_hook_remove_all(shadow_ns_user_hooks);
+			if (shadow_ns_clone_flags & CLONE_NEWPID)
+				shadow_hook_remove_all(shadow_ns_pid_hooks);
+			if (shadow_ns_clone_flags & CLONE_NEWUTS)
+				shadow_hook_remove_all(shadow_ns_uts_hooks);
+			shadow_hook_remove_all(shadow_ns_core_hooks);
+			return ret;
+		}
+		pr_info("shadow_ns: init: %d procfs hook(s) installed (fabricating /proc/*/setgroups)\n",
+			hooked);
 	} else {
 		pr_info("shadow_ns: CONFIG_USER_NS builtin; getuid/geteuid/getgid/getegid left untouched\n");
 	}
@@ -307,8 +323,10 @@ void shadow_ns_exit(void)
 	unsigned long id;
 
 	pr_info("shadow_ns: exit: removing syscall hooks\n");
-	if (shadow_ns_clone_flags & CLONE_NEWUSER)
+	if (shadow_ns_clone_flags & CLONE_NEWUSER) {
+		shadow_hook_remove_all(shadow_ns_procfs_hooks);
 		shadow_hook_remove_all(shadow_ns_user_hooks);
+	}
 	if (shadow_ns_clone_flags & CLONE_NEWPID)
 		shadow_hook_remove_all(shadow_ns_pid_hooks);
 	if (shadow_ns_clone_flags & CLONE_NEWUTS)
