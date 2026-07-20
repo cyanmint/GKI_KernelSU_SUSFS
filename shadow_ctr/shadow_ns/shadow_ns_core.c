@@ -59,17 +59,36 @@ static long shadow_ns_hook_unshare(const struct pt_regs *regs)
 	return ret;
 }
 
+/*
+ * shadow_ns_hook_setns() - fallback for a target this kernel's real
+ * setns(2) rejected (either because it genuinely lacks that namespace type,
+ * -EINVAL, or because @fd is not a namespace file it recognizes at all,
+ * -ENOTTY -- which is exactly what a real setns(2) returns for our
+ * fabricated /proc/<pid>/ns/{pid,pid_for_children} fds, since their
+ * f_op/i_fop isn't nsfs's ns_file_operations).
+ *
+ * shadow_ns_procfs_nsfd_to_id() recognizes such a fabricated fd (created by
+ * shadow_ns_procfs.c when a caller opened /proc/<pid>/ns/pid or
+ * .../pid_for_children on a kernel where CONFIG_PID_NS is genuinely absent)
+ * and extracts the shadow_ns id it was tagged with, so an unmodified
+ * nsenter/runc/dockerd that does the usual
+ * open("/proc/<pid>/ns/pid") + setns(fd, CLONE_NEWPID) sequence works
+ * exactly as it would against a real pid_namespace, with no userspace
+ * changes at all.
+ */
 static long shadow_ns_hook_setns(const struct pt_regs *regs)
 {
 	int fd = (int)shadow_ns_sys_arg0(regs);
 	int flags = (int)shadow_ns_sys_arg1(regs);
 	long ret = real_sys_setns(regs);
 	long shadow_ret;
+	u32 id;
 
 	if (ret != -EINVAL && ret != -ENOTTY)
 		return ret;
 
-	shadow_ret = shadow_ns_task_group_setns_by_id(fd, flags);
+	id = shadow_ns_procfs_nsfd_to_id(fd);
+	shadow_ret = shadow_ns_task_group_setns_by_id(id ? (int)id : fd, flags);
 	if (!shadow_ret)
 		return 0;
 

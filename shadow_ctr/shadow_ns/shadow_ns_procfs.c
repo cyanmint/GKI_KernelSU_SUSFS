@@ -273,6 +273,226 @@ static bool shadow_ns_dfd_is_procfs(int dfd)
 	return ret;
 }
 
+/*
+ * proc_ns vendoring: fabricate /proc/<pid>/ns/pid and
+ * /proc/<pid>/ns/pid_for_children on a kernel genuinely missing
+ * CONFIG_PID_NS, the same way fs/nsfs.c + fs/proc/namespaces.c expose the
+ * real thing when it is present.
+ *
+ * Ported from (names kept identical for cross-reference):
+ *   - kernel/pid_namespace.c: pidns_operations.name = "pid",
+ *     pidns_for_children_operations.name = "pid_for_children" -- both the
+ *     dentry name under .../ns/ *and* the "%s:[<ino>]" readlink prefix.
+ *   - fs/nsfs.c:ns_dname()/ns_get_name(): "%s:[%lu]" format, ns_ops->name
+ *     plus the namespace's inode number. shadow_ns has no real inode; it
+ *     uses the namespace's own shadow_ns_map id instead (see shadow_ns_base.c
+ *     -- globally unique across every shadow_ns type/instance, exactly like
+ *     a real ns_common.inum), so the number is self-consistent between the
+ *     symlink target text below and the fd shadow_ns_hook_setns() ends up
+ *     resolving back to the same shadow_ns id.
+ *   - fs/proc/namespaces.c:proc_ns_dir_readdir(): the two synthetic
+ *     directory entries added to a real /proc/<pid>/ns listing.
+ *
+ * The fabricated fd itself does not hold a shadow_ns reference: it only
+ * stashes the plain shadow_ns id (an integer, not a pointer) in its private
+ * inode's ->i_private, exactly like shadow_setgroups_fops's allow/deny latch
+ * above. shadow_ns_procfs_nsfd_to_id() (used by shadow_ns_core.c's setns(2)
+ * fallback) re-resolves that id through shadow_ns_get() at the point it is
+ * actually used, so a fd outliving its shadow_ns (e.g. every member of the
+ * namespace has since exited) safely yields "namespace not found" instead
+ * of a dangling pointer.
+ */
+#define SHADOW_NS_NSFD_NAME_PID		"pid"
+#define SHADOW_NS_NSFD_NAME_PID_CHILD	"pid_for_children"
+
+static int shadow_ns_nsfd_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static const struct file_operations shadow_ns_nsfd_fops = {
+	.owner		= THIS_MODULE,
+	.open		= shadow_ns_nsfd_open,
+	.llseek		= NULL,
+};
+
+static long shadow_ns_nsfd_create_fd(struct shadow_ns *ns)
+{
+	shadow_anon_inode_getfd_secure_fn anon_inode_getfd_secure_fn;
+	struct file *file;
+	int fd;
+
+	anon_inode_getfd_secure_fn = (shadow_anon_inode_getfd_secure_fn)
+		shadow_hook_resolve("anon_inode_getfd_secure");
+	if (!anon_inode_getfd_secure_fn)
+		return -ENOENT;
+
+	fd = anon_inode_getfd_secure_fn("[shadow_pid_ns]", &shadow_ns_nsfd_fops,
+					 NULL, O_RDONLY | O_CLOEXEC, NULL);
+	if (fd < 0)
+		return fd;
+
+	file = fget(fd);
+	if (file) {
+		file_inode(file)->i_fop = &shadow_ns_nsfd_fops;
+		file_inode(file)->i_private = (void *)(unsigned long)ns->id;
+		fput(file);
+	}
+
+	return fd;
+}
+
+u32 shadow_ns_procfs_nsfd_to_id(int fd)
+{
+	struct fd f;
+	u32 id = 0;
+
+	f = fdget(fd);
+	if (fd_empty(f))
+		return 0;
+	if (fd_file(f)->f_op == &shadow_ns_nsfd_fops)
+		id = (u32)(unsigned long)file_inode(fd_file(f))->i_private;
+	fdput(f);
+	return id;
+}
+
+/*
+ * shadow_ns_resolve_piddir_rpid() - resolve a "self"/"thread-self"/numeric
+ * path component (as found immediately under /proc/) to the real (host)
+ * pid it names. A numeric component is first tried as a vpid in the
+ * caller's own active simulated PID namespace (mirroring the translation
+ * shadow_ns_proc_open() already does for a plain /proc/<vpid>/... open);
+ * if that lookup fails (no active namespace, or the number isn't a member),
+ * it is taken to already be a real pid.
+ */
+static pid_t shadow_ns_resolve_piddir_rpid(const char *comp)
+{
+	struct shadow_ns *ns;
+	long val;
+	pid_t rpid;
+
+	if (!strcmp(comp, "self"))
+		return task_tgid_nr(current);
+	if (!strcmp(comp, "thread-self"))
+		return task_pid_nr(current);
+	if (kstrtol(comp, 10, &val) || val <= 0 || val > INT_MAX)
+		return 0;
+
+	ns = shadow_ns_current_pidns();
+	if (!ns)
+		return (pid_t)val;
+	rpid = shadow_ns_pidns_to_rpid(ns->pid, (pid_t)val);
+	shadow_ns_put(ns);
+	return rpid ? rpid : (pid_t)val;
+}
+
+/*
+ * shadow_ns_path_ns_entry() - does @upath (relative to @dfd) name
+ * ".../<piddir>/ns/pid" or ".../<piddir>/ns/pid_for_children"? If so,
+ * returns the matched entry name (a pointer to one of the two string
+ * literals above) and resolves the owning task's real pid into *rpid.
+ * Returns NULL otherwise (including on any parse failure -- callers must
+ * fall back to the real syscall unchanged).
+ */
+static const char *shadow_ns_path_ns_entry(int dfd, const char __user *upath,
+					    pid_t *rpid)
+{
+	char buf[192];
+	char *base, *slash1, *slash2, *piddir;
+	long n;
+
+	if (!upath)
+		return NULL;
+
+	n = strncpy_from_user(buf, upath, sizeof(buf));
+	if (n <= 0 || n >= sizeof(buf))
+		return NULL;
+
+	if (buf[0] == '/') {
+		if (strncmp(buf, "/proc/", 6))
+			return NULL;
+		base = buf + 6;
+	} else {
+		if (dfd == AT_FDCWD || !shadow_ns_dfd_is_procfs(dfd))
+			return NULL;
+		base = buf;
+	}
+
+	slash1 = strchr(base, '/');
+	if (!slash1)
+		return NULL;
+	*slash1 = '\0';
+	piddir = base;
+	if (!shadow_ns_component_is_pid_dir(piddir))
+		return NULL;
+
+	slash1++;
+	if (strncmp(slash1, "ns/", 3))
+		return NULL;
+	slash2 = slash1 + 3;
+
+	if (!strcmp(slash2, SHADOW_NS_NSFD_NAME_PID)) {
+		*rpid = shadow_ns_resolve_piddir_rpid(piddir);
+		return *rpid > 0 ? SHADOW_NS_NSFD_NAME_PID : NULL;
+	}
+	if (!strcmp(slash2, SHADOW_NS_NSFD_NAME_PID_CHILD)) {
+		*rpid = shadow_ns_resolve_piddir_rpid(piddir);
+		return *rpid > 0 ? SHADOW_NS_NSFD_NAME_PID_CHILD : NULL;
+	}
+	return NULL;
+}
+
+/*
+ * shadow_ns_ns_entry_create_fd() - the open()/openat()/openat2() fallback:
+ * called only after the real syscall has already failed with -ENOENT for a
+ * path shadow_ns_path_ns_entry() recognized.
+ */
+static long shadow_ns_ns_entry_create_fd(const char *entry, pid_t rpid)
+{
+	struct shadow_ns *ns;
+	long fd;
+
+	ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	if (!ns)
+		return -ENOENT;
+
+	fd = shadow_ns_nsfd_create_fd(ns);
+	shadow_ns_put(ns);
+	return fd;
+}
+
+/*
+ * shadow_ns_ns_entry_readlink() - fabricate the "pid:[<id>]"/
+ * "pid_for_children:[<id>]" symlink target text real readlink(2) on
+ * .../ns/pid{,_for_children} would return, for a caller whose @dfd/@upath
+ * shadow_ns_path_ns_entry() recognizes. Returns the string length copied
+ * (>= 0) on success, or a negative errno; callers must only use this after
+ * confirming shadow_ns_path_ns_entry() matched.
+ */
+static long shadow_ns_ns_entry_readlink(const char *entry, pid_t rpid,
+					 char __user *ubuf, int bufsiz)
+{
+	struct shadow_ns *ns;
+	char name[64];
+	int n;
+
+	ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	if (!ns)
+		return -ENOENT;
+
+	n = snprintf(name, sizeof(name), "%s:[%u]", entry, ns->id);
+	shadow_ns_put(ns);
+	if (n < 0)
+		return -ENOENT;
+
+	if (bufsiz > n)
+		bufsiz = n;
+	if (copy_to_user(ubuf, name, bufsiz))
+		return -EFAULT;
+	return bufsiz;
+}
+
+
 typedef struct file *(*shadow_filp_open_fn)(const char *, int, umode_t);
 typedef struct file *(*shadow_file_open_root_fn)(const struct path *,
 						  const char *, int, umode_t);
@@ -430,6 +650,31 @@ static long (*real_sys_openat2)(const struct pt_regs *regs);
 static long (*real_sys_openat)(const struct pt_regs *regs);
 static long (*real_sys_open)(const struct pt_regs *regs);
 
+/*
+ * shadow_ns_open_fallback() - shared -ENOENT fallback for openat2/openat/
+ * open: only reached once the real syscall has already failed to open the
+ * path. Tries, in order, the fabricated "setgroups" leaf and the fabricated
+ * ".../ns/pid"|".../ns/pid_for_children" leaves; returns @ret unchanged if
+ * neither matches.
+ */
+static long shadow_ns_open_fallback(int dfd, const char __user *upath, long ret)
+{
+	const char *entry;
+	pid_t rpid;
+
+	if (ret != -ENOENT)
+		return ret;
+
+	if (shadow_ns_path_wants_setgroups(dfd, upath))
+		return shadow_ns_setgroups_create_fd();
+
+	entry = shadow_ns_path_ns_entry(dfd, upath, &rpid);
+	if (entry)
+		return shadow_ns_ns_entry_create_fd(entry, rpid);
+
+	return ret;
+}
+
 static long shadow_ns_hook_openat2(const struct pt_regs *regs)
 {
 	int dfd = (int)shadow_ns_sys_arg0(regs);
@@ -458,9 +703,7 @@ static long shadow_ns_hook_openat2(const struct pt_regs *regs)
 		return ret;
 
 	ret = real_sys_openat2(regs);
-	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(dfd, upath))
-		return ret;
-	return shadow_ns_setgroups_create_fd();
+	return shadow_ns_open_fallback(dfd, upath, ret);
 }
 
 static long shadow_ns_hook_openat(const struct pt_regs *regs)
@@ -475,9 +718,7 @@ static long shadow_ns_hook_openat(const struct pt_regs *regs)
 		return ret;
 
 	ret = real_sys_openat(regs);
-	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(dfd, upath))
-		return ret;
-	return shadow_ns_setgroups_create_fd();
+	return shadow_ns_open_fallback(dfd, upath, ret);
 }
 
 static long shadow_ns_hook_open(const struct pt_regs *regs)
@@ -491,9 +732,7 @@ static long shadow_ns_hook_open(const struct pt_regs *regs)
 		return ret;
 
 	ret = real_sys_open(regs);
-	if (ret != -ENOENT || !shadow_ns_path_wants_setgroups(AT_FDCWD, upath))
-		return ret;
-	return shadow_ns_setgroups_create_fd();
+	return shadow_ns_open_fallback(AT_FDCWD, upath, ret);
 }
 
 static const char * const shadow_ns_openat2_names[] = {
@@ -515,6 +754,85 @@ static struct shadow_hook shadow_ns_openat_hook =
 static struct shadow_hook shadow_ns_open_hook =
 	SHADOW_HOOK(shadow_ns_open_names, shadow_ns_hook_open,
 		    &real_sys_open);
+
+/*
+ * shadow_ns_hook_readlinkat()/shadow_ns_hook_readlink() - fabricate the
+ * "pid:[<id>]"/"pid_for_children:[<id>]" symlink target text for
+ * .../ns/pid{,_for_children}, mirroring fs/proc/namespaces.c's
+ * proc_ns_readlink(). The real readlink(2) fails with -ENOENT for these
+ * paths (the dentries don't exist without CONFIG_PID_NS), so -- exactly
+ * like the open() fallback above -- the fabrication only kicks in once the
+ * real syscall has already failed.
+ */
+static long (*real_sys_readlinkat)(const struct pt_regs *regs);
+static long (*real_sys_readlink)(const struct pt_regs *regs);
+
+static long shadow_ns_hook_readlinkat(const struct pt_regs *regs)
+{
+	int dfd = (int)shadow_ns_sys_arg0(regs);
+	const char __user *upath =
+		(const char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
+	char __user *ubuf =
+		(char __user *)(uintptr_t)shadow_ns_sys_arg2(regs);
+	long ret = real_sys_readlinkat(regs);
+	const char *entry;
+	pid_t rpid;
+
+	if (ret != -ENOENT)
+		return ret;
+
+	entry = shadow_ns_path_ns_entry(dfd, upath, &rpid);
+	if (!entry)
+		return ret;
+
+	/*
+	 * bufsiz (4th syscall arg) doesn't fit shadow_ns_sys_arg2()'s
+	 * three-argument helper set; read it directly off the same
+	 * arch-specific register readlinkat(2) passes it in.
+	 */
+#if defined(CONFIG_ARM64)
+	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf,
+					    (int)regs->regs[3]);
+#elif defined(CONFIG_X86_64)
+	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf, (int)regs->r10);
+#endif
+}
+
+static long shadow_ns_hook_readlink(const struct pt_regs *regs)
+{
+	const char __user *upath =
+		(const char __user *)(uintptr_t)shadow_ns_sys_arg0(regs);
+	char __user *ubuf =
+		(char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
+	int bufsiz = (int)shadow_ns_sys_arg2(regs);
+	long ret = real_sys_readlink(regs);
+	const char *entry;
+	pid_t rpid;
+
+	if (ret != -ENOENT)
+		return ret;
+
+	entry = shadow_ns_path_ns_entry(AT_FDCWD, upath, &rpid);
+	if (!entry)
+		return ret;
+
+	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf, bufsiz);
+}
+
+static const char * const shadow_ns_readlinkat_names[] = {
+	"__arm64_sys_readlinkat", "__x64_sys_readlinkat", "sys_readlinkat",
+	NULL,
+};
+static const char * const shadow_ns_readlink_names[] = {
+	"__arm64_sys_readlink", "__x64_sys_readlink", "sys_readlink", NULL,
+};
+
+static struct shadow_hook shadow_ns_readlinkat_hook =
+	SHADOW_HOOK(shadow_ns_readlinkat_names, shadow_ns_hook_readlinkat,
+		    &real_sys_readlinkat);
+static struct shadow_hook shadow_ns_readlink_hook =
+	SHADOW_HOOK(shadow_ns_readlink_names, shadow_ns_hook_readlink,
+		    &real_sys_readlink);
 
 /*
  * shadow_ns_hook_getdents64() - filter+rename /proc's own root directory
@@ -546,6 +864,110 @@ static bool shadow_ns_fd_is_proc_root(int fd)
 	return ret;
 }
 
+/*
+ * shadow_ns_fd_is_proc_ns_dir() - is @fd an already-open "/proc/<pid>/ns"
+ * directory (any pid, self/thread-self/vpid/rpid alike)? If so, resolves
+ * the owning task's real pid into *rpid_out, exactly like
+ * shadow_ns_path_ns_entry() does from a path string -- this variant works
+ * off the already-open directory fd's dentry instead, for
+ * shadow_ns_hook_getdents64()'s benefit (readdir(3) always opendir()s the
+ * directory once and getdents64()s the resulting fd repeatedly, so there is
+ * no path string available at this point, only the fd).
+ */
+static bool shadow_ns_fd_is_proc_ns_dir(int fd, pid_t *rpid_out)
+{
+	struct fd f;
+	struct dentry *dentry, *parent;
+	char comp[16];
+	size_t len;
+	bool ret = false;
+
+	f = fdget(fd);
+	if (fd_empty(f))
+		return false;
+
+	dentry = fd_file(f)->f_path.dentry;
+	if (dentry->d_sb->s_magic != PROC_SUPER_MAGIC)
+		goto out;
+	if (strcmp((const char *)dentry->d_name.name, "ns"))
+		goto out;
+
+	parent = dentry->d_parent;
+	len = min_t(size_t, parent->d_name.len, sizeof(comp) - 1);
+	memcpy(comp, parent->d_name.name, len);
+	comp[len] = '\0';
+	if (!shadow_ns_component_is_pid_dir(comp))
+		goto out;
+
+	*rpid_out = shadow_ns_resolve_piddir_rpid(comp);
+	ret = *rpid_out > 0;
+out:
+	fdput(f);
+	return ret;
+}
+
+/*
+ * shadow_ns_getdents64_append_ns_entries() - append synthetic "pid"/
+ * "pid_for_children" dirents to an already-fetched real
+ * /proc/<pid>/ns listing, mirroring
+ * fs/proc/namespaces.c:proc_ns_dir_readdir()'s two extra entries. Only
+ * ever called once shadow_ns_fd_is_proc_ns_dir() has confirmed @fd is a
+ * "ns" directory and resolved its owning real pid into @rpid.
+ */
+static long shadow_ns_getdents64_append_ns_entries(void __user *udirp,
+						    unsigned int count,
+						    long ret, pid_t rpid)
+{
+	struct shadow_ns *ns_pid, *ns_children;
+	char kbuf[256];
+	long extra_len = 0;
+
+	ns_pid = shadow_ns_pidns_for_tgid(rpid, false);
+	ns_children = shadow_ns_pidns_for_tgid(rpid, true);
+	if (!ns_pid && !ns_children)
+		return ret;
+
+	if (ns_pid) {
+		struct linux_dirent64 *d = (struct linux_dirent64 *)kbuf;
+		int n = strlen(SHADOW_NS_NSFD_NAME_PID);
+		unsigned short reclen = ALIGN(
+			offsetof(struct linux_dirent64, d_name) + n + 1,
+			sizeof(u64));
+
+		d->d_ino = ns_pid->id;
+		d->d_off = 0;
+		d->d_reclen = reclen;
+		d->d_type = DT_LNK;
+		memset(d->d_name, 0, reclen - offsetof(struct linux_dirent64, d_name));
+		memcpy(d->d_name, SHADOW_NS_NSFD_NAME_PID, n);
+		extra_len += reclen;
+	}
+	if (ns_children) {
+		struct linux_dirent64 *d =
+			(struct linux_dirent64 *)(kbuf + extra_len);
+		int n = strlen(SHADOW_NS_NSFD_NAME_PID_CHILD);
+		unsigned short reclen = ALIGN(
+			offsetof(struct linux_dirent64, d_name) + n + 1,
+			sizeof(u64));
+
+		d->d_ino = ns_children->id;
+		d->d_off = 0;
+		d->d_reclen = reclen;
+		d->d_type = DT_LNK;
+		memset(d->d_name, 0, reclen - offsetof(struct linux_dirent64, d_name));
+		memcpy(d->d_name, SHADOW_NS_NSFD_NAME_PID_CHILD, n);
+		extra_len += reclen;
+	}
+
+	if (extra_len && ret + extra_len <= count &&
+	    !copy_to_user((char __user *)udirp + ret, kbuf, extra_len))
+		ret += extra_len;
+
+	shadow_ns_put(ns_pid);
+	shadow_ns_put(ns_children);
+	return ret;
+}
+
 static long shadow_ns_hook_getdents64(const struct pt_regs *regs)
 {
 	int fd = (int)shadow_ns_sys_arg0(regs);
@@ -556,8 +978,16 @@ static long shadow_ns_hook_getdents64(const struct pt_regs *regs)
 	struct shadow_ns *ns;
 	char *kbuf, *out;
 	long off, outlen;
+	pid_t ns_dir_rpid;
 
-	if (ret <= 0 || !shadow_ns_fd_is_proc_root(fd))
+	if (ret <= 0)
+		return ret;
+
+	if (shadow_ns_fd_is_proc_ns_dir(fd, &ns_dir_rpid))
+		return shadow_ns_getdents64_append_ns_entries(udirp, count, ret,
+							       ns_dir_rpid);
+
+	if (!shadow_ns_fd_is_proc_root(fd))
 		return ret;
 
 	ns = shadow_ns_current_pidns();
@@ -660,6 +1090,8 @@ struct shadow_hook *shadow_ns_procfs_hooks[] = {
 	&shadow_ns_openat2_hook,
 	&shadow_ns_openat_hook,
 	&shadow_ns_open_hook,
+	&shadow_ns_readlinkat_hook,
+	&shadow_ns_readlink_hook,
 	&shadow_ns_getdents64_hook,
 	NULL,
 };

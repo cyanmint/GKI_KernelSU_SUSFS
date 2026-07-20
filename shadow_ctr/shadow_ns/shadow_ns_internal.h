@@ -8,6 +8,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/xarray.h>
+#include <linux/idr.h>
 #include <linux/refcount.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
@@ -16,6 +17,7 @@
 #include <linux/pid.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
+#include <linux/threads.h>
 #include <linux/workqueue.h>
 #include <linux/utsname.h>
 #include <linux/err.h>
@@ -114,11 +116,39 @@ struct shadow_uts_priv {
 	char		domainname[SHADOW_NS_UTS_LEN + 1];
 };
 
+/*
+ * struct shadow_pidns_priv - shadow_ns's simulated PID namespace payload.
+ *
+ * This is a direct, deliberately scoped port of the real per-namespace
+ * state kernel/pid_namespace.c keeps in struct pid_namespace, adapted to
+ * live in a module that cannot touch struct task_struct/struct pid
+ * themselves:
+ *
+ *   - @idr is driven by idr_alloc_cyclic() exactly the way
+ *     kernel/pid.c:alloc_pid() drives struct pid_namespace.idr: cyclic
+ *     allocation starting at pid_min=1 (so the very first task placed into
+ *     a fresh namespace deterministically gets vpid 1, i.e. becomes the
+ *     namespace's child reaper, exactly like copy_pid_ns()), wrapping back
+ *     to RESERVED_PIDS once the idr's cursor passes it, mirroring
+ *     alloc_pid()'s own "init really needs pid 1, but after reaching the
+ *     maximum wrap back to RESERVED_PIDS" comment verbatim.
+ *   - @child_reaper_rpid mirrors struct pid_namespace.child_reaper: the
+ *     real (host) pid holding vpid 1 in this namespace.
+ *   - @adding mirrors the PIDNS_ADDING bit of pid_namespace.pid_allocated:
+ *     cleared by shadow_ns_pidns_zap() (our port of disable_pid_allocation())
+ *     once the child reaper has exited, after which no further rpid may be
+ *     registered into this namespace.
+ *   - @dying/@zapped guard shadow_ns_pidns_zap() itself against ever running
+ *     twice for the same namespace.
+ */
 struct shadow_pidns_priv {
 	struct mutex	lock;
+	struct idr	idr;
 	struct xarray	vpid_to_rpid;
 	struct xarray	rpid_to_vpid;
-	u32		next_vpid;
+	pid_t		child_reaper_rpid;
+	bool		adding;
+	bool		zapped;
 };
 
 struct shadow_userns_priv {
@@ -168,6 +198,8 @@ void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid);
 void shadow_ns_pidns_unregister(struct shadow_pidns_priv *pidns, pid_t rpid);
 pid_t shadow_ns_pidns_to_vpid(struct shadow_pidns_priv *pidns, pid_t rpid);
 pid_t shadow_ns_pidns_to_rpid(struct shadow_pidns_priv *pidns, pid_t vpid);
+void shadow_ns_pidns_zap(struct shadow_pidns_priv *pidns, pid_t exiting_rpid);
+bool shadow_ns_pidns_is_child_reaper(struct shadow_pidns_priv *pidns, pid_t rpid);
 struct shadow_userns_priv *shadow_ns_userns_priv_alloc(void);
 void shadow_ns_userns_priv_free(struct shadow_userns_priv *priv);
 
@@ -210,6 +242,17 @@ extern struct shadow_hook *shadow_ns_user_hooks[];
 extern struct shadow_hook *shadow_ns_procfs_hooks[];
 
 /*
+ * shadow_ns_procfs_nsfd_to_id() - if @fd was produced by
+ * shadow_ns_procfs.c's fabricated /proc/<pid>/ns/{pid,pid_for_children}
+ * (shadow_ns_pid.c's proc_ns vendoring), returns the shadow_ns id it is
+ * tagged with (see shadow_ns_get()); returns 0 for any other fd (including
+ * a perfectly ordinary real fd from a kernel that has genuine CONFIG_PID_NS
+ * -- setns()'s fallback path only ever reaches this after the real setns(2)
+ * syscall has already rejected the fd itself).
+ */
+u32 shadow_ns_procfs_nsfd_to_id(int fd);
+
+/*
  * shadow_ns_current_pidns() - the caller's active simulated PID namespace
  * (shadow_ns_pid.c), or NULL if PID_NS is either kernel-native on this
  * build/boot or the caller was never moved into one. Shared with
@@ -217,5 +260,19 @@ extern struct shadow_hook *shadow_ns_procfs_hooks[];
  * getpid()/kill()/wait4()/... already translate against.
  */
 struct shadow_ns *shadow_ns_current_pidns(void);
+
+/*
+ * shadow_ns_pidns_for_tgid() - the simulated PID namespace a given *real*
+ * (host) tgid is a member of, or (when @for_children is true) the namespace
+ * its *future* children will be placed into -- i.e. tg->pending_pidns when
+ * set (the task has unshare(CLONE_NEWPID)'d but, exactly like the real
+ * kernel, has not moved itself into the new namespace), falling back to
+ * tg->cur[PID] otherwise. Used by shadow_ns_procfs.c to fabricate
+ * /proc/<pid>/ns/pid and /proc/<pid>/ns/pid_for_children for an arbitrary
+ * target pid, not just the caller's own. Returns a grabbed reference (the
+ * caller must shadow_ns_put() it), or NULL if @rpid has no tracked shadow
+ * PID namespace state.
+ */
+struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children);
 
 #endif

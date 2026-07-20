@@ -62,23 +62,43 @@ inert bookkeeping:
 | MNT (`CLONE_NEWNS`) | if `IS_ENABLED(CONFIG_NAMESPACES)` (effectively always, `default !EXPERT`; no dedicated `CONFIG_MNT_NS` symbol exists so the parent menuconfig is used as a defensive proxy) | bookkeeping only — same generic id/refcount registry as IPC/NET/CGROUP; the real, always-compiled-in mount-namespace code in `fs/namespace.c` keeps running regardless, this only adds a parallel bookkeeping entry |
 | CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (every GKI defconfig sets this) | bookkeeping only — same generic id/refcount registry as IPC/NET below; no functional cgroup-namespace partitioning to add safely from a module |
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
-| PID (`CLONE_NEWPID`) | passthrough | **real**: per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid` hooked) |
+| PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}`) |
 | USER (`CLONE_NEWUSER`) | passthrough | **real**: creator's uid/gid appear as 0 inside the namespace (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked), matching the common docker/runc single-mapping userns-remap shape |
 | IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only — falls back to the single global `init_ipc_ns`; there is nothing extra to isolate |
 | NET (`CLONE_NEWNET`) | passthrough | bookkeeping only — real net namespace isolation is inseparable from the whole networking stack (`net/core/net_namespace.c` touches routing, sockets, netfilter, sysctls) and cannot safely be vendored into a loadable module |
 
 ### PID namespace isolation details
 
-Modelled on `kernel/pid_namespace.c`'s single-level id mapping (`pid_nr_ns()`
-translating a task's namespace-local number via its `numbers[]` array),
-simplified to one level (no nested-pid-namespace stacking): each simulated
-pid namespace keeps a pair of xarrays mapping real tgid ↔ namespace-local
-vpid, assigned in join order starting at 1. Real kernel semantics are
-preserved for `unshare(CLONE_NEWPID)`/`setns()` into a pid namespace: the
-calling task itself is **not** moved — only its `pending_pidns` (mirroring
-`nsproxy->pid_ns_for_children`) is set, so only *future* children join the
-new namespace, exactly like the real kernel. A direct `clone(2)`/`clone3(2)`
-with `CLONE_NEWPID` creates a fresh pidns for that one child immediately.
+Vendors two real kernel algorithms from `kernel/pid.c` and
+`kernel/pid_namespace.c` (see the citations in `shadow_ns_pid.c`) rather than
+a plain incrementing counter, simplified to one level of nesting (no
+nested-pid-namespace stacking): each simulated pid namespace keeps a
+`struct idr` driven by `idr_alloc_cyclic()`, mirroring `alloc_pid()`'s own
+cyclic-allocation-with-`RESERVED_PIDS`-wraparound policy, so the first task
+registered into a fresh namespace deterministically becomes vpid 1 (that
+namespace's *child reaper*, exactly like `copy_pid_ns()`). When that child
+reaper's `exit_group(2)` fires (or, as a fallback, is next detected dead by
+the periodic reaper if the syscall hook was bypassed), `shadow_ns_pidns_zap()`
+vendors `zap_pid_ns_processes()`'s cascade: `disable_pid_allocation()` (no
+further tasks may join) followed by an unblockable/unignorable `SIGKILL` to
+every other task still resident in the namespace. (Real
+`zap_pid_ns_processes()`'s orphan reparenting/reaping via
+`forget_original_parent()`+`kernel_wait4()` needs `task_struct` parent/child
+links this module does not own, so it is left to the host kernel's own,
+already-working real parent chain.)
+
+Real kernel semantics are preserved for `unshare(CLONE_NEWPID)`/`setns()`
+into a pid namespace: the calling task itself is **not** moved — only its
+`pending_pidns` (mirroring `nsproxy->pid_ns_for_children`) is set, so only
+*future* children join the new namespace, exactly like the real kernel. A
+direct `clone(2)`/`clone3(2)` with `CLONE_NEWPID` creates a fresh pidns for
+that one child immediately.
+
+Every syscall that consumes or produces a pid-namespace pid number is
+translated: `getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`
+(`P_PID` and `P_PGID`) as before, plus `setpgid`/`getpgid`/`getsid` (with the
+returned pgid/sid translated back to a vpid), `ptrace`, `rt_sigqueueinfo`/
+`rt_tgsigqueueinfo`, and `pidfd_open`.
 
 Known simplification: `tgkill`/`tkill` translate the pid argument through the
 tgid-level map (thread ids are not tracked separately), and `waitid`'s
@@ -108,6 +128,19 @@ namespace's members under `/proc`, exactly like the real kernel's
   that aren't registered namespace members are dropped, and member entries
   are renamed from their real rpid to the namespace-local vpid, so `ls
   /proc`/`readdir(/proc)` only ever lists the namespace's own members.
+- `/proc/<pid>/ns/pid` and `/proc/<pid>/ns/pid_for_children` are fabricated
+  (vendored from `fs/nsfs.c`/`fs/proc/namespaces.c`, which normally only
+  wire these up when `CONFIG_PID_NS=y`): `getdents64()` on an already-open
+  `.../ns` directory fd gets the two synthetic entries appended;
+  `open()`/`openat()`/`openat2()` and `readlink()`/`readlinkat()` on either
+  leaf are served once the real syscall has already failed with `-ENOENT`.
+  `readlink()` returns `"pid:[<id>]"`/`"pid_for_children:[<id>]"` (the
+  `shadow_ns` id standing in for a real `ns_common.inum`), and `open()`
+  hands back an anon-inode fd tagged with that same id — recognized by
+  `setns(2)`'s fallback path (`shadow_ns_core.c`) via
+  `shadow_ns_procfs_nsfd_to_id()`, so an unmodified
+  `open("/proc/<pid>/ns/pid")` + `setns(fd, CLONE_NEWPID)` sequence (exactly
+  what nsenter/runc/dockerd already do) works with no userspace changes.
 
 Known limitations of this `/proc` isolation: only `/proc`'s own root listing
 is filtered (subdirectory listings such as `/proc/<pid>/task/`, thread ids,

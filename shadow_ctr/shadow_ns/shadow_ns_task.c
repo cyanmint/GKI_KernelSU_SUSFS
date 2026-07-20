@@ -109,6 +109,23 @@ void shadow_ns_reap_stale_task_groups(void)
 
 		tg = xa_erase(&shadow_ns_tgid_map, id);
 		mutex_unlock(&shadow_ns_tgid_lock);
+
+		/*
+		 * Safety net for shadow_ns_hook_exit_group()
+		 * (shadow_ns_pid.c): a task that never reached our
+		 * exit_group(2) hook (killed from outside, e.g. an external
+		 * SIGKILL, or a kernel that lacks that syscall entirely)
+		 * still needs its namespace's zap_pid_ns_processes() cascade
+		 * to run if it happened to be that namespace's child
+		 * reaper -- otherwise the rest of the namespace's tasks are
+		 * silently orphaned instead of being torn down with it,
+		 * same as a real pid_namespace would.
+		 */
+		if (tg && tg->cur[SHADOW_NS_TYPE_PID] &&
+		    shadow_ns_pidns_is_child_reaper(tg->cur[SHADOW_NS_TYPE_PID]->pid,
+						     tg->tgid))
+			shadow_ns_pidns_zap(tg->cur[SHADOW_NS_TYPE_PID]->pid, tg->tgid);
+
 		shadow_ns_task_group_free(tg);
 	}
 }
@@ -358,4 +375,20 @@ long shadow_ns_clone_finalize(long ret, struct shadow_task_group *parent,
 		pr_warn("shadow_ns: failed to install child state for tgid %d: %d\n",
 			child_tgid, err);
 	return ret;
+}
+
+struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children)
+{
+	struct shadow_task_group *tg;
+	struct shadow_ns *ns;
+
+	tg = shadow_ns_task_group_lookup(rpid);
+	if (!tg)
+		return NULL;
+
+	mutex_lock(&tg->lock);
+	ns = shadow_ns_grab(for_children && tg->pending_pidns ?
+			     tg->pending_pidns : tg->cur[SHADOW_NS_TYPE_PID]);
+	mutex_unlock(&tg->lock);
+	return ns;
 }
