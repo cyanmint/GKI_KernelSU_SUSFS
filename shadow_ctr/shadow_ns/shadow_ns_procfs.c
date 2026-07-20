@@ -1435,7 +1435,12 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	}
 
 	if (copy_from_user(kbuf, ubuf, ret))
-		goto out_free;
+		goto out_free; /* real syscall already succeeded and left real,
+				* correct content in the caller's buffer -- just
+				* skip the rewrite and return `ret` as-is, same
+				* fail-safe fallback as every other failure path
+				* below (never fabricate an error for a read that
+				* already genuinely completed). */
 
 	newlen = (leaf == SHADOW_NS_PID_LEAF_STAT) ?
 		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out,
