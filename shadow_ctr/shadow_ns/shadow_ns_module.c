@@ -294,15 +294,22 @@ int shadow_ns_init(void)
 	}
 
 	/*
-	 * shadow_ns_procfs_hooks (openat2/openat/open/getdents64) serves two
-	 * independent needs: fabricating /proc/<pid>/setgroups (only
-	 * meaningful when CLONE_NEWUSER is simulated) and translating/
+	 * shadow_ns_procfs_hooks (openat2/openat/open/getdents64) serves
+	 * several independent needs: fabricating /proc/<pid>/setgroups (only
+	 * meaningful when CLONE_NEWUSER is simulated), translating/
 	 * filtering /proc for a simulated PID namespace's own vpid<->rpid
-	 * mapping (only meaningful when CLONE_NEWPID is simulated). Install
-	 * it whenever either is active; each hook internally no-ops the
-	 * half of its logic that doesn't apply.
+	 * mapping (only meaningful when CLONE_NEWPID is simulated), and
+	 * fabricating /proc/<pid>/ns/{user,ipc} (meaningful whenever USER,
+	 * PID or IPC is simulated -- IPC's own ns entry matters even though
+	 * IPC otherwise stays pure bookkeeping, because runc/containerd's
+	 * namespace-support probe stats every ns/ entry as one combined
+	 * check before issuing unshare()/clone3(): if ns/ipc looks absent,
+	 * the whole combined namespace setup is aborted, silently discarding
+	 * PID/USER simulation too). Install it whenever any of the three is
+	 * active; each hook internally no-ops the parts of its logic that
+	 * don't apply.
 	 */
-	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID)) {
+	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWIPC)) {
 		hooked = shadow_hook_install_all(shadow_ns_procfs_hooks, "shadow_ns_procfs");
 		if (hooked < 0) {
 			ret = hooked;
@@ -335,7 +342,7 @@ void shadow_ns_exit(void)
 	unsigned long id;
 
 	pr_info("shadow_ns: exit: removing syscall hooks\n");
-	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID))
+	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWIPC))
 		shadow_hook_remove_all(shadow_ns_procfs_hooks);
 	if (shadow_ns_clone_flags & CLONE_NEWUSER)
 		shadow_hook_remove_all(shadow_ns_user_hooks);

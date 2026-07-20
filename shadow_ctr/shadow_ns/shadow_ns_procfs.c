@@ -304,6 +304,24 @@ static bool shadow_ns_dfd_is_procfs(int dfd)
  */
 #define SHADOW_NS_NSFD_NAME_PID		"pid"
 #define SHADOW_NS_NSFD_NAME_PID_CHILD	"pid_for_children"
+/*
+ * Generic (non-PID) ns/ entries: "user" and "ipc". Unlike pid/
+ * pid_for_children (which need shadow_ns_pidns_for_tgid()'s extra
+ * pending_pidns/"for future children" handling), these two map straight
+ * onto tg->cur[type] via shadow_ns_generic_for_tgid() -- see
+ * shadow_ns_ns_entry_type_for_name() below. Fabricating these two
+ * specifically (rather than every remaining real ns/* entry) matters
+ * because runc/containerd's own namespace-support probe stats
+ * /proc/<pid>/ns/{ipc,pid,pid_for_children,user,uts,...} as part of a single
+ * combined check before issuing the real unshare()/clone3(): previously,
+ * with only ns/pid{,_for_children} fabricated, that probe failing on
+ * ns/ipc (whenever this kernel build genuinely lacks CONFIG_IPC_NS) aborted
+ * the whole combined namespace setup, silently discarding the PID/USER
+ * simulation too -- not just IPC's own (harmless, bookkeeping-only)
+ * fallback.
+ */
+#define SHADOW_NS_NSFD_NAME_USER	"user"
+#define SHADOW_NS_NSFD_NAME_IPC		"ipc"
 
 static int shadow_ns_nsfd_open(struct inode *inode, struct file *file)
 {
@@ -439,7 +457,31 @@ static const char *shadow_ns_path_ns_entry(int dfd, const char __user *upath,
 		*rpid = shadow_ns_resolve_piddir_rpid(piddir);
 		return *rpid > 0 ? SHADOW_NS_NSFD_NAME_PID_CHILD : NULL;
 	}
+	if (!strcmp(slash2, SHADOW_NS_NSFD_NAME_USER)) {
+		*rpid = shadow_ns_resolve_piddir_rpid(piddir);
+		return *rpid > 0 ? SHADOW_NS_NSFD_NAME_USER : NULL;
+	}
+	if (!strcmp(slash2, SHADOW_NS_NSFD_NAME_IPC)) {
+		*rpid = shadow_ns_resolve_piddir_rpid(piddir);
+		return *rpid > 0 ? SHADOW_NS_NSFD_NAME_IPC : NULL;
+	}
 	return NULL;
+}
+
+/*
+ * shadow_ns_ns_entry_generic_type() - the shadow_ns_type this entry name
+ * maps to via the generic tg->cur[type] lookup (i.e. every fabricated ns/
+ * entry except "pid"/"pid_for_children", which stay on
+ * shadow_ns_pidns_for_tgid() -- see the two callers below), or
+ * SHADOW_NS_TYPE_MAX if @entry isn't one of those.
+ */
+static u32 shadow_ns_ns_entry_generic_type(const char *entry)
+{
+	if (!strcmp(entry, SHADOW_NS_NSFD_NAME_USER))
+		return SHADOW_NS_TYPE_USER;
+	if (!strcmp(entry, SHADOW_NS_NSFD_NAME_IPC))
+		return SHADOW_NS_TYPE_IPC;
+	return SHADOW_NS_TYPE_MAX;
 }
 
 /*
@@ -450,9 +492,16 @@ static const char *shadow_ns_path_ns_entry(int dfd, const char __user *upath,
 static long shadow_ns_ns_entry_create_fd(const char *entry, pid_t rpid)
 {
 	struct shadow_ns *ns;
+	u32 generic_type;
 	long fd;
 
-	ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	if (!strcmp(entry, SHADOW_NS_NSFD_NAME_PID) ||
+	    !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD)) {
+		ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	} else {
+		generic_type = shadow_ns_ns_entry_generic_type(entry);
+		ns = shadow_ns_generic_for_tgid(generic_type, rpid);
+	}
 	if (!ns)
 		return -ENOENT;
 
@@ -473,10 +522,17 @@ static long shadow_ns_ns_entry_readlink(const char *entry, pid_t rpid,
 					 char __user *ubuf, int bufsiz)
 {
 	struct shadow_ns *ns;
+	u32 generic_type;
 	char name[64];
 	int n;
 
-	ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	if (!strcmp(entry, SHADOW_NS_NSFD_NAME_PID) ||
+	    !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD)) {
+		ns = shadow_ns_pidns_for_tgid(rpid, !strcmp(entry, SHADOW_NS_NSFD_NAME_PID_CHILD));
+	} else {
+		generic_type = shadow_ns_ns_entry_generic_type(entry);
+		ns = shadow_ns_generic_for_tgid(generic_type, rpid);
+	}
 	if (!ns)
 		return -ENOENT;
 
@@ -907,57 +963,63 @@ out:
 }
 
 /*
+ * shadow_ns_append_ns_dirent() - append one synthetic ns/ dirent named
+ * @name (inode number @id) into @kbuf at byte offset @off, returning the
+ * new offset. Shared by shadow_ns_getdents64_append_ns_entries() for every
+ * fabricated entry ("pid", "pid_for_children", "user", "ipc").
+ */
+static long shadow_ns_append_ns_dirent(char *kbuf, long off, const char *name, u32 id)
+{
+	struct linux_dirent64 *d = (struct linux_dirent64 *)(kbuf + off);
+	int n = strlen(name);
+	unsigned short reclen = ALIGN(
+		offsetof(struct linux_dirent64, d_name) + n + 1,
+		sizeof(u64));
+
+	d->d_ino = id;
+	d->d_off = 0;
+	d->d_reclen = reclen;
+	d->d_type = DT_LNK;
+	memset(d->d_name, 0, reclen - offsetof(struct linux_dirent64, d_name));
+	memcpy(d->d_name, name, n);
+	return off + reclen;
+}
+
+/*
  * shadow_ns_getdents64_append_ns_entries() - append synthetic "pid"/
- * "pid_for_children" dirents to an already-fetched real
+ * "pid_for_children"/"user"/"ipc" dirents to an already-fetched real
  * /proc/<pid>/ns listing, mirroring
- * fs/proc/namespaces.c:proc_ns_dir_readdir()'s two extra entries. Only
- * ever called once shadow_ns_fd_is_proc_ns_dir() has confirmed @fd is a
- * "ns" directory and resolved its owning real pid into @rpid.
+ * fs/proc/namespaces.c:proc_ns_dir_readdir()'s extra entries. Only ever
+ * called once shadow_ns_fd_is_proc_ns_dir() has confirmed @fd is a "ns"
+ * directory and resolved its owning real pid into @rpid.
  */
 static long shadow_ns_getdents64_append_ns_entries(void __user *udirp,
 						    unsigned int count,
 						    long ret, pid_t rpid)
 {
-	struct shadow_ns *ns_pid, *ns_children;
-	char kbuf[256];
+	struct shadow_ns *ns_pid, *ns_children, *ns_user, *ns_ipc;
+	char kbuf[384];
 	long extra_len = 0;
 
 	ns_pid = shadow_ns_pidns_for_tgid(rpid, false);
 	ns_children = shadow_ns_pidns_for_tgid(rpid, true);
-	if (!ns_pid && !ns_children)
+	ns_user = shadow_ns_generic_for_tgid(SHADOW_NS_TYPE_USER, rpid);
+	ns_ipc = shadow_ns_generic_for_tgid(SHADOW_NS_TYPE_IPC, rpid);
+	if (!ns_pid && !ns_children && !ns_user && !ns_ipc)
 		return ret;
 
-	if (ns_pid) {
-		struct linux_dirent64 *d = (struct linux_dirent64 *)kbuf;
-		int n = strlen(SHADOW_NS_NSFD_NAME_PID);
-		unsigned short reclen = ALIGN(
-			offsetof(struct linux_dirent64, d_name) + n + 1,
-			sizeof(u64));
-
-		d->d_ino = ns_pid->id;
-		d->d_off = 0;
-		d->d_reclen = reclen;
-		d->d_type = DT_LNK;
-		memset(d->d_name, 0, reclen - offsetof(struct linux_dirent64, d_name));
-		memcpy(d->d_name, SHADOW_NS_NSFD_NAME_PID, n);
-		extra_len += reclen;
-	}
-	if (ns_children) {
-		struct linux_dirent64 *d =
-			(struct linux_dirent64 *)(kbuf + extra_len);
-		int n = strlen(SHADOW_NS_NSFD_NAME_PID_CHILD);
-		unsigned short reclen = ALIGN(
-			offsetof(struct linux_dirent64, d_name) + n + 1,
-			sizeof(u64));
-
-		d->d_ino = ns_children->id;
-		d->d_off = 0;
-		d->d_reclen = reclen;
-		d->d_type = DT_LNK;
-		memset(d->d_name, 0, reclen - offsetof(struct linux_dirent64, d_name));
-		memcpy(d->d_name, SHADOW_NS_NSFD_NAME_PID_CHILD, n);
-		extra_len += reclen;
-	}
+	if (ns_pid)
+		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
+					SHADOW_NS_NSFD_NAME_PID, ns_pid->id);
+	if (ns_children)
+		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
+					SHADOW_NS_NSFD_NAME_PID_CHILD, ns_children->id);
+	if (ns_user)
+		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
+					SHADOW_NS_NSFD_NAME_USER, ns_user->id);
+	if (ns_ipc)
+		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
+					SHADOW_NS_NSFD_NAME_IPC, ns_ipc->id);
 
 	if (extra_len && ret + extra_len <= count &&
 	    !copy_to_user((char __user *)udirp + ret, kbuf, extra_len))
@@ -965,6 +1027,8 @@ static long shadow_ns_getdents64_append_ns_entries(void __user *udirp,
 
 	shadow_ns_put(ns_pid);
 	shadow_ns_put(ns_children);
+	shadow_ns_put(ns_user);
+	shadow_ns_put(ns_ipc);
 	return ret;
 }
 

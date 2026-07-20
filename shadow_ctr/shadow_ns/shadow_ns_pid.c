@@ -153,11 +153,38 @@ void shadow_ns_pidns_priv_free(struct shadow_pidns_priv *priv)
  * RESERVED_PIDS". Mirrors disable_pid_allocation() by refusing to admit
  * anyone once the namespace's child reaper has already exited
  * (!pidns->adding, our port of clearing PIDNS_ADDING).
+ *
+ * Stale-entry handling (fixes a real "wait4 sees the wrong pid" bug): a
+ * task's rpid<->vpid mapping is only removed from @pidns by
+ * shadow_ns_reap_stale_task_groups()'s periodic sweep (up to
+ * SHADOW_NS_REAP_INTERVAL after it exits) -- deliberately not synchronously
+ * on exit_group(2), since shadow_ns_hook_wait4()/shadow_ns_hook_waitid()
+ * still need the mapping to translate the real pid real_sys_wait4()/
+ * waitid() hands back into a vpid *after* the task has actually been
+ * reaped by its parent (see shadow_ns_hook_exit_group()'s own comment). A
+ * busy container can easily recycle a real host pid faster than that sweep
+ * runs. shadow_ns_pidns_register() is only ever called once, synchronously, for a definitely-fresh @rpid right
+ * after that task was created (shadow_ns_install_child_state(), itself
+ * called immediately after the real clone()/fork() syscall returns its
+ * child's tgid) -- so if @rpid already has an entry in @pidns at this
+ * point, it cannot legitimately belong to the task being registered right
+ * now; it can only be a leftover from a previous, already-dead task that
+ * happened to reuse the same host pid number before the periodic sweep got
+ * to it. The previous "rpid already has an entry -> skip" behaviour left
+ * such a brand-new, live task permanently registered under that stale
+ * vpid instead -- every subsequent getpid()/wait4()/... for the new task
+ * then observed (or was asked to wait for) the wrong, long-dead vpid,
+ * exactly the "waitpid() can't find its child" class of bug reported
+ * against apt/dpkg-style short-lived subprocess-heavy workloads. Fixed by
+ * always treating a pre-existing entry as stale and clearing it (mirroring
+ * what the reap sweep would eventually have done) before proceeding with a
+ * fresh registration for @rpid.
  */
 void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid)
 {
 	int pid_min;
 	int vpid;
+	void *stale;
 
 	if (!pidns || rpid <= 0)
 		return;
@@ -165,8 +192,15 @@ void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid)
 	mutex_lock(&pidns->lock);
 	if (!pidns->adding)
 		goto unlock;
-	if (xa_load(&pidns->rpid_to_vpid, rpid))
-		goto unlock;
+
+	stale = xa_load(&pidns->rpid_to_vpid, rpid);
+	if (stale) {
+		u32 stale_vpid = (u32)xa_to_value(stale);
+
+		xa_erase(&pidns->rpid_to_vpid, rpid);
+		xa_erase(&pidns->vpid_to_rpid, stale_vpid);
+		idr_remove(&pidns->idr, stale_vpid);
+	}
 
 	pid_min = (idr_get_cursor(&pidns->idr) > SHADOW_NS_RESERVED_PIDS) ?
 		SHADOW_NS_RESERVED_PIDS : 1;
@@ -463,6 +497,18 @@ static long shadow_ns_hook_waitid(const struct pt_regs *regs)
  * fires in the exit_group(2) syscall entry, before the real syscall (which
  * never returns) actually runs, so the cascade below still executes with a
  * perfectly normal, schedulable task context.
+ *
+ * Deliberately does NOT unregister the exiting task's own rpid<->vpid
+ * mapping here: shadow_ns_hook_wait4()/shadow_ns_hook_waitid() (below) still
+ * need that mapping to translate the real pid real_sys_wait4()/waitid()
+ * hands back into this namespace's vpid *after* the exiting task has
+ * actually been reaped by its parent, which happens strictly later than
+ * this hook. Unregistering this early would make wait4() return the raw,
+ * untranslated real pid instead -- exactly the symptom this file's
+ * shadow_ns_pidns_register() stale-entry handling was written to fix, not
+ * reintroduce. The mapping is instead cleaned up later, either by the
+ * periodic reap sweep or lazily, the next time this same rpid is reused by
+ * a new task (see shadow_ns_pidns_register()'s stale-entry handling).
  */
 static long shadow_ns_hook_exit_group(const struct pt_regs *regs)
 {

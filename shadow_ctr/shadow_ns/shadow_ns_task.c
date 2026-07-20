@@ -394,6 +394,35 @@ struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children)
 }
 
 /*
+ * shadow_ns_generic_for_tgid() - the simulated namespace of @type a given
+ * real (host) tgid currently belongs to (tg->cur[type]), or NULL if that
+ * task was never moved into one. Shared implementation behind
+ * shadow_ns_userns_for_tgid() and shadow_ns_procfs.c's generic
+ * /proc/<pid>/ns/{user,ipc,...} entry fabrication (shadow_ns_pid.c's own
+ * ns/pid{,_for_children} entries stay on shadow_ns_pidns_for_tgid(), which
+ * additionally understands pending_pidns / for_children semantics that do
+ * not apply to any other namespace type). Returns a grabbed reference (the
+ * caller must shadow_ns_put() it).
+ */
+struct shadow_ns *shadow_ns_generic_for_tgid(u32 type, pid_t rpid)
+{
+	struct shadow_task_group *tg;
+	struct shadow_ns *ns;
+
+	if (type >= SHADOW_NS_TYPE_MAX)
+		return NULL;
+
+	tg = shadow_ns_task_group_lookup(rpid);
+	if (!tg)
+		return NULL;
+
+	mutex_lock(&tg->lock);
+	ns = shadow_ns_grab(tg->cur[type]);
+	mutex_unlock(&tg->lock);
+	return ns;
+}
+
+/*
  * shadow_ns_userns_for_tgid() - the simulated USER namespace a given real
  * (host) tgid is currently a member of (tg->cur[USER]), or NULL if that
  * task was never moved into one (i.e. its getuid()/geteuid()/... are real,
@@ -405,15 +434,5 @@ struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children)
  */
 struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid)
 {
-	struct shadow_task_group *tg;
-	struct shadow_ns *ns;
-
-	tg = shadow_ns_task_group_lookup(rpid);
-	if (!tg)
-		return NULL;
-
-	mutex_lock(&tg->lock);
-	ns = shadow_ns_grab(tg->cur[SHADOW_NS_TYPE_USER]);
-	mutex_unlock(&tg->lock);
-	return ns;
+	return shadow_ns_generic_for_tgid(SHADOW_NS_TYPE_USER, rpid);
 }

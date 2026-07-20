@@ -286,4 +286,13 @@ struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children);
  */
 struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid);
 
+/*
+ * shadow_ns_generic_for_tgid() - the simulated namespace of @type a given
+ * real (host) tgid currently belongs to (tg->cur[type]), or NULL. Shared
+ * generic lookup behind shadow_ns_userns_for_tgid() and shadow_ns_procfs.c's
+ * fabrication of /proc/<pid>/ns/{user,ipc} for any namespace type that
+ * doesn't need PID's extra pending_pidns/for_children handling.
+ */
+struct shadow_ns *shadow_ns_generic_for_tgid(u32 type, pid_t rpid);
+
 #endif
