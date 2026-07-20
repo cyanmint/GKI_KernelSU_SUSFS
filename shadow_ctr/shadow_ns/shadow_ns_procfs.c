@@ -310,7 +310,7 @@ static bool shadow_ns_dfd_is_procfs(int dfd)
  * pending_pidns/"for future children" handling), these two map straight
  * onto tg->cur[type] via shadow_ns_generic_for_tgid() -- see
  * shadow_ns_ns_entry_type_for_name() below. Fabricating these two
- * specifically (rather than every remaining real ns/* entry) matters
+ * specifically (rather than every remaining real ns/ entry) matters
  * because runc/containerd's own namespace-support probe stats
  * /proc/<pid>/ns/{ipc,pid,pid_for_children,user,uts,...} as part of a single
  * combined check before issuing the real unshare()/clone3(): previously,
