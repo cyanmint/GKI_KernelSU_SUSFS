@@ -48,8 +48,9 @@
 # "build-test-assets" downloads both and assembles everything the QEMU boot
 # test needs:
 #   - a small "injected ramdisk" (initramfs) whose /init is a busybox-based
-#     stage-1 script. Its only job is to mount image1.ext4 (attached as a
-#     virtio-blk device) and busybox switch_root into it -- the standard,
+#     stage-1 script (qemu_test/first_stage_init.sh). Its only job is to
+#     mount image1.ext4 (attached as an NVMe device -- the test kernels have
+#     no virtio support) and busybox switch_root into it -- the standard,
 #     kernel-supported way to hand off from a cpio-based initramfs to a real
 #     block-device root (functionally the "pivot_root into it" step: it
 #     moves /dev into the new root, chroots into it, and execs the given
@@ -256,6 +257,9 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-checker.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
       - name: Install test-asset build dependencies
         run: |
           sudo apt-get update
@@ -323,105 +327,10 @@ jobs:
 
           # Stage-2 init script: runs as PID 1 once busybox switch_root (in
           # the injected ramdisk below) has handed control to this real
-          # root. All ramdisk utilities are invoked with absolute paths:
-          # bionic's dynamic linker needs /proc/self/exe (or a resolvable
-          # argv[0]) to load shared objects, which only holds once /proc is
-          # mounted and the path is absolute.
-          cat > stage2_test_init.sh <<'EOF'
-          #!/system/bin/sh
-          set -x
-          # Mount devtmpfs/proc/sysfs first and immediately re-point stdio
-          # at /dev/kmsg instead of /dev/console: PID 1's original fds are
-          # otherwise easy to lose track of once /dev is replaced, silently
-          # dropping every echo/trace/command-output line for the rest of
-          # the script even though it keeps executing. /dev/kmsg writes
-          # become kernel printk records, which reliably reaches the QEMU
-          # console log.
-          /system/bin/mount -t devtmpfs devtmpfs /dev 2>/dev/null
-          exec </dev/console >/dev/kmsg 2>&1
-          /system/bin/mount -t proc proc /proc
-          /system/bin/mount -t sysfs sysfs /sys
-          export PATH=/system/bin
-          /system/bin/mkdir -p /dev/pts
-          /system/bin/mount -t devpts devpts /dev/pts
-          /system/bin/mkdir -p /sys/fs/cgroup
-          /system/bin/mount -t cgroup2 cgroup2 /sys/fs/cgroup || /system/bin/mount -t tmpfs cgroup /sys/fs/cgroup
-          # runc's pivot_root() refuses to operate with the initramfs-
-          # derived root as its old root ("invalid argument"); bind-
-          # mounting / onto itself turns it into an ordinary mount entry
-          # that pivot_root can pivot away from.
-          /system/bin/mount -o bind / /
-          # A proper tmpfs (with xattr support) at /tmp: shadow_ctr_checker's
-          # overlay2 self-test mkdtemp()s its lower/upper/work dirs under
-          # /tmp, and it also backs dockerd's own vfs storage driver.
-          /system/bin/mkdir -p /tmp
-          /system/bin/mount -t tmpfs tmpfs /tmp
-          /system/bin/ifconfig lo up
-
-          echo "=== SHADOW_CTR_QEMU_TEST: mount image2.ext4 -> /mnt (module + checker) ==="
-          /system/bin/mkdir -p /mnt
-          /system/bin/mount -t ext4 /dev/vdb /mnt
-          echo "mount image2.ext4 -> $?"
-          /system/bin/chmod 755 /mnt/shadow_ctr_checker
-
-          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
-          /mnt/shadow_ctr_checker
-          echo "shadow_ctr_checker (pre-insmod) -> $?"
-
-          echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
-          /system/bin/insmod /mnt/shadow_ctr.ko
-          echo "insmod shadow_ctr.ko -> $?"
-          /system/bin/dmesg
-
-          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
-          /mnt/shadow_ctr_checker
-          echo "shadow_ctr_checker (post-insmod) -> $?"
-
-          echo "=== SHADOW_CTR_QEMU_TEST: configuring dockerd (vfs storage) ==="
-          /system/bin/mkdir -p /etc/docker
-          cat > /etc/docker/daemon.json <<'JSON'
-          {
-            "storage-driver": "vfs",
-            "iptables": false,
-            "bridge": "none"
-          }
-          JSON
-
-          echo "=== SHADOW_CTR_QEMU_TEST: starting dockerd (daemon) ==="
-          dockerd --config-file=/etc/docker/daemon.json > /dockerd.log 2>&1 &
-          for i in $(/system/bin/seq 1 30); do
-            [ -S /var/run/docker.sock ] && break
-            /system/bin/sleep 1
-          done
-
-          # /alpine.tar (already sitting at the root of this filesystem,
-          # i.e. image1.ext4) is a `docker export` of a container's flat
-          # filesystem, not a `docker save` image archive, so it must be
-          # reconstituted with `docker import` (which tags a flat rootfs
-          # tarball as an image), not `docker load` (which only understands
-          # docker save's manifest+layers format). This tag must match
-          # TEST_CONTAINER_IMAGE above; it can't be substituted via the
-          # workflow's GitHub Actions expression syntax here because the enclosing
-          # heredoc is quoted ('EOF') to avoid the shell expanding this
-          # script's own $-variables at write time.
-          echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
-          docker import /alpine.tar docker.io/arm64v8/alpine:latest
-          echo "docker import -> $?"
-
-          echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
-          docker run --privileged --rm --network host -it docker.io/arm64v8/alpine:latest true < /dev/null
-          echo "docker run -> $?"
-
-          echo "=== SHADOW_CTR_QEMU_TEST: dockerd log ==="
-          cat /dockerd.log
-
-          echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
-          echo o > /proc/sysrq-trigger
-          while true; do :; done
-          EOF
-          chmod 755 stage2_test_init.sh
-          sudo cp stage2_test_init.sh ramdisk-root/stage2_test_init.sh
-          sudo chmod 755 ramdisk-root/stage2_test_init.sh
+          # root. Committed at qemu_test/second_stage_init.sh for better
+          # management (rather than generated inline here).
+          sudo cp qemu_test/second_stage_init.sh ramdisk-root/second_stage_init.sh
+          sudo chmod 755 ramdisk-root/second_stage_init.sh
           sudo cp alpine-export.tar ramdisk-root/alpine.tar
           sudo chmod 644 ramdisk-root/alpine.tar
 
@@ -444,7 +353,7 @@ jobs:
           ls -la image2.ext4
 
       # --- 5. injected ramdisk: busybox stage-1 init that mounts
-      #        image1.ext4 (/dev/vda) and switch_root's into it ---
+      #        image1.ext4 (/dev/nvme0n1) and switch_root's into it ---
       - name: Build injected (busybox) ramdisk
         run: |
           set -e
@@ -457,15 +366,9 @@ jobs:
           mkdir -p injected-ramdisk/dev injected-ramdisk/proc injected-ramdisk/sys injected-ramdisk/newroot
           chmod 755 injected-ramdisk/busybox
 
-          cat > injected-ramdisk/init <<'EOF'
-          #!/busybox sh
-          /busybox mount -t devtmpfs devtmpfs /dev
-          exec </dev/console >/dev/kmsg 2>&1
-          /busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
-          /busybox mount -t ext4 /dev/vda /newroot
-          /busybox echo "mount image1.ext4 -> $?"
-          exec /busybox switch_root /newroot /stage2_test_init.sh
-          EOF
+          # Stage-1 init script: committed at qemu_test/first_stage_init.sh
+          # for better management (rather than generated inline here).
+          cp qemu_test/first_stage_init.sh injected-ramdisk/init
           chmod 755 injected-ramdisk/init
 
           (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
@@ -525,8 +428,10 @@ jobs:
                 -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
                 -kernel "qemu-assets/kernel-$variant" \
                 -initrd qemu-assets/injected-ramdisk.cpio \
-                -drive file=qemu-assets/image1.ext4,format=raw,if=virtio \
-                -drive file=qemu-assets/image2.ext4,format=raw,if=virtio \
+                -drive file=qemu-assets/image1.ext4,if=none,id=image1,format=raw \
+                -device nvme,serial=11451401,drive=image1 \
+                -drive file=qemu-assets/image2.ext4,if=none,id=image2,format=raw \
+                -device nvme,serial=11451402,drive=image2 \
                 -append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
               > "qemu-logs/qemu-console-$variant.log" 2>&1
             echo "QEMU ($variant) exited with status $?"
