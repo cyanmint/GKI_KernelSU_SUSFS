@@ -118,7 +118,7 @@ env:
   # tarball and injected alongside it, to be `docker load`-ed once dockerd is
   # running inside the booted ramdisk.
   DOCKER_ROOTFS_IMAGE: docker.io/arm64v8/docker:latest
-  UBUNTU_ROOTFS_IMAGE: docker.io/arm64v8/ubuntu:latest
+  UBUNTU_ROOTFS_IMAGE: docker.io/arm64v8/alpine:latest
 
 jobs:
   prepare:
@@ -382,7 +382,7 @@ jobs:
           # prove dockerd can actually run a real container end-to-end under
           # the shadow_ctr-patched kernel, not just report its own version.
           echo "=== SHADOW_CTR_DOCKER_TEST: docker run (rootfs 2 / ubuntu sanity) ==="
-          docker run --privileged --rm --network host docker.io/arm64v8/ubuntu:latest
+          docker run --privileged --rm --network host docker.io/arm64v8/alpine:latest
           echo "docker run -> $?"
 
           echo "=== SHADOW_CTR_DOCKER_TEST: dockerd log ==="
