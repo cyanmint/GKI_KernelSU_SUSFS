@@ -323,6 +323,12 @@ jobs:
           # line for the rest of the script even though it keeps executing.
           mount -t devtmpfs devtmpfs /dev
           exec </dev/console >/dev/console 2>&1
+          # busybox ash's built-in default PATH (/sbin:/usr/sbin:/bin:/usr/bin)
+          # does not include /usr/local/bin or /usr/local/sbin, where the
+          # docker-library image installs dockerd/docker/containerd/runc, so
+          # PID 1 must export PATH explicitly or every dockerd/docker
+          # invocation below fails with "not found" (exit 127).
+          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           mount -t proc proc /proc
           mount -t sysfs sysfs /sys
           mkdir -p /dev/pts
