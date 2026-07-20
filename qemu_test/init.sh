@@ -16,9 +16,6 @@
 #      ramdisk) onto the new root.
 #   4. copy this very script onto the new root as /second_init (`cat /init`
 #      works because /init is this script's own path in the initramfs).
-#   5. copy /busybox onto the new root, in case stage 2 needs it (e.g. to
-#      populate /dev again with mdev, since switch_root does not preserve
-#      the initramfs's un-mounted /dev contents).
 #   6. busybox switch_root into /newroot and exec /second_init -- since its
 #      argv[0] is now "/second_init" rather than "init", it runs the
 #      stage-2 body below instead of stage-1 again.
@@ -34,7 +31,7 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	/busybox mkdir -p /sys /dev /newroot
 	/busybox mount -t sysfs sysfs /sys
 	/busybox mdev -s
-	exec </dev/console >/dev/kmsg 2>&1
+	exec </dev/ttyAMA0 >/dev/kmsg 2>&1
 	/busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
 
 	/busybox mount -t ext4 /dev/nvme0n1 /newroot
@@ -42,7 +39,6 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 
 	/busybox cp /shadow_ctr_checker /newroot/
 	/busybox cp /shadow_ctr.ko /newroot/
-	/busybox cp /busybox /newroot/
 	/busybox cat /init > /newroot/second_init
 	/busybox chmod 755 /newroot/second_init
 
@@ -66,7 +62,7 @@ set -x
 # which reliably reaches the QEMU console log.
 /busybox mount -t sysfs sysfs /sys 2>/dev/null
 /busybox mdev -s
-exec </dev/ttyAMA0 >/dev/kmsg 2>&1
+exec </dev/console >/dev/kmsg 2>&1
 /system/bin/mount -t proc proc /proc
 export PATH=/system/bin
 /system/bin/mkdir -p /dev/pts
@@ -85,7 +81,7 @@ export PATH=/system/bin
 /system/bin/ifconfig lo up
 
 echo "=== SHADOW_CTR_QEMU_TEST: /ctr (module + checker) copied onto the new root by stage1 ==="
-/system/bin/chmod 755 /ctr/shadow_ctr_checker
+/system/bin/chmod 755 /shadow_ctr_checker
 
 echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
 /shadow_ctr_checker
@@ -100,18 +96,8 @@ echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
 /shadow_ctr_checker
 echo "shadow_ctr_checker (post-insmod) -> $?"
 
-echo "=== SHADOW_CTR_QEMU_TEST: configuring dockerd (vfs storage) ==="
-/system/bin/mkdir -p /etc/docker
-cat > /etc/docker/daemon.json <<'JSON'
-{
-  "storage-driver": "vfs",
-  "iptables": false,
-  "bridge": "none"
-}
-JSON
-
 echo "=== SHADOW_CTR_QEMU_TEST: starting dockerd (daemon) ==="
-dockerd --config-file=/etc/docker/daemon.json > /dockerd.log 2>&1 &
+dockerd > /dockerd.log 2>&1 &
 for i in $(/system/bin/seq 1 30); do
   [ -S /var/run/docker.sock ] && break
   /system/bin/sleep 1
@@ -124,11 +110,10 @@ done
 # (which only understands docker save's manifest+layers format). This tag
 # must match the image image1.ext4 was baked with (docker.io/arm64v8/alpine:latest).
 echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
-docker import /alpine.tar docker.io/arm64v8/alpine:latest
-echo "docker import -> $?"
 
 echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
 docker run --privileged --rm --network host -it docker.io/arm64v8/alpine:latest true < /dev/null
+docker run --privileged --rm --network host -it docker.io/arm64v8/ubuntu:latest true < /dev/null
 echo "docker run -> $?"
 
 echo "=== SHADOW_CTR_QEMU_TEST: dockerd log ==="
