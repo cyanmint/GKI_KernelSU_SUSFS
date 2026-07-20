@@ -54,32 +54,38 @@
 #     block-device root (functionally the "pivot_root into it" step: it
 #     moves /dev into the new root, chroots into it, and execs the given
 #     stage-2 init there).
-#   - image1.ext4: an ext4 filesystem built directly from the contents of
-#     testsuite.zip's ramdisk.cpio (a full Android system-as-root userland
-#     with toybox, a real bionic libc, and static docker/dockerd/containerd/
-#     runc already installed under /system/bin, see testsuite.zip's
-#     provenance), plus a stage-2 init script this workflow adds at its
-#     root. `mke2fs -d <dir>` populates the whole filesystem (permissions,
-#     symlinks included) in one step, so no loopback mount/root privileges
-#     are needed on the runner to build it.
-#   - image2.ext4: a second, much smaller ext4 filesystem carrying exactly
-#     the payload the stage-2 script needs once it is running as the new
-#     root: the freshly built shadow_ctr.ko, the shadow_ctr_checker binary,
-#     and docker.io/arm64v8/alpine:latest exported (via `docker export` of a
-#     created-but-never-started container, i.e. a flat filesystem tarball)
-#     into a tarball. Keeping this payload on its own image (mounted on
-#     /mnt only once the real root is live) keeps image1.ext4 a faithful,
-#     unmodified copy of the published ramdisk contents (aside from the one
-#     stage-2 script needed to drive the test).
+#   - image1.ext4: an ext4 filesystem holding an exact copy of testsuite.zip's
+#     ramdisk.cpio (a full Android system-as-root userland with toybox, a
+#     real bionic libc, and static docker/dockerd/containerd/runc already
+#     installed under /system/bin, see testsuite.zip's provenance), plus the
+#     stage-2 init script and the exported alpine tarball this workflow adds
+#     at its root. It is built by loop-mounting a freshly formatted empty
+#     ext4 image as root and `cpio -idm`-extracting ramdisk.cpio directly
+#     onto the mounted filesystem, rather than via `mke2fs -d <dir>` (e2fsprogs'
+#     populate_fs.c `-d`/`--root-directory` directory-populate path is
+#     documented to mishandle/dereference some symlinks); extracting onto a
+#     real mounted filesystem with plain cpio -- the same tool and mode used
+#     to unpack the ramdisk everywhere else in this workflow -- guarantees
+#     image1.ext4's contents (including symlinks and true root-owned
+#     permissions, since this step now runs under sudo) match ramdisk.cpio
+#     exactly, aside from the two extra files added at its root.
+#   - image2.ext4: a second, much smaller ext4 filesystem carrying only the
+#     freshly built shadow_ctr.ko and the shadow_ctr_checker binary -- the
+#     two payloads the stage-2 script needs to insmod/exec once it is
+#     running as the new root. Keeping this payload on its own image
+#     (mounted on /mnt only once the real root is live) keeps image1.ext4's
+#     ramdisk.cpio contents untouched by the shadow_ctr build artifacts.
 # The stage-2 script (running as PID 1 of the real root) then: mounts
 # image2.ext4 on /mnt, runs shadow_ctr_checker, insmods shadow_ctr.ko, runs
 # shadow_ctr_checker again, starts a real dockerd in the background
-# (capturing its output to a log file), `docker import`s the exported alpine
-# tarball (an exported container filesystem needs `docker import`, not
-# `docker load`, to become a taggable image again), `docker run
-# --privileged --rm --network host -it`s it, and finally powers off via
-# sysrq -- i.e. an actual dockerd running under the shadow_ctr-patched
-# kernel, not just a checker binary observing raw syscalls.
+# (capturing its output to a log file), `docker import`s the alpine tarball
+# already sitting at the root of image1.ext4 (docker.io/arm64v8/alpine:latest
+# `docker export`-ed from a created-but-never-started container, i.e. a flat
+# filesystem tarball -- this needs `docker import`, not `docker load`, to
+# become a taggable image again), `docker run --privileged --rm --network
+# host -it`s it, and finally powers off via sysrq -- i.e. an actual dockerd
+# running under the shadow_ctr-patched kernel, not just a checker binary
+# observing raw syscalls.
 #
 # The boot step exercises all three kernels bundled in testsuite.zip
 # sequentially in a *single* job (not a matrix), so QEMU is installed and
@@ -132,11 +138,11 @@ env:
   TEST_CONTAINER_IMAGE: docker.io/arm64v8/alpine:latest
   # Sizes (MiB) of the two ext4 images assembled for the QEMU test.
   # image1.ext4 holds the full testsuite ramdisk contents (~330MB
-  # uncompressed) plus some headroom for /tmp and dockerd's vfs storage
-  # driver at runtime; image2.ext4 only carries shadow_ctr.ko,
-  # shadow_ctr_checker and the exported alpine tarball.
+  # uncompressed) plus the exported alpine tarball (~10MB) plus some
+  # headroom for /tmp and dockerd's vfs storage driver at runtime;
+  # image2.ext4 only carries shadow_ctr.ko and shadow_ctr_checker.
   IMAGE1_SIZE_MB: '1536'
-  IMAGE2_SIZE_MB: '128'
+  IMAGE2_SIZE_MB: '32'
 
 jobs:
   prepare:
@@ -293,12 +299,27 @@ jobs:
           docker rm "$cid"
           ls -la alpine-export.tar
 
-      # --- 3. image1.ext4: full ramdisk.cpio contents + stage-2 init ---
-      - name: Assemble image1.ext4 (ramdisk contents + stage-2 init script)
+      # --- 3. image1.ext4: full ramdisk.cpio contents + stage-2 init +
+      #        the exported alpine tarball ---
+      #
+      # Formatted empty, then loop-mounted and `cpio -idm`-extracted into
+      # directly as root: `mke2fs -d <dir>` (populating straight from a
+      # plain directory tree) is documented to be able to mishandle/
+      # dereference some symlinks in e2fsprogs' populate_fs.c, so instead
+      # this extracts ramdisk.cpio with the very same cpio invocation used
+      # to unpack it everywhere else in this workflow, straight onto a real
+      # mounted ext4 filesystem, guaranteeing image1.ext4 is an exact copy
+      # of ramdisk.cpio (aside from the two extra files added at its root).
+      - name: Assemble image1.ext4 (ramdisk contents + stage-2 init + alpine tarball)
         run: |
           set -e
+          dd if=/dev/zero of=image1.ext4 bs=1M count="$IMAGE1_SIZE_MB"
+          mkfs.ext4 -q -F image1.ext4
+
           mkdir -p ramdisk-root
-          (cd ramdisk-root && cpio -idm < "$GITHUB_WORKSPACE/testsuite/ramdisk.cpio")
+          sudo mount -o loop image1.ext4 ramdisk-root
+          # shellcheck disable=SC2024  # sudo only needs to write as root; reading the file as the calling user is fine
+          sudo sh -c 'cd ramdisk-root && cpio -idm' < testsuite/ramdisk.cpio
 
           # Stage-2 init script: runs as PID 1 once busybox switch_root (in
           # the injected ramdisk below) has handed control to this real
@@ -306,7 +327,7 @@ jobs:
           # bionic's dynamic linker needs /proc/self/exe (or a resolvable
           # argv[0]) to load shared objects, which only holds once /proc is
           # mounted and the path is absolute.
-          cat > ramdisk-root/stage2_test_init.sh <<'EOF'
+          cat > stage2_test_init.sh <<'EOF'
           #!/system/bin/sh
           set -x
           # Mount devtmpfs/proc/sysfs first and immediately re-point stdio
@@ -337,7 +358,7 @@ jobs:
           /system/bin/mount -t tmpfs tmpfs /tmp
           /system/bin/ifconfig lo up
 
-          echo "=== SHADOW_CTR_QEMU_TEST: mount image2.ext4 -> /mnt ==="
+          echo "=== SHADOW_CTR_QEMU_TEST: mount image2.ext4 -> /mnt (module + checker) ==="
           /system/bin/mkdir -p /mnt
           /system/bin/mount -t ext4 /dev/vdb /mnt
           echo "mount image2.ext4 -> $?"
@@ -373,7 +394,8 @@ jobs:
             /system/bin/sleep 1
           done
 
-          # /mnt/alpine.tar is a `docker export` of a container's flat
+          # /alpine.tar (already sitting at the root of this filesystem,
+          # i.e. image1.ext4) is a `docker export` of a container's flat
           # filesystem, not a `docker save` image archive, so it must be
           # reconstituted with `docker import` (which tags a flat rootfs
           # tarball as an image), not `docker load` (which only understands
@@ -383,7 +405,7 @@ jobs:
           # heredoc is quoted ('EOF') to avoid the shell expanding this
           # script's own $-variables at write time.
           echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
-          docker import /mnt/alpine.tar docker.io/arm64v8/alpine:latest
+          docker import /alpine.tar docker.io/arm64v8/alpine:latest
           echo "docker import -> $?"
 
           echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
@@ -397,24 +419,24 @@ jobs:
           echo o > /proc/sysrq-trigger
           while true; do :; done
           EOF
-          chmod 755 ramdisk-root/stage2_test_init.sh
+          chmod 755 stage2_test_init.sh
+          sudo cp stage2_test_init.sh ramdisk-root/stage2_test_init.sh
+          sudo chmod 755 ramdisk-root/stage2_test_init.sh
+          sudo cp alpine-export.tar ramdisk-root/alpine.tar
+          sudo chmod 644 ramdisk-root/alpine.tar
 
-          # mke2fs -d populates the whole filesystem (perms/symlinks
-          # included) from a plain directory in one step, so no loopback
-          # mount / root privileges are needed to build image1.ext4.
-          dd if=/dev/zero of=image1.ext4 bs=1M count="$IMAGE1_SIZE_MB"
-          mkfs.ext4 -q -F -d ramdisk-root image1.ext4
+          sync
+          sudo umount ramdisk-root
           ls -la image1.ext4
 
-      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker + alpine.tar ---
-      - name: Assemble image2.ext4 (module + checker + alpine tarball)
+      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker ---
+      - name: Assemble image2.ext4 (module + checker)
         run: |
           set -e
           mkdir -p image2-root
           cp payload/shadow_ctr.ko image2-root/
           cp payload/shadow_ctr_checker image2-root/
           chmod 755 image2-root/shadow_ctr_checker
-          cp alpine-export.tar image2-root/alpine.tar
           ls -la image2-root
 
           dd if=/dev/zero of=image2.ext4 bs=1M count="$IMAGE2_SIZE_MB"
