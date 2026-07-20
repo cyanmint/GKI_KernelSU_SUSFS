@@ -40,13 +40,20 @@
 # headers) and uploaded as its own artifact (shadow_ctr_checker-arm64). The
 # "build" (.ko) and "build-checker" jobs are fully independent of each other
 # (neither `needs:` the other) since they share no build inputs or outputs;
-# only the QEMU test assets job below (which needs both) recombines them.
+# only the "test" job below (which needs both) recombines them.
 #
 # Boot test (QEMU)
 # -----------------
+# testsuite.zip now bundles a ready-to-use image1.ext4 directly (a full
+# Android system-as-root userland with toybox, a real bionic libc, static
+# docker/dockerd/containerd/runc under /system/bin, and the exported alpine
+# tarball already baked in at its root), so this workflow no longer builds
+# it at all -- it is downloaded and used completely verbatim.
+#
 # Once the TEST_KMI (android14-6.1) .ko build and the checker build finish,
-# "build-test-assets" downloads both and assembles everything the QEMU boot
-# test needs:
+# the "test" job downloads both, fetches testsuite.zip, and assembles the
+# two remaining things the QEMU boot test needs before booting all three
+# kernels in the same job:
 #   - a small "injected ramdisk" (initramfs) whose /init is a busybox-based
 #     stage-1 script (qemu_test/first_stage_init.sh). Its job is to mount
 #     image1.ext4 as the new root and image2.ext4 at a directory inside it
@@ -57,45 +64,27 @@
 #     root (functionally the "pivot_root into it" step: it moves /dev into
 #     the new root, chroots into it, and execs the given stage-2 init
 #     there).
-#   - image1.ext4: an ext4 filesystem holding an exact copy of testsuite.zip's
-#     ramdisk.cpio (a full Android system-as-root userland with toybox, a
-#     real bionic libc, and static docker/dockerd/containerd/runc already
-#     installed under /system/bin, see testsuite.zip's provenance), plus the
-#     exported alpine tarball this workflow adds at its root. It is built by
-#     loop-mounting a freshly formatted empty ext4 image as root and
-#     `cpio -idm`-extracting ramdisk.cpio directly onto the mounted
-#     filesystem, rather than via `mke2fs -d <dir>` (e2fsprogs'
-#     populate_fs.c `-d`/`--root-directory` directory-populate path is
-#     documented to mishandle/dereference some symlinks); extracting onto a
-#     real mounted filesystem with plain cpio -- the same tool and mode used
-#     to unpack the ramdisk everywhere else in this workflow -- guarantees
-#     image1.ext4's contents (including symlinks and true root-owned
-#     permissions, since this step now runs under sudo) match ramdisk.cpio
-#     exactly, aside from the one extra file added at its root.
-#   - image2.ext4: a second, much smaller ext4 filesystem carrying the
-#     freshly built shadow_ctr.ko, the shadow_ctr_checker binary and the
-#     stage-2 init script (qemu_test/second_stage_init.sh) -- everything the
-#     stage-2 script needs to insmod/exec once it is running as the new
-#     root. Keeping this payload on its own image (mounted on /mnt inside
+#   - image2.ext4: a small ext4 filesystem carrying the freshly built
+#     shadow_ctr.ko, the shadow_ctr_checker binary and the stage-2 init
+#     script (qemu_test/second_stage_init.sh) -- everything the stage-2
+#     script needs to insmod/exec once it is running as the new root.
+#     Keeping this payload on its own image (mounted on /mnt inside
 #     image1.ext4 by stage-1, before switch_root) keeps image1.ext4's
-#     ramdisk.cpio contents untouched by the shadow_ctr build artifacts.
+#     prebuilt contents untouched by the shadow_ctr build artifacts.
 # The stage-2 script (running as PID 1 of the real root, itself read from
 # image2.ext4 already mounted at /mnt) then: runs shadow_ctr_checker,
 # insmods shadow_ctr.ko, runs shadow_ctr_checker again, starts a real
 # dockerd in the background (capturing its output to a log file), `docker
-# import`s the alpine tarball already sitting at the root of image1.ext4
-# (docker.io/arm64v8/alpine:latest `docker export`-ed from a
-# created-but-never-started container, i.e. a flat filesystem tarball --
-# this needs `docker import`, not `docker load`, to become a taggable image
-# again), `docker run --privileged --rm --network host -it`s it, and finally
-# powers off via sysrq -- i.e. an actual dockerd running under the
+# import`s the alpine tarball already sitting at the root of image1.ext4,
+# `docker run --privileged --rm --network host -it`s it, and finally powers
+# off via sysrq -- i.e. an actual dockerd running under the
 # shadow_ctr-patched kernel, not just a checker binary observing raw
 # syscalls.
 #
 # The boot step exercises all three kernels bundled in testsuite.zip
 # sequentially in a *single* job (not a matrix), so QEMU is installed and
-# the (sizeable) injected ramdisk / ext4 images are downloaded only once
-# instead of once per kernel:
+# the (sizeable) prebuilt image1.ext4 is downloaded only once instead of
+# once per kernel:
 #   - "stock": a stock, unpatched Android GKI kernel (no SukiSU/SUSFS/
 #     shadow_ctr patches at all), a baseline sanity check of the QEMU boot
 #     environment itself.
@@ -136,17 +125,14 @@ env:
   # KMI whose build is boot-tested under QEMU below.
   TEST_KMI: android14-6.1
   # testsuite.zip bundles the three QEMU test kernels (stock / sukisu /
-  # sukisu+ctr_patches) and the injectable ramdisk.cpio (toybox + busybox +
-  # bionic libc + static docker/dockerd/containerd/runc preinstalled under
-  # /system/bin) in one archive.
+  # sukisu+ctr_patches) and a ready-to-use image1.ext4 (a full Android
+  # system-as-root userland with toybox, bionic libc, static
+  # docker/dockerd/containerd/runc preinstalled under /system/bin, and the
+  # exported alpine tarball already baked in at its root) in one archive.
   TESTSUITE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/testsuite.zip
-  TEST_CONTAINER_IMAGE: docker.io/arm64v8/alpine:latest
-  # Sizes (MiB) of the two ext4 images assembled for the QEMU test.
-  # image1.ext4 holds the full testsuite ramdisk contents (~330MB
-  # uncompressed) plus the exported alpine tarball (~10MB) plus some
-  # headroom for /tmp and dockerd's vfs storage driver at runtime;
-  # image2.ext4 only carries shadow_ctr.ko and shadow_ctr_checker.
-  IMAGE1_SIZE_MB: '1536'
+  # Size (MiB) of image2.ext4, the only ext4 image this workflow still
+  # assembles; it only carries shadow_ctr.ko, shadow_ctr_checker and
+  # second_stage_init.sh.
   IMAGE2_SIZE_MB: '32'
 
 jobs:
@@ -252,11 +238,16 @@ jobs:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
 
-  # Assemble everything the QEMU boot test needs: the injected (busybox)
-  # ramdisk, the two ext4 images, and (verbatim, unmodified) the three test
-  # kernels bundled in testsuite.zip. Independent of the full KMI matrix --
-  # only needs the single TEST_KMI .ko plus the checker binary.
-  build-test-assets:
+  # Build the injected (busybox) ramdisk and image2.ext4 (module + checker
+  # + stage-2 init), then boot-test all three testsuite kernels under QEMU
+  # against them plus the prebuilt image1.ext4 from testsuite.zip -- all in
+  # one job, since assembling these lightweight assets no longer needs its
+  # own separate session (no more building image1.ext4 or exporting an
+  # alpine tarball). Independent of the full KMI matrix -- only needs the
+  # single TEST_KMI .ko plus the checker binary. Skipped (not failed) if
+  # TEST_KMI was excluded from the build matrix (e.g. via a custom `kmis`
+  # workflow_dispatch input).
+  test:
     needs: [prepare, build, build-checker]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-checker.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
     runs-on: ubuntu-latest
@@ -264,10 +255,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install test-asset build dependencies
+      - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cpio e2fsprogs
+          sudo apt-get install -y cpio e2fsprogs qemu-system-arm
 
       - name: Download shadow_ctr.ko (${{ env.TEST_KMI }})
         uses: actions/download-artifact@v8
@@ -282,61 +273,22 @@ jobs:
           path: payload/
       - run: chmod +x payload/shadow_ctr_checker
 
-      # --- 1. Fetch testsuite.zip: three kernels + ramdisk.cpio ---
+      # --- 1. Fetch testsuite.zip: three kernels + prebuilt image1.ext4 ---
       - name: Download and extract testsuite.zip
         run: |
           set -e
           curl -fL -o testsuite.zip "$TESTSUITE_URL"
           mkdir -p testsuite
           unzip -o testsuite.zip -d testsuite
+          # Normalize the versioned kernel filenames to fixed names so the
+          # boot loop below can reference them unambiguously (kernel-sukisu-*
+          # would otherwise also glob-match kernel-sukisu-ctrpatches-*).
+          cp testsuite/kernel-stock-* testsuite/kernel-stock
+          cp testsuite/kernel-sukisu-ctrpatches-* testsuite/kernel-sukisu-ctrpatches
+          cp testsuite/kernel-sukisu-[0-9]* testsuite/kernel-sukisu
           ls -la testsuite
 
-      # --- 2. docker.io/arm64v8/alpine:latest -> exported tarball ---
-      #
-      # `docker export` (not `docker save`) is used deliberately: it dumps a
-      # created container's flat filesystem as a plain tarball, independent
-      # of any image-manifest/layer format, so the stage-2 script inside
-      # QEMU can reconstitute it with a plain `docker import` even though it
-      # never itself pulled the image from a registry.
-      - name: Pull and export test container image (${{ env.TEST_CONTAINER_IMAGE }})
-        run: |
-          set -e
-          docker pull --platform linux/arm64 "$TEST_CONTAINER_IMAGE"
-          cid=$(docker create --platform linux/arm64 "$TEST_CONTAINER_IMAGE" true)
-          docker export "$cid" -o alpine-export.tar
-          docker rm "$cid"
-          ls -la alpine-export.tar
-
-      # --- 3. image1.ext4: full ramdisk.cpio contents + the exported
-      #        alpine tarball ---
-      #
-      # Formatted empty, then loop-mounted and `cpio -idm`-extracted into
-      # directly as root: `mke2fs -d <dir>` (populating straight from a
-      # plain directory tree) is documented to be able to mishandle/
-      # dereference some symlinks in e2fsprogs' populate_fs.c, so instead
-      # this extracts ramdisk.cpio with the very same cpio invocation used
-      # to unpack it everywhere else in this workflow, straight onto a real
-      # mounted ext4 filesystem, guaranteeing image1.ext4 is an exact copy
-      # of ramdisk.cpio (aside from the one extra file added at its root).
-      - name: Assemble image1.ext4 (ramdisk contents + alpine tarball)
-        run: |
-          set -e
-          dd if=/dev/zero of=image1.ext4 bs=1M count="$IMAGE1_SIZE_MB"
-          mkfs.ext4 -q -F image1.ext4
-
-          mkdir -p ramdisk-root
-          sudo mount -o loop image1.ext4 ramdisk-root
-          # shellcheck disable=SC2024  # sudo only needs to write as root; reading the file as the calling user is fine
-          sudo sh -c 'cd ramdisk-root && cpio -idm' < testsuite/ramdisk.cpio
-
-          sudo cp alpine-export.tar ramdisk-root/alpine.tar
-          sudo chmod 644 ramdisk-root/alpine.tar
-
-          sync
-          sudo umount ramdisk-root
-          ls -la image1.ext4
-
-      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker +
+      # --- 2. image2.ext4: shadow_ctr.ko + shadow_ctr_checker +
       #        second_stage_init.sh ---
       - name: Assemble image2.ext4 (module + checker + stage-2 init)
         run: |
@@ -359,7 +311,7 @@ jobs:
           mkfs.ext4 -q -F -d image2-root image2.ext4
           ls -la image2.ext4
 
-      # --- 5. injected ramdisk: busybox stage-1 init that mounts
+      # --- 3. injected ramdisk: busybox stage-1 init that mounts
       #        image1.ext4 (/dev/nvme0n1) and switch_root's into it ---
       - name: Build injected (busybox) ramdisk
         run: |
@@ -381,46 +333,6 @@ jobs:
           (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
           ls -la injected-ramdisk.cpio
 
-      # --- 6. bundle: injected ramdisk + three kernels + two ext4 images ---
-      - name: Assemble QEMU asset bundle
-        run: |
-          mkdir -p qemu-assets
-          cp injected-ramdisk.cpio qemu-assets/
-          cp testsuite/kernel-stock-* qemu-assets/kernel-stock
-          cp testsuite/kernel-sukisu-ctrpatches-* qemu-assets/kernel-sukisu-ctrpatches
-          cp testsuite/kernel-sukisu-[0-9]* qemu-assets/kernel-sukisu
-          cp image1.ext4 qemu-assets/
-          cp image2.ext4 qemu-assets/
-          ls -la qemu-assets
-
-      - name: Upload injected ramdisk, kernels and ext4 images
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ctr-qemu-assets
-          path: qemu-assets/
-
-  # Boot-test all three testsuite kernels under QEMU with the exact same
-  # injected ramdisk + ext4 images, sequentially in a single job (no
-  # matrix): this installs qemu-system-arm and downloads the (sizeable)
-  # ramdisk/ext4 images only once instead of three times. Skipped (not
-  # failed) if build-test-assets itself was skipped (e.g. a custom `kmis`
-  # workflow_dispatch input excluded TEST_KMI from the build matrix).
-  test:
-    needs: [build-test-assets]
-    if: ${{ !cancelled() && needs.build-test-assets.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-arm
-
-      - name: Download injected ramdisk, kernels and ext4 images
-        uses: actions/download-artifact@v8
-        with:
-          name: shadow_ctr-qemu-assets
-          path: qemu-assets/
-
       # A generous per-kernel timeout: starting dockerd + docker import + a
       # real `docker run` takes noticeably longer than a plain
       # insmod+checker smoke test.
@@ -433,11 +345,11 @@ jobs:
             timeout --signal=KILL 300 \
               qemu-system-aarch64 \
                 -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
-                -kernel "qemu-assets/kernel-$variant" \
-                -initrd qemu-assets/injected-ramdisk.cpio \
-                -drive file=qemu-assets/image1.ext4,if=none,id=image1,format=raw \
+                -kernel "testsuite/kernel-$variant" \
+                -initrd injected-ramdisk.cpio \
+                -drive file=testsuite/image1.ext4,if=none,id=image1,format=raw \
                 -device nvme,serial=11451401,drive=image1 \
-                -drive file=qemu-assets/image2.ext4,if=none,id=image2,format=raw \
+                -drive file=image2.ext4,if=none,id=image2,format=raw \
                 -device nvme,serial=11451402,drive=image2 \
                 -append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
               > "qemu-logs/qemu-console-$variant.log" 2>&1

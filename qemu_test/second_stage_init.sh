@@ -74,7 +74,7 @@ done
 # `docker save` image archive, so it must be reconstituted with `docker
 # import` (which tags a flat rootfs tarball as an image), not `docker load`
 # (which only understands docker save's manifest+layers format). This tag
-# must match TEST_CONTAINER_IMAGE in build-shadow-ctr.yml.
+# must match the image image1.ext4 was baked with (docker.io/arm64v8/alpine:latest).
 echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
 docker import /alpine.tar docker.io/arm64v8/alpine:latest
 echo "docker import -> $?"

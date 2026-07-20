@@ -1,6 +1,6 @@
 #!/busybox sh
 # Stage-1 init: runs as PID 1 out of the injected (busybox) initramfs
-# assembled by build-shadow-ctr.yml's build-test-assets job. Its only job is
+# assembled by build-shadow-ctr.yml's test job. Its only job is
 # to mount image1.ext4 (attached as an NVMe device, /dev/nvme0n1 -- the
 # kernels under test have no virtio support) as the new root, mount
 # image2.ext4 (/dev/nvme1n1, module + checker + second_stage_init.sh) as a
