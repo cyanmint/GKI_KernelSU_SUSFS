@@ -340,3 +340,10 @@ jobs:
         with:
           name: shadow_ctr-qemu-logs
           path: qemu-logs/
+
+      - name: Upload injected-ramdisk.cpio
+        if: always()
+        uses: actions/upload-artifacts@v7
+        with:
+          name: injected-ramdisk.cpio
+          path: injected-ramdisk.cpio
