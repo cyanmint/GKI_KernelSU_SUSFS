@@ -65,7 +65,7 @@ set -x
 # which reliably reaches the QEMU console log.
 /busybox mount -t sysfs sysfs /sys 2>/dev/null
 /busybox mdev -s
-exec </dev/console >/dev/kmsg 2>&1
+exec </dev/ttyAMA0 >/dev/kmsg 2>&1
 /system/bin/mount -t proc proc /proc
 export PATH=/system/bin
 /system/bin/mkdir -p /dev/pts
