@@ -64,6 +64,23 @@ static void svipc_resource_init_common(struct svipc_resource *res)
 	INIT_LIST_HEAD(&res->msgs);
 	mutex_init(&res->msgs_lock);
 	init_waitqueue_head(&res->msgs_wait);
+	mutex_init(&res->sem_lock);
+	init_waitqueue_head(&res->sem_wait);
+	mutex_init(&res->shm_lock);
+}
+
+/*
+ * svipc_resource_alloc_sem_val() - allocate the per-semaphore value array
+ * for a freshly created TYPE_SEM resource, mirroring semget(2)'s own
+ * "all values initialised to 0" rule (real ipc/sem.c's sem_alloc()).
+ * No-op (and never fails) for any other resource type.
+ */
+static int svipc_resource_alloc_sem_val(struct svipc_resource *res)
+{
+	if (res->type != SHADOW_SYSVIPC_TYPE_SEM || !res->nsems)
+		return 0;
+	res->sem_val = kcalloc(res->nsems, sizeof(*res->sem_val), GFP_KERNEL);
+	return res->sem_val ? 0 : -ENOMEM;
 }
 
 u32 svipc_shadow_flags_from_ipc(int flags)
@@ -125,6 +142,10 @@ void svipc_put(struct svipc_resource *res)
 		atomic_dec(&svipc_count);
 		if (res->type == SHADOW_SYSVIPC_TYPE_MSGQ)
 			svipc_msgq_purge_locked(res);
+		if (res->type == SHADOW_SYSVIPC_TYPE_SEM)
+			svipc_sem_purge_locked(res);
+		if (res->type == SHADOW_SYSVIPC_TYPE_SHM)
+			svipc_shm_purge_locked(res);
 		kfree(res);
 	}
 }
@@ -187,6 +208,11 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 			res->size = size;
 			refcount_set(&res->refcount, 1);
 			svipc_resource_init_common(res);
+			if (svipc_resource_alloc_sem_val(res)) {
+				mutex_unlock(&svipc_map_lock);
+				kfree(res);
+				return -ENOMEM;
+			}
 
 			ret = xa_alloc(&svipc_map, &res->id, res,
 				       XA_LIMIT(1, INT_MAX), GFP_KERNEL);
@@ -215,6 +241,10 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 		res->size = size;
 		refcount_set(&res->refcount, 1);
 		svipc_resource_init_common(res);
+		if (svipc_resource_alloc_sem_val(res)) {
+			kfree(res);
+			return -ENOMEM;
+		}
 
 		mutex_lock(&svipc_map_lock);
 		ret = xa_alloc(&svipc_map, &res->id, res,
@@ -263,6 +293,10 @@ void svipc_force_free_all_resources(void)
 		xa_erase(&svipc_map, id);
 		if (res->type == SHADOW_SYSVIPC_TYPE_MSGQ)
 			svipc_msgq_purge_locked(res);
+		if (res->type == SHADOW_SYSVIPC_TYPE_SEM)
+			svipc_sem_purge_locked(res);
+		if (res->type == SHADOW_SYSVIPC_TYPE_SHM)
+			svipc_shm_purge_locked(res);
 		kfree(res);
 	}
 	mutex_unlock(&svipc_map_lock);

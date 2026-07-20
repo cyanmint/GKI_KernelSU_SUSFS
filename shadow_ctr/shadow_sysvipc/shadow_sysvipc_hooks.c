@@ -198,6 +198,11 @@ static long svipc_sys_semctl(int semid, int semnum, int cmd, unsigned long arg)
 		return svipc_tgid_destroy_current(SHADOW_SYSVIPC_TYPE_SEM, semid);
 	case IPC_STAT:
 		return svipc_semctl_stat_to_user(semid, uarg);
+	case GETVAL:
+	case SETVAL:
+	case GETALL:
+	case SETALL:
+		return svipc_sys_semctl_val(semid, semnum, cmd & ~IPC_64, arg);
 	default:
 		return -ENOSYS;
 	}
@@ -309,17 +314,32 @@ static long svipc_hook_semctl(const struct pt_regs *regs)
 
 static long svipc_hook_semop(const struct pt_regs *regs)
 {
-	/*
-	 * Real SysV semaphore transactions require atomic multi-op semantics,
-	 * waiting rules, wakeups and SEM_UNDO bookkeeping.  A partial imitation is
-	 * too easy to get subtly wrong without a real kernel test matrix.
-	 */
-	return real_sys_semop(regs);
+	long ret;
+	int semid = (int)svipc_sys_arg(regs, 0);
+	struct sembuf __user *tsops = (struct sembuf __user *)svipc_sys_arg(regs, 1);
+	unsigned int nsops = (unsigned int)svipc_sys_arg(regs, 2);
+
+	ret = real_sys_semop(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	return svipc_sys_semop(semid, tsops, nsops, NULL);
 }
 
 static long svipc_hook_semtimedop(const struct pt_regs *regs)
 {
-	return real_sys_semtimedop(regs);
+	long ret;
+	int semid = (int)svipc_sys_arg(regs, 0);
+	struct sembuf __user *tsops = (struct sembuf __user *)svipc_sys_arg(regs, 1);
+	unsigned int nsops = (unsigned int)svipc_sys_arg(regs, 2);
+	const struct __kernel_timespec __user *utimeout =
+		(const struct __kernel_timespec __user *)svipc_sys_arg(regs, 3);
+
+	ret = real_sys_semtimedop(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	return svipc_sys_semop(semid, tsops, nsops, utimeout);
 }
 
 static long svipc_hook_shmget(const struct pt_regs *regs)
@@ -352,18 +372,32 @@ static long svipc_hook_shmctl(const struct pt_regs *regs)
 
 static long svipc_hook_shmat(const struct pt_regs *regs)
 {
-	/*
-	 * Intentionally unimplemented.  Fabricating a successful attach without a
-	 * real backing VM object would hand userspace a bogus pointer and risk memory
-	 * corruption, so we preserve the kernel's existing result (-ENOSYS on stubbed
-	 * kernels, native behaviour on CONFIG_SYSVIPC=y kernels).
-	 */
-	return real_sys_shmat(regs);
+	long ret;
+	int shmid = (int)svipc_sys_arg(regs, 0);
+	const void __user *ushmaddr = (const void __user *)svipc_sys_arg(regs, 1);
+	int shmflg = (int)svipc_sys_arg(regs, 2);
+	unsigned long raddr = 0;
+
+	ret = real_sys_shmat(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	ret = svipc_sys_shmat(shmid, ushmaddr, shmflg, &raddr);
+	if (ret < 0)
+		return ret;
+	return (long)raddr;
 }
 
 static long svipc_hook_shmdt(const struct pt_regs *regs)
 {
-	return real_sys_shmdt(regs);
+	long ret;
+	const void __user *ushmaddr = (const void __user *)svipc_sys_arg(regs, 0);
+
+	ret = real_sys_shmdt(regs);
+	if (ret != -ENOSYS)
+		return ret;
+
+	return svipc_sys_shmdt(ushmaddr);
 }
 
 int shadow_sysvipc_init(void)

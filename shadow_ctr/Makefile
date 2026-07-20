@@ -28,6 +28,8 @@ shadow_ctr-objs := \
 	shadow_sysvipc/shadow_sysvipc_tgid.o \
 	shadow_sysvipc/shadow_sysvipc_hooks.o \
 	shadow_sysvipc/shadow_sysvipc_msgq.o \
+	shadow_sysvipc/shadow_sysvipc_sem.o \
+	shadow_sysvipc/shadow_sysvipc_shm.o \
 	shadow_mqueue/shadow_mqueue_core.o \
 	shadow_mqueue/shadow_mqueue_io.o \
 	shadow_mqueue/shadow_mqueue_hooks.o \

@@ -65,6 +65,15 @@ struct svipc_msg {
  * @msgs_wait: waiters blocked in msgrcv(2) waiting for a matching message
  * @msg_count: number of messages currently queued
  * @msg_qbytes: total payload bytes currently queued
+ * @sem_val:   per-semaphore value array (TYPE_SEM only, @nsems entries)
+ * @sem_lock:  serialises @sem_val (semop(2)'s all-or-nothing multi-op apply)
+ * @sem_wait:  waiters blocked in semop(2)/semtimedop(2) on an op that could
+ *             not be satisfied immediately
+ * @shm_file:  backing shmem file for the segment (TYPE_SHM only), created
+ *             lazily by the first shmat(2); every subsequent shmat(2) of the
+ *             same @id mmap()s the same file so attaches genuinely share
+ *             memory, exactly like real SysV shared memory
+ * @shm_lock:  serialises lazy @shm_file creation
  */
 struct svipc_resource {
 	u32			id;
@@ -81,6 +90,11 @@ struct svipc_resource {
 	wait_queue_head_t	msgs_wait;
 	u32			msg_count;
 	u64			msg_qbytes;
+	int			*sem_val;
+	struct mutex		sem_lock;
+	wait_queue_head_t	sem_wait;
+	struct file		*shm_file;
+	struct mutex		shm_lock;
 };
 
 struct svipc_owned_ref {
@@ -127,5 +141,22 @@ long svipc_sys_msgsnd(int msqid, const void __user *umsgp, size_t msgsz,
 		      int msgflg);
 long svipc_sys_msgrcv(int msqid, void __user *umsgp, size_t msgsz,
 		      long msgtyp, int msgflg);
+
+/* shadow_sysvipc_sem.c: simulated semaphore operations (semop/semtimedop)
+ * and semctl(2)'s value-manipulation commands (GETVAL/SETVAL/GETALL/SETALL).
+ */
+void svipc_sem_purge_locked(struct svipc_resource *res);
+long svipc_sys_semop(int semid, struct sembuf __user *tsops, unsigned int nsops,
+		    const struct __kernel_timespec __user *utimeout);
+long svipc_sys_semctl_val(int semid, int semnum, int cmd, unsigned long arg);
+
+/* shadow_sysvipc_shm.c: simulated shared-memory attach/detach (shmat/shmdt),
+ * backed by a lazily-created shmem file shared by every attach of the same
+ * segment id.
+ */
+void svipc_shm_purge_locked(struct svipc_resource *res);
+long svipc_sys_shmat(int shmid, const void __user *ushmaddr, int shmflg,
+		    unsigned long *raddr);
+long svipc_sys_shmdt(const void __user *ushmaddr);
 
 #endif
