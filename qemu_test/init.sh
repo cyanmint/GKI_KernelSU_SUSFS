@@ -39,6 +39,7 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 
 	/busybox cp /shadow_ctr_checker /newroot/
 	/busybox cp /shadow_ctr.ko /newroot/
+	/busybox cp /busybox /newroot/
 	/busybox cat /init > /newroot/second_init
 	/busybox chmod 755 /newroot/second_init
 
