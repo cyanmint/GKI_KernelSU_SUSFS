@@ -48,45 +48,49 @@
 # "build-test-assets" downloads both and assembles everything the QEMU boot
 # test needs:
 #   - a small "injected ramdisk" (initramfs) whose /init is a busybox-based
-#     stage-1 script (qemu_test/first_stage_init.sh). Its only job is to
-#     mount image1.ext4 (attached as an NVMe device -- the test kernels have
-#     no virtio support) and busybox switch_root into it -- the standard,
-#     kernel-supported way to hand off from a cpio-based initramfs to a real
-#     block-device root (functionally the "pivot_root into it" step: it
-#     moves /dev into the new root, chroots into it, and execs the given
-#     stage-2 init there).
+#     stage-1 script (qemu_test/first_stage_init.sh). Its job is to mount
+#     image1.ext4 as the new root and image2.ext4 at a directory inside it
+#     (both attached as NVMe devices -- the test kernels have no virtio
+#     support), then busybox switch_root into image1.ext4 and exec the
+#     stage-2 init living on image2.ext4 -- the standard, kernel-supported
+#     way to hand off from a cpio-based initramfs to a real block-device
+#     root (functionally the "pivot_root into it" step: it moves /dev into
+#     the new root, chroots into it, and execs the given stage-2 init
+#     there).
 #   - image1.ext4: an ext4 filesystem holding an exact copy of testsuite.zip's
 #     ramdisk.cpio (a full Android system-as-root userland with toybox, a
 #     real bionic libc, and static docker/dockerd/containerd/runc already
 #     installed under /system/bin, see testsuite.zip's provenance), plus the
-#     stage-2 init script and the exported alpine tarball this workflow adds
-#     at its root. It is built by loop-mounting a freshly formatted empty
-#     ext4 image as root and `cpio -idm`-extracting ramdisk.cpio directly
-#     onto the mounted filesystem, rather than via `mke2fs -d <dir>` (e2fsprogs'
+#     exported alpine tarball this workflow adds at its root. It is built by
+#     loop-mounting a freshly formatted empty ext4 image as root and
+#     `cpio -idm`-extracting ramdisk.cpio directly onto the mounted
+#     filesystem, rather than via `mke2fs -d <dir>` (e2fsprogs'
 #     populate_fs.c `-d`/`--root-directory` directory-populate path is
 #     documented to mishandle/dereference some symlinks); extracting onto a
 #     real mounted filesystem with plain cpio -- the same tool and mode used
 #     to unpack the ramdisk everywhere else in this workflow -- guarantees
 #     image1.ext4's contents (including symlinks and true root-owned
 #     permissions, since this step now runs under sudo) match ramdisk.cpio
-#     exactly, aside from the two extra files added at its root.
-#   - image2.ext4: a second, much smaller ext4 filesystem carrying only the
-#     freshly built shadow_ctr.ko and the shadow_ctr_checker binary -- the
-#     two payloads the stage-2 script needs to insmod/exec once it is
-#     running as the new root. Keeping this payload on its own image
-#     (mounted on /mnt only once the real root is live) keeps image1.ext4's
+#     exactly, aside from the one extra file added at its root.
+#   - image2.ext4: a second, much smaller ext4 filesystem carrying the
+#     freshly built shadow_ctr.ko, the shadow_ctr_checker binary and the
+#     stage-2 init script (qemu_test/second_stage_init.sh) -- everything the
+#     stage-2 script needs to insmod/exec once it is running as the new
+#     root. Keeping this payload on its own image (mounted on /mnt inside
+#     image1.ext4 by stage-1, before switch_root) keeps image1.ext4's
 #     ramdisk.cpio contents untouched by the shadow_ctr build artifacts.
-# The stage-2 script (running as PID 1 of the real root) then: mounts
-# image2.ext4 on /mnt, runs shadow_ctr_checker, insmods shadow_ctr.ko, runs
-# shadow_ctr_checker again, starts a real dockerd in the background
-# (capturing its output to a log file), `docker import`s the alpine tarball
-# already sitting at the root of image1.ext4 (docker.io/arm64v8/alpine:latest
-# `docker export`-ed from a created-but-never-started container, i.e. a flat
-# filesystem tarball -- this needs `docker import`, not `docker load`, to
-# become a taggable image again), `docker run --privileged --rm --network
-# host -it`s it, and finally powers off via sysrq -- i.e. an actual dockerd
-# running under the shadow_ctr-patched kernel, not just a checker binary
-# observing raw syscalls.
+# The stage-2 script (running as PID 1 of the real root, itself read from
+# image2.ext4 already mounted at /mnt) then: runs shadow_ctr_checker,
+# insmods shadow_ctr.ko, runs shadow_ctr_checker again, starts a real
+# dockerd in the background (capturing its output to a log file), `docker
+# import`s the alpine tarball already sitting at the root of image1.ext4
+# (docker.io/arm64v8/alpine:latest `docker export`-ed from a
+# created-but-never-started container, i.e. a flat filesystem tarball --
+# this needs `docker import`, not `docker load`, to become a taggable image
+# again), `docker run --privileged --rm --network host -it`s it, and finally
+# powers off via sysrq -- i.e. an actual dockerd running under the
+# shadow_ctr-patched kernel, not just a checker binary observing raw
+# syscalls.
 #
 # The boot step exercises all three kernels bundled in testsuite.zip
 # sequentially in a *single* job (not a matrix), so QEMU is installed and
@@ -303,8 +307,8 @@ jobs:
           docker rm "$cid"
           ls -la alpine-export.tar
 
-      # --- 3. image1.ext4: full ramdisk.cpio contents + stage-2 init +
-      #        the exported alpine tarball ---
+      # --- 3. image1.ext4: full ramdisk.cpio contents + the exported
+      #        alpine tarball ---
       #
       # Formatted empty, then loop-mounted and `cpio -idm`-extracted into
       # directly as root: `mke2fs -d <dir>` (populating straight from a
@@ -313,8 +317,8 @@ jobs:
       # this extracts ramdisk.cpio with the very same cpio invocation used
       # to unpack it everywhere else in this workflow, straight onto a real
       # mounted ext4 filesystem, guaranteeing image1.ext4 is an exact copy
-      # of ramdisk.cpio (aside from the two extra files added at its root).
-      - name: Assemble image1.ext4 (ramdisk contents + stage-2 init + alpine tarball)
+      # of ramdisk.cpio (aside from the one extra file added at its root).
+      - name: Assemble image1.ext4 (ramdisk contents + alpine tarball)
         run: |
           set -e
           dd if=/dev/zero of=image1.ext4 bs=1M count="$IMAGE1_SIZE_MB"
@@ -325,12 +329,6 @@ jobs:
           # shellcheck disable=SC2024  # sudo only needs to write as root; reading the file as the calling user is fine
           sudo sh -c 'cd ramdisk-root && cpio -idm' < testsuite/ramdisk.cpio
 
-          # Stage-2 init script: runs as PID 1 once busybox switch_root (in
-          # the injected ramdisk below) has handed control to this real
-          # root. Committed at qemu_test/second_stage_init.sh for better
-          # management (rather than generated inline here).
-          sudo cp qemu_test/second_stage_init.sh ramdisk-root/second_stage_init.sh
-          sudo chmod 755 ramdisk-root/second_stage_init.sh
           sudo cp alpine-export.tar ramdisk-root/alpine.tar
           sudo chmod 644 ramdisk-root/alpine.tar
 
@@ -338,14 +336,23 @@ jobs:
           sudo umount ramdisk-root
           ls -la image1.ext4
 
-      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker ---
-      - name: Assemble image2.ext4 (module + checker)
+      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker +
+      #        second_stage_init.sh ---
+      - name: Assemble image2.ext4 (module + checker + stage-2 init)
         run: |
           set -e
           mkdir -p image2-root
           cp payload/shadow_ctr.ko image2-root/
           cp payload/shadow_ctr_checker image2-root/
           chmod 755 image2-root/shadow_ctr_checker
+
+          # Stage-2 init script: runs as PID 1 once busybox switch_root (in
+          # the injected ramdisk below) has handed control to the real root
+          # (image1.ext4), which mounts this image at /mnt beforehand.
+          # Committed at qemu_test/second_stage_init.sh for better
+          # management (rather than generated inline here).
+          cp qemu_test/second_stage_init.sh image2-root/second_stage_init.sh
+          chmod 755 image2-root/second_stage_init.sh
           ls -la image2-root
 
           dd if=/dev/zero of=image2.ext4 bs=1M count="$IMAGE2_SIZE_MB"

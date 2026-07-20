@@ -1,10 +1,14 @@
 #!/system/bin/sh
 # Stage-2 init: runs as PID 1 once busybox switch_root (first_stage_init.sh,
 # in the injected ramdisk) has handed control to this real root
-# (image1.ext4). All ramdisk utilities are invoked with absolute paths:
-# bionic's dynamic linker needs /proc/self/exe (or a resolvable argv[0]) to
-# load shared objects, which only holds once /proc is mounted and the path
-# is absolute.
+# (image1.ext4). This script itself lives on image2.ext4 (attached as a
+# second NVMe device, /dev/nvme1n1 -- the kernels under test have no virtio
+# support), which first_stage_init.sh already mounted at /mnt inside
+# image1.ext4 before switch_root, so shadow_ctr.ko/shadow_ctr_checker are
+# already reachable under /mnt without any further mounting here. All
+# ramdisk utilities are invoked with absolute paths: bionic's dynamic linker
+# needs /proc/self/exe (or a resolvable argv[0]) to load shared objects,
+# which only holds once /proc is mounted and the path is absolute.
 set -x
 # Mount devtmpfs/proc/sysfs first and immediately re-point stdio at
 # /dev/kmsg instead of /dev/console: PID 1's original fds are otherwise easy
@@ -32,12 +36,7 @@ export PATH=/system/bin
 /system/bin/mount -t tmpfs tmpfs /tmp
 /system/bin/ifconfig lo up
 
-echo "=== SHADOW_CTR_QEMU_TEST: mount image2.ext4 -> /mnt (module + checker) ==="
-/system/bin/mkdir -p /mnt
-# image2.ext4 is attached as a second NVMe device (/dev/nvme1n1) -- the
-# kernels under test have no virtio support.
-/system/bin/mount -t ext4 /dev/nvme1n1 /mnt
-echo "mount image2.ext4 -> $?"
+echo "=== SHADOW_CTR_QEMU_TEST: image2.ext4 (module + checker) already mounted at /mnt by stage1 ==="
 /system/bin/chmod 755 /mnt/shadow_ctr_checker
 
 echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
