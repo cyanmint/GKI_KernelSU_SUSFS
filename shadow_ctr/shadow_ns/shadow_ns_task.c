@@ -436,3 +436,28 @@ struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid)
 {
 	return shadow_ns_generic_for_tgid(SHADOW_NS_TYPE_USER, rpid);
 }
+
+/*
+ * shadow_ns_current_ipc_ns_id() - the id of the calling task's simulated
+ * IPC namespace (shadow_ns's own bookkeeping-only CLONE_NEWIPC object, see
+ * shadow_ns_module.c), or 0 if the caller was never moved into one (i.e. it
+ * is still using the real/ambient IPC namespace).
+ *
+ * This is shadow_sysvipc's only coupling point with shadow_ns: both are
+ * linked into the same shadow_ctr.ko (see ../Makefile), so a plain function
+ * call resolves at link time without needing EXPORT_SYMBOL/symbol_get -- see
+ * shadow_sysvipc_registry.c's svipc_current_ns_id(), which declares this
+ * function's prototype itself rather than pulling in shadow_ns_internal.h's
+ * much larger private surface.
+ */
+u32 shadow_ns_current_ipc_ns_id(void)
+{
+	struct shadow_ns *ns = shadow_ns_get_current(SHADOW_NS_TYPE_IPC);
+	u32 id = 0;
+
+	if (ns) {
+		id = ns->id;
+		shadow_ns_put(ns);
+	}
+	return id;
+}

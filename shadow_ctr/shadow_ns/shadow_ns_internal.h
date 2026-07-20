@@ -151,9 +151,52 @@ struct shadow_pidns_priv {
 	bool		zapped;
 };
 
+/*
+ * struct shadow_id_map_extent - one contiguous run of a uid_map/gid_map,
+ * mirroring the {first, lower_first, count} triple kernel/user_namespace.c's
+ * struct uid_gid_extent uses (first = id inside the namespace, lower_first =
+ * corresponding id outside it, i.e. in this task group's real/host
+ * credentials).
+ */
+struct shadow_id_map_extent {
+	u32	first;
+	u32	lower_first;
+	u32	count;
+};
+
+/*
+ * struct shadow_id_map - a real, multi-entry uid_map/gid_map, replacing the
+ * single implicit "namespace uid/gid 0 == real_uid/real_gid" mapping this
+ * module used before. Vendors the lookup shape (not the rbtree storage) of
+ * kernel/user_namespace.c's struct uid_gid_map: map_id_up()/map_id_down()
+ * there do the same "linear scan an extent array, translate id via the
+ * matching extent's offset" lookup for the common (few-extent) case before
+ * falling back to an rbtree for large maps, which this module has no need
+ * for (newuidmap/newgidmap themselves cap out at
+ * CAP_SETUID/CAP_SETGID-gated, deliberately small line counts in practice).
+ *
+ * @extents/@nr_extents: NULL/0 until the *first* successful "write" to this
+ * task group's simulated /proc/<pid>/uid_map or gid_map (see
+ * shadow_ns_procfs.c); until then, @extents is NULL and translation falls
+ * back to the original single implicit identity mapping (namespace id 0 <->
+ * @fallback_lower_first), matching this module's pre-existing (and still
+ * correct for the common single-mapping docker/runc default) behaviour.
+ * @lock guards first-write-wins (kernel's real uid_map/gid_map may only be
+ * written once per namespace; a second write returns -EPERM) plus the
+ * translation lookups themselves.
+ */
+struct shadow_id_map {
+	struct mutex			lock;
+	struct shadow_id_map_extent	*extents;
+	unsigned int			nr_extents;
+	u32				fallback_lower_first;
+};
+
 struct shadow_userns_priv {
-	kuid_t	real_uid;
-	kgid_t	real_gid;
+	kuid_t			real_uid;
+	kgid_t			real_gid;
+	struct shadow_id_map	uid_map;
+	struct shadow_id_map	gid_map;
 };
 
 struct shadow_ns {
@@ -202,6 +245,32 @@ void shadow_ns_pidns_zap(struct shadow_pidns_priv *pidns, pid_t exiting_rpid);
 bool shadow_ns_pidns_is_child_reaper(struct shadow_pidns_priv *pidns, pid_t rpid);
 struct shadow_userns_priv *shadow_ns_userns_priv_alloc(void);
 void shadow_ns_userns_priv_free(struct shadow_userns_priv *priv);
+
+/*
+ * shadow_ns_idmap_write() - parse and install a newuidmap(1)/newgidmap(1)
+ * style buffer ("<id-inside> <id-outside> <count>" lines) into @map,
+ * vendoring kernel/user_namespace.c's map_write() validation rules: each
+ * extent's [first, first+count) and [lower_first, lower_first+count) ranges
+ * must not overflow u32, extents may not overlap each other (checked
+ * pairwise, same as the real kernel's sort-then-adjacent-compare done via a
+ * simpler O(n^2) scan since newuidmap/newgidmap line counts are always
+ * small), and -- like the real kernel -- the map may only be written once.
+ * Returns the number of bytes "consumed" (the whole buffer) on success, or
+ * a negative errno.
+ */
+ssize_t shadow_ns_idmap_write(struct shadow_id_map *map, const char *buf, size_t len);
+/*
+ * shadow_ns_idmap_format() - render @map's current extents (or, if never
+ * written, the single implicit identity extent) into the same
+ * "<inside> <outside> <count>\n" text format /proc/<pid>/uid_map's real
+ * seq_file rendering produces, for shadow_ns_procfs.c's read fabrication.
+ * Returns the number of bytes written into @buf (capped at @buflen).
+ */
+size_t shadow_ns_idmap_format(struct shadow_id_map *map, char *buf, size_t buflen);
+/* shadow_ns_idmap_translate_up() - inside (namespace) id -> outside (real) id. */
+u32 shadow_ns_idmap_translate_up(struct shadow_id_map *map, u32 id, bool *found);
+/* shadow_ns_idmap_translate_down() - outside (real) id -> inside (namespace) id. */
+u32 shadow_ns_idmap_translate_down(struct shadow_id_map *map, u32 id, bool *found);
 
 struct shadow_ns *shadow_ns_alloc(u32 type, u32 parent_id, struct shadow_ns *parent);
 struct shadow_ns *shadow_ns_alloc_derived(u32 type, struct shadow_ns *parent);
@@ -294,5 +363,12 @@ struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid);
  * doesn't need PID's extra pending_pidns/for_children handling.
  */
 struct shadow_ns *shadow_ns_generic_for_tgid(u32 type, pid_t rpid);
+
+/*
+ * shadow_ns_current_ipc_ns_id() - see shadow_ns_task.c. The id of the
+ * calling task's simulated IPC namespace, or 0 if none (used by
+ * shadow_sysvipc to scope key-based lookups per simulated IPC namespace).
+ */
+u32 shadow_ns_current_ipc_ns_id(void);
 
 #endif

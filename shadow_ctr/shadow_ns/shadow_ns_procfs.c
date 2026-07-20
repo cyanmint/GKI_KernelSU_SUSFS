@@ -1368,16 +1368,18 @@ static long shadow_ns_rewrite_stat(const char *orig, size_t orig_len,
 
 /*
  * shadow_ns_rewrite_status() - rebuild /proc/<pid>/status's content,
- * translating the "Pid:"/"PPid:" lines via @pidns (when non-NULL) and
- * zeroing the "Uid:"/"Gid:" lines' four columns (when @fake_ids is true),
- * mirroring getuid()/geteuid()/getgid()/getegid()'s own "creator's id
- * appears as 0" simulation (shadow_ns_user.c). Any other line is copied
- * through unchanged. Returns the new length, or -1 on any parse/capacity
- * failure (caller must fall back to the untouched real bytes).
+ * translating the "Pid:"/"PPid:" lines via @pidns (when non-NULL) and the
+ * "Uid:"/"Gid:" lines' four columns via @userns's uid_map/gid_map (when
+ * non-NULL), mirroring getuid()/geteuid()/getgid()/getegid()'s own id
+ * translation (shadow_ns_user.c/shadow_ns_idmap.c). Any other line is
+ * copied through unchanged. Returns the new length, or -1 on any
+ * parse/capacity failure (caller must fall back to the untouched real
+ * bytes).
  */
 static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 				      struct shadow_pidns_priv *pidns,
-				      bool fake_ids, char *out, size_t out_cap)
+				      struct shadow_userns_priv *userns,
+				      char *out, size_t out_cap)
 {
 	size_t i = 0;
 	size_t outlen = 0;
@@ -1428,17 +1430,38 @@ static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 				outlen += (size_t)n;
 				handled = true;
 			}
-		} else if (fake_ids && linelen > 4 &&
+		} else if (userns && linelen > 4 &&
 			   (!strncmp(line, "Uid:", 4) || !strncmp(line, "Gid:", 4))) {
-			/* "%.3s" reproduces just the "Uid"/"Gid" prefix
-			 * (3 chars) from @line, then appends our own
-			 * "real/effective/saved/filesystem" zeroed columns
-			 * -- matching getuid()/geteuid()/getgid()/getegid()
-			 * already reporting 0 for this simulated user
-			 * namespace member.
+			/* The real (unnamespaced) kernel's own Uid:/Gid: line
+			 * reports this task's genuine real/effective/saved/
+			 * filesystem ids -- all identical for any task this
+			 * module's simulation ever creates (setuid/setgid are
+			 * left as passthrough, see shadow_ns_user.c), so
+			 * parsing just the first column and translating it
+			 * through the same uid_map/gid_map every other id in
+			 * this namespace goes through is sufficient to
+			 * reproduce all four columns.
 			 */
-			int n = snprintf(out + outlen, out_cap - outlen,
-					  "%.3s:\t0\t0\t0\t0", line);
+			bool is_uid = (line[0] == 'U');
+			struct shadow_id_map *map = is_uid ? &userns->uid_map
+							    : &userns->gid_map;
+			const char *v = line + 4;
+			size_t vlen = linelen - 4;
+			unsigned int real_id;
+			u32 mapped;
+			int n;
+
+			while (vlen && *v == '\t') {
+				v++;
+				vlen--;
+			}
+			if (kstrtouint(v, 10, &real_id))
+				return -1;
+
+			mapped = shadow_ns_idmap_translate_down(map, real_id, NULL);
+			n = snprintf(out + outlen, out_cap - outlen,
+				     "%.3s:\t%u\t%u\t%u\t%u", line,
+				     mapped, mapped, mapped, mapped);
 			if (n < 0 || (size_t)n >= out_cap - outlen)
 				return -1;
 			outlen += (size_t)n;
@@ -1471,7 +1494,7 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	struct shadow_ns *pidns_ns;
 	struct shadow_ns *userns_ns;
 	struct shadow_pidns_priv *pidns;
-	bool fake_ids;
+	struct shadow_userns_priv *userns;
 	char *kbuf, *out;
 	long newlen;
 
@@ -1485,8 +1508,8 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	pidns_ns = shadow_ns_current_pidns();
 	pidns = pidns_ns ? pidns_ns->pid : NULL;
 	userns_ns = shadow_ns_userns_for_tgid(rpid);
-	fake_ids = userns_ns != NULL;
-	if (!pidns && !(fake_ids && leaf == SHADOW_NS_PID_LEAF_STATUS))
+	userns = userns_ns ? userns_ns->user : NULL;
+	if (!pidns && !(userns && leaf == SHADOW_NS_PID_LEAF_STATUS))
 		goto out_put;
 
 	kbuf = kmalloc(ret, GFP_KERNEL);
@@ -1509,7 +1532,7 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	newlen = (leaf == SHADOW_NS_PID_LEAF_STAT) ?
 		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out,
 					ret + SHADOW_NS_PROC_REWRITE_SLACK) :
-		shadow_ns_rewrite_status(kbuf, ret, pidns, fake_ids, out,
+		shadow_ns_rewrite_status(kbuf, ret, pidns, userns, out,
 					  ret + SHADOW_NS_PROC_REWRITE_SLACK);
 
 	if (newlen >= 0 && !copy_to_user(ubuf, out, newlen))

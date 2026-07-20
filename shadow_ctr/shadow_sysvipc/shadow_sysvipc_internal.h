@@ -26,6 +26,16 @@
 #include "shadow_hook.h"
 #include "include/uapi/shadow_sysvipc.h"
 
+/*
+ * shadow_ns_current_ipc_ns_id() is implemented in ../shadow_ns/shadow_ns_task.c
+ * and declared in ../shadow_ns/shadow_ns_internal.h; forward-declared here
+ * instead of including that (much larger, PID/UTS/USER-namespace-private)
+ * header, since shadow_sysvipc only needs this one function. Both
+ * subsystems link into the same shadow_ctr.ko (see ../Makefile), so this
+ * resolves at link time without EXPORT_SYMBOL/symbol_get.
+ */
+u32 shadow_ns_current_ipc_ns_id(void);
+
 #define SHADOW_SYSVIPC_VERSION "2.0"
 #define SHADOW_SYSVIPC_MAX_RESOURCES	65536
 #define SHADOW_SYSVIPC_KEY_HTBITS	8	/* 256 buckets */
@@ -81,7 +91,7 @@ struct svipc_resource {
 	s32			key;
 	u32			flags;
 	u32			nsems;
-	u32			_pad;
+	u32			ns_id;
 	u64			size;
 	refcount_t		refcount;
 	struct hlist_node	key_node;

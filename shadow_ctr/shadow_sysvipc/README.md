@@ -65,10 +65,72 @@ stock or patched userspace
 |---|---|
 | `msgget(2)` | Create/get virtual message queues by key, return a stable positive fake id. |
 | `msgctl(2)` | `IPC_STAT` and `IPC_RMID` on those virtual queues. |
+| `msgsnd(2)` / `msgrcv(2)` | Real in-kernel FIFO message queue: `copy_from_user`/`copy_to_user` payload transfer, `mtype` matching (including negative `msgtyp` "lowest type <= \|msgtyp\|" semantics), blocking send/receive with wakeups, `IPC_NOWAIT` and `MSG_NOERROR`. |
 | `semget(2)` | Create/get virtual semaphore sets by key, remember `nsems`, return a fake id. |
-| `semctl(2)` | `IPC_STAT` and `IPC_RMID` on those virtual semaphore sets. |
+| `semctl(2)` | `IPC_STAT`, `IPC_RMID`, and the value commands `GETVAL`/`SETVAL`/`GETALL`/`SETALL` on those virtual semaphore sets. |
+| `semop(2)` / `semtimedop(2)` | Real atomic multi-op transaction semantics (see below): all-or-nothing apply against a real per-semaphore value array, blocking/wakeup, `IPC_NOWAIT`, and `semtimedop`'s timeout. |
 | `shmget(2)` | Create/get virtual shared-memory segments by key, remember `size`, return a fake id. |
 | `shmctl(2)` | `IPC_STAT` and `IPC_RMID` on those virtual shared-memory segments. |
+| `shmat(2)` / `shmdt(2)` | Real shared mapping: a lazily-created `shmem` (tmpfs) file backs each segment, shared by every attach of the same id via `vm_mmap()`/`vm_munmap()`, so writes from one attached process are genuinely visible to every other attached process. |
+
+Key-based lookups (`msgget`/`semget`/`shmget` with a non-`IPC_PRIVATE` key) are
+scoped per simulated IPC namespace (see "Per-namespace scoping" below), so two
+different simulated containers requesting the same key do not collide with
+each other's resource.
+
+### `semop`/`semtimedop` semantics
+
+Vendored from real SysV semantics (see `shadow_sysvipc_sem.c`'s header
+comment and `ipc/sem.c`): every op in a single `semop(2)` call must be
+satisfiable as one atomic transaction against the *current* semaphore values
+-- `sem_op > 0` always succeeds (increment), `sem_op == 0` blocks until the
+value is exactly zero, `sem_op < 0` blocks until the value is `>= |sem_op|`
+then decrements it. If any op in the array cannot proceed immediately, none
+of them are applied: the caller gets `-EAGAIN` (`IPC_NOWAIT`) or blocks until
+a later `semop(2)`/`semctl(2)` on the same set changes a value, at which
+point the whole array is atomically re-evaluated from scratch.
+
+**Not implemented:** `SEM_UNDO` (adjustment-on-exit bookkeeping) -- a process
+that dies mid-critical-section while holding `SEM_UNDO`'d semaphores leaves
+them at whatever value its own `semop(2)` calls last left them, instead of
+having the kernel roll the adjustment back automatically. This is the same
+class of deliberate, documented trade-off as `shadow_ns_pid.c`'s simplified
+orphan-reparenting.
+
+### `shmat`/`shmdt` semantics
+
+Each segment's backing store is a single `shmem_kernel_file_setup()`-created
+file, created on the *first* `shmat(2)` of a given `shmid` and shared by
+every later attach of that same id -- exactly like real SysV shared memory,
+every attaching process maps the same underlying pages via the ordinary page
+cache. Each successful attach takes its own reference on the
+`svipc_resource` (so the segment survives as long as anything is still
+attached, even after the creating task group exits or `IPC_RMID`s it,
+mirroring real "marked for destruction, but deferred until last detach"
+semantics) and is tracked by `(tgid, address)` so `shmdt(2)` -- which only
+receives an address -- can find and unmap exactly that mapping. Attachment
+records for task groups that exit without calling `shmdt(2)` are reaped
+opportunistically (no `vm_munmap()` needed in that case: the kernel's own
+`exit_mmap()` already tore down that address space).
+
+**Not implemented:** `SHM_LOCK`/`mlock` accounting, hugetlb-backed segments,
+and `SHM_REMAP`/`SHM_EXEC` address-hint placement quirks -- out of scope for
+the common container use case of a plain read/write shared mapping.
+
+### Per-namespace scoping
+
+`shadow_ns`'s `CLONE_NEWIPC` simulation is bookkeeping-only (see
+`../shadow_ns/README.md`): it does not create a functionally isolated IPC
+namespace, only a refcounted namespace-identity object. `shadow_sysvipc`
+consults that object's id (`shadow_ns_current_ipc_ns_id()`, both subsystems
+link into the same `shadow_ctr.ko`) to scope **key-based** lookups
+(`svipc_find_key_locked()`) per simulated IPC namespace, mirroring the
+*shape* of real `ipc/namespace.c`'s per-namespace `copy_ipcs()`/`free_ipcs()`
+registries (not their storage, which is scaled down to shadow_ns's flat,
+single-level nesting). Resource **ids** returned to userspace remain a
+single global id space (like real SysV ids, which are also kernel-wide
+unique, not per-namespace), so this only affects which existing resource a
+non-`IPC_PRIVATE` key search matches.
 
 ### `IPC_STAT` payloads
 
@@ -87,23 +149,8 @@ subsystem keeping those counters and timestamps.
 
 ## Honest scope / limitations
 
-`shadow_sysvipc` is still a **bookkeeping layer**, not a drop-in replacement for
-native SysV IPC.
-
-### Intentionally left unimplemented
-
-* **`msgsnd(2)` / `msgrcv(2)`**: no real in-kernel message queue or payload
-  storage exists here. Faking success would require copy-from/to-user plumbing,
-  blocking wakeups, queue capacity accounting, and exact SysV semantics.
-* **`semop(2)` / `semtimedop(2)`**: real SysV semaphore transactions require
-  atomic multi-op semantics, waiting rules, wakeups, and `SEM_UNDO` handling.
-* **`shmat(2)` / `shmdt(2)`**: there is no genuine shared-memory VM object to
-  map. Returning a made-up success pointer would be unsafe.
-
-For those syscalls the hook deliberately preserves the kernel's existing
-behaviour: on a `CONFIG_SYSVIPC=n` build they still fail (typically `-ENOSYS`);
-on a kernel with real SysV IPC enabled they continue to use the native kernel
-implementation.
+`shadow_sysvipc` is still a **bookkeeping-plus-real-data-path layer**, not a
+byte-for-byte drop-in replacement for native SysV IPC.
 
 ### Behavioural differences vs real SysV IPC
 

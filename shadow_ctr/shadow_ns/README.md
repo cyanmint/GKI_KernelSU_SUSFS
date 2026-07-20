@@ -63,8 +63,8 @@ inert bookkeeping:
 | CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (every GKI defconfig sets this) | bookkeeping only — same generic id/refcount registry as IPC/NET below; no functional cgroup-namespace partitioning to add safely from a module |
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
 | PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}` and rewritten `/proc/<pid>/{stat,status}` pid fields) |
-| USER (`CLONE_NEWUSER`) | passthrough | **real**: creator's uid/gid appear as 0 inside the namespace (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked, plus rewritten `/proc/<pid>/status` `Uid:`/`Gid:` lines), matching the common docker/runc single-mapping userns-remap shape |
-| IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only — falls back to the single global `init_ipc_ns`; there is nothing extra to isolate |
+| USER (`CLONE_NEWUSER`) | passthrough | **real**: a genuine multi-entry `uid_map`/`gid_map` table (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked and translated through it, plus rewritten `/proc/<pid>/status` `Uid:`/`Gid:` lines and fabricated `/proc/<pid>/ns/user`), defaulting to the single-mapping docker/runc userns-remap shape (namespace id 0 == creator's real uid/gid) until a real map is installed |
+| IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only — falls back to the single global `init_ipc_ns` for actual IPC isolation, but `/proc/<pid>/ns/ipc` is still fabricated (see below) so namespace-support probes that stat every `ns/*` entry as one combined check (e.g. runc's) don't abort; `shadow_sysvipc` additionally scopes its own key-based SysV IPC lookups per this namespace's id (see `../shadow_sysvipc/README.md`) |
 | NET (`CLONE_NEWNET`) | passthrough | bookkeeping only — real net namespace isolation is inseparable from the whole networking stack (`net/core/net_namespace.c` touches routing, sockets, netfilter, sysctls) and cannot safely be vendored into a loadable module |
 
 ### PID namespace isolation details
@@ -170,23 +170,39 @@ no-op for that task.
 
 ### USER namespace isolation details
 
-Rather than implementing arbitrary `uid_map`/`gid_map` parsing (which would
-require hooking `write(2)` on `/proc/<pid>/{u,g}id_map` — too invasive/unsafe
-for an out-of-tree module), the creating task's real uid/gid is captured at
-`CLONE_NEWUSER` time, and `getuid`/`geteuid`/`getgid`/`getegid`/
-`getresuid`/`getresgid` report 0 for any task inside that simulated user
-namespace — matching the default single-mapping shape used by
-`docker run --userns-remap`/runc when nothing more specific is configured.
+`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` translate the
+calling task's real uid/gid through a real, multi-entry `uid_map`/`gid_map`
+table (`shadow_ns_idmap.c`), vendoring the *lookup shape* of
+`kernel/user_namespace.c`'s `struct uid_gid_map` (a linear extent-array scan,
+skipping only its rbtree fallback for very large maps, which
+newuidmap/newgidmap's own line counts never approach in practice) rather
+than the single hardcoded "namespace id 0 == creator's id" rule this module
+used before. Until a real map is installed, translation falls back to that
+same single implicit identity extent (namespace uid/gid 0 maps to the
+creating task's real uid/gid), so the previous, still-correct
+single-mapping docker/runc default keeps working unchanged.
 `setuid`/`setgid` are deliberately left as passthrough (not virtualized).
 
-The same "creator's id appears as 0" simulation now also applies to `/proc`
-*content*, not just syscalls: `shadow_ns_hook_read()`/
-`shadow_ns_hook_pread64()` (`shadow_ns_procfs.c`) rewrite an already-open
-`/proc/<pid>/status`'s `Uid:`/`Gid:` lines to `0\t0\t0\t0` for any target pid
-that is (or whose real host tgid tracks as) a member of a simulated user
-namespace, via `shadow_ns_userns_for_tgid()` (`shadow_ns_task.c`) — the same
-per-tgid bookkeeping `shadow_ns_pidns_for_tgid()` already exposes for PID.
-Installed alongside the PID `stat`/`status` rewriting above, in the same
+**Known gap:** `shadow_ns_idmap.c` provides the map storage, validation
+(`map_write()`-style extent-overlap/overflow checks) and translation
+functions, and is ready to back real `newuidmap(1)`/`newgidmap(1)` writes,
+but `/proc/<pid>/uid_map` and `gid_map` themselves are not yet intercepted
+by `shadow_ns_procfs.c` the way `/proc/<pid>/ns/*` and `setgroups` are — a
+write to those paths still goes to the real (unmodified) procfs file today.
+Wiring that up is the same class of anon-inode-secure-fd read/write
+fabrication `setgroups` below already does, and is a natural next step, but
+was scoped out of this change given the size/risk of extending the
+already-large `shadow_ns_procfs.c` interception surface without a full
+regression pass against real `newuidmap`/`newgidmap` callers.
+
+The same translated-id simulation now also applies to `/proc` *content*, not
+just syscalls: `shadow_ns_hook_read()`/`shadow_ns_hook_pread64()`
+(`shadow_ns_procfs.c`) rewrite an already-open `/proc/<pid>/status`'s
+`Uid:`/`Gid:` lines to the mapped id for any target pid that is (or whose
+real host tgid tracks as) a member of a simulated user namespace, via
+`shadow_ns_userns_for_tgid()` (`shadow_ns_task.c`) — the same per-tgid
+bookkeeping `shadow_ns_pidns_for_tgid()` already exposes for PID. Installed
+alongside the PID `stat`/`status` rewriting above, in the same
 `read`/`pread64` hooks, since both only ever need to run when either
 `CLONE_NEWUSER` or `CLONE_NEWPID` is being simulated.
 

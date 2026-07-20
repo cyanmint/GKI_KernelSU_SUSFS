@@ -59,6 +59,24 @@ static u32 svipc_key_hash_val(s32 key, u32 type)
 	return (u32)key ^ (type << 28);
 }
 
+/*
+ * svipc_current_ns_id() - the simulated IPC namespace id key-based
+ * msgget(2)/semget(2)/shmget(2) lookups (svipc_find_key_locked() below)
+ * should be scoped to for the calling task, mirroring the *shape* of real
+ * ipc/namespace.c's per-namespace registries (copy_ipcs()/free_ipcs()):
+ * each simulated IPC namespace gets its own independent key -> resource
+ * mapping, so two different containers both requesting, say,
+ * msgget(0x1234, IPC_CREAT) do not collide with each other's queue the way
+ * a single flat global key table would. Resources are still allocated a
+ * single global id (svipc_map's xarray key) exactly as before: real SysV
+ * ids are likewise unique kernel-wide, not per-namespace, so this only
+ * needed to change for the *key* lookup path, not id-based svipc_get().
+ */
+static u32 svipc_current_ns_id(void)
+{
+	return shadow_ns_current_ipc_ns_id();
+}
+
 static void svipc_resource_init_common(struct svipc_resource *res)
 {
 	INIT_LIST_HEAD(&res->msgs);
@@ -103,9 +121,10 @@ static struct svipc_resource *svipc_find_key_locked(s32 key, u32 type)
 {
 	struct svipc_resource *res;
 	u32 h = svipc_key_hash_val(key, type);
+	u32 ns_id = svipc_current_ns_id();
 
 	hash_for_each_possible(svipc_key_hash, res, key_node, h) {
-		if (res->key == key && res->type == type)
+		if (res->key == key && res->type == type && res->ns_id == ns_id)
 			return res;
 	}
 	return NULL;
@@ -206,6 +225,7 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 			res->flags = flags & 0777;
 			res->nsems = nsems;
 			res->size = size;
+			res->ns_id = svipc_current_ns_id();
 			refcount_set(&res->refcount, 1);
 			svipc_resource_init_common(res);
 			if (svipc_resource_alloc_sem_val(res)) {

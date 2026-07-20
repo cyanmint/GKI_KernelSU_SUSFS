@@ -22,6 +22,7 @@ shadow_ctr-objs := \
 	shadow_ns/shadow_ns_uts.o \
 	shadow_ns/shadow_ns_pid.o \
 	shadow_ns/shadow_ns_user.o \
+	shadow_ns/shadow_ns_idmap.o \
 	shadow_ns/shadow_ns_procfs.o \
 	shadow_ns/shadow_ns_module.o \
 	shadow_sysvipc/shadow_sysvipc_registry.o \
