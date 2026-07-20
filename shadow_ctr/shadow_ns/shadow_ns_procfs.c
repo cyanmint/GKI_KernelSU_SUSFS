@@ -1086,6 +1086,378 @@ static struct shadow_hook shadow_ns_getdents64_hook =
 	SHADOW_HOOK(shadow_ns_getdents64_names, shadow_ns_hook_getdents64,
 		    &real_sys_getdents64);
 
+/*
+ * shadow_ns_hook_read()/shadow_ns_hook_pread64() - rewrite the pid/uid/gid
+ * numbers embedded in /proc/<pid>/stat and /proc/<pid>/status *content*
+ * for a reader with an active simulated PID and/or USER namespace.
+ *
+ * Every other shadow_ns /proc hook (open translation, getdents64 filtering)
+ * only ever touched the *names* the caller sees under /proc -- the file
+ * shadow_ns_proc_open() actually hands back is a completely ordinary,
+ * unmodified real /proc/<rpid>/{stat,status} file, so its content always
+ * reported the real (host) pid/ppid/pgrp/session and real uid/gid, exactly
+ * the documented gap in README.md ("file contents are not rewritten").
+ * That gap is directly user-visible: procps-ng/busybox/toybox `ps` all
+ * trust the numbers embedded in these two files over (or in addition to)
+ * the translated directory-listing name shadow_ns_hook_getdents64() already
+ * renames, so a container's own `ps` kept showing host pids no matter how
+ * thoroughly the listing itself was filtered.
+ *
+ * Same fail-safe design as shadow_ns_hook_getdents64(): the real syscall
+ * always runs first and its result is only ever post-processed, never
+ * replaced; on any parse ambiguity or a rewritten buffer that would not fit
+ * in the caller's original count, the untouched real content is returned
+ * instead of risking a corrupt read.
+ */
+static long (*real_sys_read)(const struct pt_regs *regs);
+static long (*real_sys_pread64)(const struct pt_regs *regs);
+
+static const char * const shadow_ns_read_names[] = {
+	"__arm64_sys_read", "__x64_sys_read", "sys_read", NULL,
+};
+static const char * const shadow_ns_pread64_names[] = {
+	"__arm64_sys_pread64", "__x64_sys_pread64", "sys_pread64", NULL,
+};
+
+enum shadow_ns_pid_leaf {
+	SHADOW_NS_PID_LEAF_NONE = 0,
+	SHADOW_NS_PID_LEAF_STAT,
+	SHADOW_NS_PID_LEAF_STATUS,
+};
+
+/*
+ * shadow_ns_fd_is_proc_pid_leaf() - is @fd an already-open regular file
+ * directly named "stat" or "status" under a procfs pid directory (whatever
+ * that directory's *real* dentry name actually is -- "self"/"thread-self"
+ * resolve to the real numeric directory through the VFS before this ever
+ * sees the dentry, and shadow_ns_proc_open() already substituted a
+ * translated vpid path component for a plain numeric one, so in every case
+ * the parent directory's d_name is the file's genuine real (host) pid)?
+ */
+static enum shadow_ns_pid_leaf shadow_ns_fd_is_proc_pid_leaf(int fd, pid_t *rpid_out)
+{
+	struct fd f;
+	struct dentry *dentry, *parent;
+	char comp[16];
+	size_t len;
+	long val;
+	enum shadow_ns_pid_leaf leaf = SHADOW_NS_PID_LEAF_NONE;
+
+	f = fdget(fd);
+	if (fd_empty(f))
+		return SHADOW_NS_PID_LEAF_NONE;
+
+	dentry = fd_file(f)->f_path.dentry;
+	if (dentry->d_sb->s_magic != PROC_SUPER_MAGIC)
+		goto out;
+
+	if (!strcmp((const char *)dentry->d_name.name, "stat"))
+		leaf = SHADOW_NS_PID_LEAF_STAT;
+	else if (!strcmp((const char *)dentry->d_name.name, "status"))
+		leaf = SHADOW_NS_PID_LEAF_STATUS;
+	else
+		goto out;
+
+	parent = dentry->d_parent;
+	len = min_t(size_t, parent->d_name.len, sizeof(comp) - 1);
+	memcpy(comp, parent->d_name.name, len);
+	comp[len] = '\0';
+
+	if (kstrtol(comp, 10, &val) || val <= 0 || val > INT_MAX) {
+		leaf = SHADOW_NS_PID_LEAF_NONE;
+		goto out;
+	}
+	*rpid_out = (pid_t)val;
+out:
+	fdput(f);
+	return leaf;
+}
+
+/*
+ * shadow_ns_stat_translate_pid() - translate one whitespace-delimited
+ * numeric token of /proc/<pid>/stat from real to virtual via @pidns,
+ * falling back to the real value unchanged if it isn't a registered
+ * member -- same conservative fallback shadow_ns_pid_translate_result()
+ * already uses for getpgid()/getsid().
+ */
+static int shadow_ns_stat_translate_pid(struct shadow_pidns_priv *pidns,
+					 const char *tok, size_t toklen)
+{
+	char numbuf[16];
+	long val;
+	pid_t vpid;
+
+	if (!toklen || toklen >= sizeof(numbuf))
+		return -1;
+	memcpy(numbuf, tok, toklen);
+	numbuf[toklen] = '\0';
+	if (kstrtol(numbuf, 10, &val) || val <= 0)
+		return -1;
+	vpid = shadow_ns_pidns_to_vpid(pidns, (pid_t)val);
+	return vpid ? (int)vpid : (int)val;
+}
+
+/*
+ * shadow_ns_rewrite_stat() - rebuild /proc/<pid>/stat's content with its
+ * pid (field 1, ahead of the "(comm)" that may itself embed spaces/parens),
+ * ppid/pgrp/session (fields 4/5/6, see proc(5)) fields translated from real
+ * to virtual. Returns the new length on success, or -1 if the content
+ * couldn't be parsed/didn't fit @out_cap (caller must fall back to the
+ * untouched real bytes).
+ */
+static long shadow_ns_rewrite_stat(const char *orig, size_t orig_len,
+				    struct shadow_pidns_priv *pidns,
+				    pid_t rpid_self, char *out, size_t out_cap)
+{
+	const char *end = orig + orig_len;
+	const char *lparen, *rparen;
+	const char *p;
+	size_t outlen;
+	size_t clen;
+	int field;
+	int n;
+	int vpid_self;
+
+	lparen = memchr(orig, '(', orig_len);
+	if (!lparen)
+		return -1;
+	rparen = NULL;
+	for (p = orig + orig_len; p > lparen; ) {
+		p--;
+		if (*p == ')') {
+			rparen = p;
+			break;
+		}
+	}
+	if (!rparen)
+		return -1;
+
+	vpid_self = shadow_ns_pidns_to_vpid(pidns, rpid_self);
+	n = snprintf(out, out_cap, "%d ", vpid_self ? vpid_self : (int)rpid_self);
+	if (n < 0 || (size_t)n >= out_cap)
+		return -1;
+	outlen = (size_t)n;
+
+	clen = (size_t)(rparen - lparen) + 1;
+	if (outlen + clen >= out_cap)
+		return -1;
+	memcpy(out + outlen, lparen, clen);
+	outlen += clen;
+
+	field = 2;
+	p = rparen + 1;
+	while (p < end) {
+		const char *tok;
+		size_t toklen;
+		int translated;
+
+		while (p < end && *p == ' ')
+			p++;
+		if (p >= end || *p == '\n')
+			break;
+
+		tok = p;
+		while (p < end && *p != ' ' && *p != '\n')
+			p++;
+		toklen = (size_t)(p - tok);
+		field++;
+
+		if (outlen + 1 >= out_cap)
+			return -1;
+		out[outlen++] = ' ';
+
+		translated = (field == 4 || field == 5 || field == 6) ?
+			shadow_ns_stat_translate_pid(pidns, tok, toklen) : -1;
+		if (translated >= 0) {
+			n = snprintf(out + outlen, out_cap - outlen, "%d", translated);
+			if (n < 0 || (size_t)n >= out_cap - outlen)
+				return -1;
+			outlen += (size_t)n;
+		} else {
+			if (outlen + toklen >= out_cap)
+				return -1;
+			memcpy(out + outlen, tok, toklen);
+			outlen += toklen;
+		}
+	}
+	while (p < end) {
+		if (outlen + 1 >= out_cap)
+			return -1;
+		out[outlen++] = *p++;
+	}
+
+	return (long)outlen;
+}
+
+/*
+ * shadow_ns_rewrite_status() - rebuild /proc/<pid>/status's content,
+ * translating the "Pid:"/"PPid:" lines via @pidns (when non-NULL) and
+ * zeroing the "Uid:"/"Gid:" lines' four columns (when @fake_ids is true),
+ * mirroring getuid()/geteuid()/getgid()/getegid()'s own "creator's id
+ * appears as 0" simulation (shadow_ns_user.c). Any other line is copied
+ * through unchanged. Returns the new length, or -1 on any parse/capacity
+ * failure (caller must fall back to the untouched real bytes).
+ */
+static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
+				      struct shadow_pidns_priv *pidns,
+				      bool fake_ids, char *out, size_t out_cap)
+{
+	size_t i = 0;
+	size_t outlen = 0;
+
+	while (i < orig_len) {
+		const char *line = orig + i;
+		size_t linelen = 0;
+		bool has_nl;
+		bool handled = false;
+
+		while (i + linelen < orig_len && line[linelen] != '\n')
+			linelen++;
+		has_nl = (i + linelen < orig_len);
+
+		if (pidns && linelen > 5 && !strncmp(line, "PPid:", 5)) {
+			const char *v = line + 5;
+			size_t vlen = linelen - 5;
+			int translated;
+
+			while (vlen && *v == '\t') {
+				v++;
+				vlen--;
+			}
+			translated = shadow_ns_stat_translate_pid(pidns, v, vlen);
+			if (translated >= 0) {
+				int n = snprintf(out + outlen, out_cap - outlen,
+						  "PPid:\t%d", translated);
+				if (n < 0 || (size_t)n >= out_cap - outlen)
+					return -1;
+				outlen += (size_t)n;
+				handled = true;
+			}
+		} else if (pidns && linelen > 4 && !strncmp(line, "Pid:", 4)) {
+			const char *v = line + 4;
+			size_t vlen = linelen - 4;
+			int translated;
+
+			while (vlen && *v == '\t') {
+				v++;
+				vlen--;
+			}
+			translated = shadow_ns_stat_translate_pid(pidns, v, vlen);
+			if (translated >= 0) {
+				int n = snprintf(out + outlen, out_cap - outlen,
+						  "Pid:\t%d", translated);
+				if (n < 0 || (size_t)n >= out_cap - outlen)
+					return -1;
+				outlen += (size_t)n;
+				handled = true;
+			}
+		} else if (fake_ids && linelen > 4 &&
+			   (!strncmp(line, "Uid:", 4) || !strncmp(line, "Gid:", 4))) {
+			int n = snprintf(out + outlen, out_cap - outlen,
+					  "%.3s:\t0\t0\t0\t0", line);
+			if (n < 0 || (size_t)n >= out_cap - outlen)
+				return -1;
+			outlen += (size_t)n;
+			handled = true;
+		}
+
+		if (!handled) {
+			if (outlen + linelen >= out_cap)
+				return -1;
+			memcpy(out + outlen, line, linelen);
+			outlen += linelen;
+		}
+		if (has_nl) {
+			if (outlen + 1 >= out_cap)
+				return -1;
+			out[outlen++] = '\n';
+			i += linelen + 1;
+		} else {
+			i += linelen;
+		}
+	}
+
+	return (long)outlen;
+}
+
+static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long ret)
+{
+	enum shadow_ns_pid_leaf leaf;
+	pid_t rpid;
+	struct shadow_ns *pidns_ns;
+	struct shadow_ns *userns_ns;
+	struct shadow_pidns_priv *pidns;
+	bool fake_ids;
+	char *kbuf, *out;
+	long newlen;
+
+	if (ret <= 0)
+		return ret;
+
+	leaf = shadow_ns_fd_is_proc_pid_leaf(fd, &rpid);
+	if (leaf == SHADOW_NS_PID_LEAF_NONE)
+		return ret;
+
+	pidns_ns = shadow_ns_current_pidns();
+	pidns = pidns_ns ? pidns_ns->pid : NULL;
+	userns_ns = shadow_ns_userns_for_tgid(rpid);
+	fake_ids = userns_ns != NULL;
+	if (!pidns && !(fake_ids && leaf == SHADOW_NS_PID_LEAF_STATUS))
+		goto out_put;
+
+	kbuf = kmalloc(ret, GFP_KERNEL);
+	if (!kbuf)
+		goto out_put;
+	out = kmalloc(ret + 256, GFP_KERNEL);
+	if (!out) {
+		kfree(kbuf);
+		goto out_put;
+	}
+
+	if (copy_from_user(kbuf, ubuf, ret))
+		goto out_free;
+
+	newlen = (leaf == SHADOW_NS_PID_LEAF_STAT) ?
+		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out, ret + 256) :
+		shadow_ns_rewrite_status(kbuf, ret, pidns, fake_ids, out, ret + 256);
+
+	if (newlen >= 0 && !copy_to_user(ubuf, out, newlen))
+		ret = newlen;
+	/* else: leave `ret`/buffer untouched, same fail-safe as getdents64. */
+
+out_free:
+	kfree(kbuf);
+	kfree(out);
+out_put:
+	shadow_ns_put(pidns_ns);
+	shadow_ns_put(userns_ns);
+	return ret;
+}
+
+static long shadow_ns_hook_read(const struct pt_regs *regs)
+{
+	int fd = (int)shadow_ns_sys_arg0(regs);
+	void __user *ubuf = (void __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
+	long ret = real_sys_read(regs);
+
+	return shadow_ns_hook_proc_pid_leaf_read(fd, ubuf, ret);
+}
+
+static long shadow_ns_hook_pread64(const struct pt_regs *regs)
+{
+	int fd = (int)shadow_ns_sys_arg0(regs);
+	void __user *ubuf = (void __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
+	long ret = real_sys_pread64(regs);
+
+	return shadow_ns_hook_proc_pid_leaf_read(fd, ubuf, ret);
+}
+
+static struct shadow_hook shadow_ns_read_hook =
+	SHADOW_HOOK(shadow_ns_read_names, shadow_ns_hook_read, &real_sys_read);
+static struct shadow_hook shadow_ns_pread64_hook =
+	SHADOW_HOOK(shadow_ns_pread64_names, shadow_ns_hook_pread64,
+		    &real_sys_pread64);
+
 struct shadow_hook *shadow_ns_procfs_hooks[] = {
 	&shadow_ns_openat2_hook,
 	&shadow_ns_openat_hook,
@@ -1093,5 +1465,7 @@ struct shadow_hook *shadow_ns_procfs_hooks[] = {
 	&shadow_ns_readlinkat_hook,
 	&shadow_ns_readlink_hook,
 	&shadow_ns_getdents64_hook,
+	&shadow_ns_read_hook,
+	&shadow_ns_pread64_hook,
 	NULL,
 };

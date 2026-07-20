@@ -392,3 +392,28 @@ struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children)
 	mutex_unlock(&tg->lock);
 	return ns;
 }
+
+/*
+ * shadow_ns_userns_for_tgid() - the simulated USER namespace a given real
+ * (host) tgid is currently a member of (tg->cur[USER]), or NULL if that
+ * task was never moved into one (i.e. its getuid()/geteuid()/... are real,
+ * unfaked passthroughs -- see shadow_ns_user.c). Used by shadow_ns_procfs.c
+ * to decide whether an arbitrary target pid's /proc/<pid>/status Uid:/Gid:
+ * lines need to be rewritten to all-zero, mirroring the same "creator's
+ * uid/gid appear as 0" simulation getuid()/geteuid()/getgid()/getegid()
+ * already apply to that task's syscalls.
+ */
+struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid)
+{
+	struct shadow_task_group *tg;
+	struct shadow_ns *ns;
+
+	tg = shadow_ns_task_group_lookup(rpid);
+	if (!tg)
+		return NULL;
+
+	mutex_lock(&tg->lock);
+	ns = shadow_ns_grab(tg->cur[SHADOW_NS_TYPE_USER]);
+	mutex_unlock(&tg->lock);
+	return ns;
+}

@@ -62,8 +62,8 @@ inert bookkeeping:
 | MNT (`CLONE_NEWNS`) | if `IS_ENABLED(CONFIG_NAMESPACES)` (effectively always, `default !EXPERT`; no dedicated `CONFIG_MNT_NS` symbol exists so the parent menuconfig is used as a defensive proxy) | bookkeeping only — same generic id/refcount registry as IPC/NET/CGROUP; the real, always-compiled-in mount-namespace code in `fs/namespace.c` keeps running regardless, this only adds a parallel bookkeeping entry |
 | CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (every GKI defconfig sets this) | bookkeeping only — same generic id/refcount registry as IPC/NET below; no functional cgroup-namespace partitioning to add safely from a module |
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
-| PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}`) |
-| USER (`CLONE_NEWUSER`) | passthrough | **real**: creator's uid/gid appear as 0 inside the namespace (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked), matching the common docker/runc single-mapping userns-remap shape |
+| PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}` and rewritten `/proc/<pid>/{stat,status}` pid fields) |
+| USER (`CLONE_NEWUSER`) | passthrough | **real**: creator's uid/gid appear as 0 inside the namespace (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked, plus rewritten `/proc/<pid>/status` `Uid:`/`Gid:` lines), matching the common docker/runc single-mapping userns-remap shape |
 | IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only — falls back to the single global `init_ipc_ns`; there is nothing extra to isolate |
 | NET (`CLONE_NEWNET`) | passthrough | bookkeeping only — real net namespace isolation is inseparable from the whole networking stack (`net/core/net_namespace.c` touches routing, sockets, netfilter, sysctls) and cannot safely be vendored into a loadable module |
 
@@ -128,6 +128,21 @@ namespace's members under `/proc`, exactly like the real kernel's
   that aren't registered namespace members are dropped, and member entries
   are renamed from their real rpid to the namespace-local vpid, so `ls
   /proc`/`readdir(/proc)` only ever lists the namespace's own members.
+- `read()`/`pread64()` on an already-open `/proc/<pid>/stat` or
+  `/proc/<pid>/status` file are post-processed the same way: the real
+  syscall always runs first, and only its result buffer is rewritten
+  in-place (or, on any parse ambiguity or a rewritten buffer that would not
+  fit the caller's original count, left completely untouched — the exact
+  same fail-safe design as the `getdents64` filtering above). `stat`'s
+  `pid` field (ahead of the `(comm)` that may itself embed spaces/parens)
+  and its `ppid`/`pgrp`/`session` fields (proc(5) fields 4/5/6), and
+  `status`'s `Pid:`/`PPid:` lines, are all translated from the real rpid to
+  the namespace-local vpid, falling back to the untouched real number for
+  any pid that isn't a registered member (mirrors `getpgid()`/`getsid()`'s
+  own translate-with-fallback behaviour). This is what makes an unmodified
+  `ps`/`top` inside the namespace actually display namespace-local pids:
+  every one of them trusts these two files' own embedded numbers over (or
+  in addition to) the `getdents64`-renamed directory-listing name.
 - `/proc/<pid>/ns/pid` and `/proc/<pid>/ns/pid_for_children` are fabricated
   (vendored from `fs/nsfs.c`/`fs/proc/namespaces.c`, which normally only
   wire these up when `CONFIG_PID_NS=y`): `getdents64()` on an already-open
@@ -144,14 +159,14 @@ namespace's members under `/proc`, exactly like the real kernel's
 
 Known limitations of this `/proc` isolation: only `/proc`'s own root listing
 is filtered (subdirectory listings such as `/proc/<pid>/task/`, thread ids,
-are left untouched); file *contents* are not rewritten (e.g.
-`/proc/<pid>/status`'s `Pid:`/`PPid:` fields still show the real rpid, not
-the vpid — doing so would require intercepting `read()` on procfs files,
-out of scope for this pass); and, like the syscall-level translation above,
-this only ever activates when a simulated PID namespace is actually active
-(i.e. `CONFIG_PID_NS` is genuinely absent on the running kernel) — on a
-kernel with real `CONFIG_PID_NS`, the kernel's own `fs/proc` already scopes
-`/proc` correctly and these hooks no-op for that task.
+are left untouched); only `stat`/`status`'s pid-related fields are rewritten
+(other procfs files that also embed real pids, e.g. `/proc/<pid>/wchan` or
+per-thread `task/<tid>/stat`, are out of scope for this pass); and, like the
+syscall-level translation above, this only ever activates when a simulated
+PID namespace is actually active (i.e. `CONFIG_PID_NS` is genuinely absent
+on the running kernel) — on a kernel with real `CONFIG_PID_NS`, the
+kernel's own `fs/proc` already scopes `/proc` correctly and these hooks
+no-op for that task.
 
 ### USER namespace isolation details
 
@@ -163,6 +178,17 @@ for an out-of-tree module), the creating task's real uid/gid is captured at
 namespace — matching the default single-mapping shape used by
 `docker run --userns-remap`/runc when nothing more specific is configured.
 `setuid`/`setgid` are deliberately left as passthrough (not virtualized).
+
+The same "creator's id appears as 0" simulation now also applies to `/proc`
+*content*, not just syscalls: `shadow_ns_hook_read()`/
+`shadow_ns_hook_pread64()` (`shadow_ns_procfs.c`) rewrite an already-open
+`/proc/<pid>/status`'s `Uid:`/`Gid:` lines to `0\t0\t0\t0` for any target pid
+that is (or whose real host tgid tracks as) a member of a simulated user
+namespace, via `shadow_ns_userns_for_tgid()` (`shadow_ns_task.c`) — the same
+per-tgid bookkeeping `shadow_ns_pidns_for_tgid()` already exposes for PID.
+Installed alongside the PID `stat`/`status` rewriting above, in the same
+`read`/`pread64` hooks, since both only ever need to run when either
+`CLONE_NEWUSER` or `CLONE_NEWPID` is being simulated.
 
 ### `/proc/*/setgroups` (`shadow_ns_procfs.c`)
 

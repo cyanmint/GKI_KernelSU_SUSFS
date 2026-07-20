@@ -275,4 +275,15 @@ struct shadow_ns *shadow_ns_current_pidns(void);
  */
 struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children);
 
+/*
+ * shadow_ns_userns_for_tgid() - see shadow_ns_task.c. The simulated USER
+ * namespace a given real (host) tgid currently belongs to, or NULL. Used by
+ * shadow_ns_procfs.c's /proc/<pid>/status Uid:/Gid: rewriting (see
+ * shadow_ns_hook_read()/shadow_ns_hook_pread64()) to extend the same
+ * "creator's id appears as 0" simulation from getuid()/geteuid()/... to an
+ * arbitrary target pid's procfs content, not just the caller's own
+ * syscalls.
+ */
+struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid);
+
 #endif
