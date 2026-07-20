@@ -290,13 +290,12 @@ jobs:
           set -e
           docker pull --platform linux/arm64 busybox:musl
           cid=$(docker create --platform linux/arm64 busybox:musl true)
-          mkdir -p injected-ramdisk/dev injected-ramdisk/newroot injected-ramdisk/ctr
           docker cp "$cid:/bin/busybox" injected-ramdisk/busybox
           docker rm "$cid"
           chmod 755 injected-ramdisk/busybox
 
-          cp payload/shadow_ctr.ko injected-ramdisk/ctr/
-          cp payload/shadow_ctr_checker injected-ramdisk/ctr/
+          cp payload/shadow_ctr.ko injected-ramdisk/
+          cp payload/shadow_ctr_checker injected-ramdisk/
           chmod 755 injected-ramdisk/ctr/shadow_ctr_checker
 
           # Merged stage-1/stage-2 init script: committed at
