@@ -1109,6 +1109,19 @@ static struct shadow_hook shadow_ns_getdents64_hook =
  * in the caller's original count, the untouched real content is returned
  * instead of risking a corrupt read.
  */
+/*
+ * SHADOW_NS_PROC_REWRITE_SLACK - extra headroom (beyond the original
+ * content length) allocated for the rewritten stat/status output buffer.
+ * The rewrite can only ever grow the content by the (small, bounded)
+ * difference between a real pid/uid/gid's digit width and its translated
+ * vpid/0 counterpart's digit width, summed over at most a handful of
+ * fields per file -- 256 bytes is comfortably more than that could ever
+ * amount to; shadow_ns_rewrite_stat()/shadow_ns_rewrite_status() bail out
+ * to the untouched real content (see their own fail-safe capacity checks)
+ * in the never-expected case that still isn't enough.
+ */
+#define SHADOW_NS_PROC_REWRITE_SLACK	256
+
 static long (*real_sys_read)(const struct pt_regs *regs);
 static long (*real_sys_pread64)(const struct pt_regs *regs);
 
@@ -1353,6 +1366,13 @@ static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 			}
 		} else if (fake_ids && linelen > 4 &&
 			   (!strncmp(line, "Uid:", 4) || !strncmp(line, "Gid:", 4))) {
+			/* "%.3s" reproduces just the "Uid"/"Gid" prefix
+			 * (3 chars) from @line, then appends our own
+			 * "real/effective/saved/filesystem" zeroed columns
+			 * -- matching getuid()/geteuid()/getgid()/getegid()
+			 * already reporting 0 for this simulated user
+			 * namespace member.
+			 */
 			int n = snprintf(out + outlen, out_cap - outlen,
 					  "%.3s:\t0\t0\t0\t0", line);
 			if (n < 0 || (size_t)n >= out_cap - outlen)
@@ -1408,7 +1428,7 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	kbuf = kmalloc(ret, GFP_KERNEL);
 	if (!kbuf)
 		goto out_put;
-	out = kmalloc(ret + 256, GFP_KERNEL);
+	out = kmalloc(ret + SHADOW_NS_PROC_REWRITE_SLACK, GFP_KERNEL);
 	if (!out) {
 		kfree(kbuf);
 		goto out_put;
@@ -1418,8 +1438,10 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 		goto out_free;
 
 	newlen = (leaf == SHADOW_NS_PID_LEAF_STAT) ?
-		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out, ret + 256) :
-		shadow_ns_rewrite_status(kbuf, ret, pidns, fake_ids, out, ret + 256);
+		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out,
+					ret + SHADOW_NS_PROC_REWRITE_SLACK) :
+		shadow_ns_rewrite_status(kbuf, ret, pidns, fake_ids, out,
+					  ret + SHADOW_NS_PROC_REWRITE_SLACK);
 
 	if (newlen >= 0 && !copy_to_user(ubuf, out, newlen))
 		ret = newlen;
