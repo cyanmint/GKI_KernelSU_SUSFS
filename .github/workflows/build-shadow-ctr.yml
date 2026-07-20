@@ -1,5 +1,5 @@
 # Build the merged shadow_ctr out-of-tree module across a KMI matrix, then
-# boot-test the build for TEST_KMI under QEMU.
+# boot-test the TEST_KMI build under QEMU against three prebuilt kernels.
 #
 # shadow_ctr is a single combined shadow_ctr.ko built from subsystem sources
 # under shadow_ctr/shadow_ctr/ (see shadow_ctr/README.md). This workflow
@@ -28,55 +28,73 @@
 #                                shadow_hijack hook engine plus shadow_ns,
 #                                shadow_sysvipc, shadow_mqueue and
 #                                shadow_cgdevices.
-# The resulting .ko for a given KMI is uploaded together with the
-# shadow_ctr_checker userspace binary (see below) as a single artifact
-# (shadow_ctr-modules-<kmi>-arm64).
+# The resulting .ko for a given KMI is uploaded on its own
+# (shadow_ctr-modules-<kmi>-arm64); it no longer bundles the userspace
+# checker binary (see below).
 #
 # shadow_ctr_checker is a plain userspace diagnostic *binary*, not a kernel
 # module: it performs real syscalls to observe whether isolation actually
 # works, rather than reporting compile-time Kconfig facts, so it is not tied
 # to any particular KMI/kernel build at all -- it is cross-compiled once for
 # arm64 using a standard aarch64 gcc cross toolchain (no DDK image, no kernel
-# headers), uploaded as its own artifact, and also copied into every per-KMI
-# bundle above so a single download has everything needed to test a device.
+# headers) and uploaded as its own artifact (shadow_ctr_checker-arm64). The
+# "build" (.ko) and "build-checker" jobs are fully independent of each other
+# (neither `needs:` the other) since they share no build inputs or outputs;
+# only the QEMU test assets job below (which needs both) recombines them.
 #
 # Boot test (QEMU)
 # -----------------
-# Once the TEST_KMI (android14-6.1) build finishes, its artifact bundle is
-# booted under qemu-system-aarch64 with a prebuilt test kernel + ramdisk,
-# insmod'd, and exercised with shadow_ctr_checker, exactly as the previous
-# standalone "Test shadow_ctr module (QEMU)" workflow did (now merged into
-# this one so build and boot-test results show up in a single workflow run).
-# The test ramdisk is a standalone (system-as-root) recovery image published
-# at the v2.1.0 release specifically for this kind of smoke test; it ships
-# toybox utilities and an Android mksh (/system/bin/sh) and does not require
-# any additional block devices, so it can boot directly from an initramfs
-# under QEMU's "virt" machine type.
+# Once the TEST_KMI (android14-6.1) .ko build and the checker build finish,
+# "build-test-assets" downloads both and assembles everything the QEMU boot
+# test needs:
+#   - a small "injected ramdisk" (initramfs) whose /init is a busybox-based
+#     stage-1 script. Its only job is to mount image1.ext4 (attached as a
+#     virtio-blk device) and busybox switch_root into it -- the standard,
+#     kernel-supported way to hand off from a cpio-based initramfs to a real
+#     block-device root (functionally the "pivot_root into it" step: it
+#     moves /dev into the new root, chroots into it, and execs the given
+#     stage-2 init there).
+#   - image1.ext4: an ext4 filesystem built directly from the contents of
+#     testsuite.zip's ramdisk.cpio (a full Android system-as-root userland
+#     with toybox, a real bionic libc, and static docker/dockerd/containerd/
+#     runc already installed under /system/bin, see testsuite.zip's
+#     provenance), plus a stage-2 init script this workflow adds at its
+#     root. `mke2fs -d <dir>` populates the whole filesystem (permissions,
+#     symlinks included) in one step, so no loopback mount/root privileges
+#     are needed on the runner to build it.
+#   - image2.ext4: a second, much smaller ext4 filesystem carrying exactly
+#     the payload the stage-2 script needs once it is running as the new
+#     root: the freshly built shadow_ctr.ko, the shadow_ctr_checker binary,
+#     and docker.io/arm64v8/alpine:latest exported (via `docker export` of a
+#     created-but-never-started container, i.e. a flat filesystem tarball)
+#     into a tarball. Keeping this payload on its own image (mounted on
+#     /mnt only once the real root is live) keeps image1.ext4 a faithful,
+#     unmodified copy of the published ramdisk contents (aside from the one
+#     stage-2 script needed to drive the test).
+# The stage-2 script (running as PID 1 of the real root) then: mounts
+# image2.ext4 on /mnt, runs shadow_ctr_checker, insmods shadow_ctr.ko, runs
+# shadow_ctr_checker again, starts a real dockerd in the background
+# (capturing its output to a log file), `docker import`s the exported alpine
+# tarball (an exported container filesystem needs `docker import`, not
+# `docker load`, to become a taggable image again), `docker run
+# --privileged --rm --network host -it`s it, and finally powers off via
+# sysrq -- i.e. an actual dockerd running under the shadow_ctr-patched
+# kernel, not just a checker binary observing raw syscalls.
 #
-# In addition to shadow_ctr.ko + shadow_ctr_checker, the ramdisk also has a
-# real, statically-linked dockerd/docker/containerd/runc toolchain injected
-# into it (build-docker-assets downloads docker's official static-binaries
-# tarball for linux/aarch64 -- these binaries have no dynamic libc
-# dependency at all, so they run fine on top of this ramdisk's bionic/toybox
-# userland), plus a small image (arm64v8/alpine) saved as a docker-loadable
-# tarball. The ramdisk's init script insmods shadow_ctr.ko, runs
-# shadow_ctr_checker, then configures and starts a real dockerd (vfs storage
-# driver), `docker load`s the injected image, and finally exercises a real,
-# privileged, host-networked `docker run` of it -- i.e. an actual dockerd
-# running under the shadow_ctr-patched kernel, not just a checker binary
-# observing raw syscalls.
-#
-# The boot step runs as a matrix of two kernel variants, both paired with the
-# same v2.1.0 ramdisk (+ injected modules/dockerd):
-#   - "stock": the "kernel" file bundled inside the very same
-#     testkernelramdisk.zip release asset as the ramdisk. This is a stock,
-#     unpatched Android GKI kernel (no SukiSU/SUSFS/shadow_ctr patches at
-#     all), used as a baseline sanity check of the QEMU boot environment
-#     itself, independent of any kernel-side patches.
-#   - "current": the kernel extracted from the android14-6.1.124-2025-02
-#     boot.img published at the v2.2.0 release, i.e. the current
-#     SukiSU/SUSFS-patched GKI kernel build that the shadow_ctr modules are
-#     actually built and meant to be insmod'd against.
+# The boot step exercises all three kernels bundled in testsuite.zip
+# sequentially in a *single* job (not a matrix), so QEMU is installed and
+# the (sizeable) injected ramdisk / ext4 images are downloaded only once
+# instead of once per kernel:
+#   - "stock": a stock, unpatched Android GKI kernel (no SukiSU/SUSFS/
+#     shadow_ctr patches at all), a baseline sanity check of the QEMU boot
+#     environment itself.
+#   - "sukisu": SukiSU/SUSFS-patched but without ctr_patches, to isolate
+#     whether any test failure is caused by ctr_patches specifically.
+#   - "sukisu-ctrpatches": SukiSU/SUSFS-patched *with* ctr_patches applied --
+#     the actual configuration shadow_ctr.ko is built and meant to be
+#     insmod'd against.
+# Each boot produces its own QEMU console log, uploaded together as a
+# single 3-file artifact.
 #
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
@@ -106,17 +124,19 @@ env:
   DDK_RELEASE: '20260313'
   # KMI whose build is boot-tested under QEMU below.
   TEST_KMI: android14-6.1
-  TEST_RAMDISK_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
-  TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.124-2025-02-boot.img
-  # Real, statically-linked dockerd/docker/containerd/runc toolchain (no
-  # dynamic libc dependency at all, so it runs fine on top of the test
-  # ramdisk's bionic/toybox userland) injected into the v2.1.0 ramdisk
-  # alongside shadow_ctr.ko, to exercise a real dockerd under the
-  # shadow_ctr-patched kernel instead of just a checker binary observing raw
-  # syscalls. TEST_CONTAINER_IMAGE is `docker load`-ed and `docker run` once
-  # dockerd is up inside the booted ramdisk.
-  DOCKER_STATIC_URL: https://download.docker.com/linux/static/stable/aarch64/docker-29.6.2.tgz
+  # testsuite.zip bundles the three QEMU test kernels (stock / sukisu /
+  # sukisu+ctr_patches) and the injectable ramdisk.cpio (toybox + busybox +
+  # bionic libc + static docker/dockerd/containerd/runc preinstalled under
+  # /system/bin) in one archive.
+  TESTSUITE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/testsuite.zip
   TEST_CONTAINER_IMAGE: docker.io/arm64v8/alpine:latest
+  # Sizes (MiB) of the two ext4 images assembled for the QEMU test.
+  # image1.ext4 holds the full testsuite ramdisk contents (~330MB
+  # uncompressed) plus some headroom for /tmp and dockerd's vfs storage
+  # driver at runtime; image2.ext4 only carries shadow_ctr.ko,
+  # shadow_ctr_checker and the exported alpine tarball.
+  IMAGE1_SIZE_MB: '1536'
+  IMAGE2_SIZE_MB: '128'
 
 jobs:
   prepare:
@@ -139,17 +159,17 @@ jobs:
           " "$kmis")
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
           # Expose TEST_KMI as a job output: the "env" context is not
-          # available in job-level "if:" conditions, so the "test" job below
+          # available in job-level "if:" conditions, so downstream jobs
           # cannot reference env.TEST_KMI directly there.
           echo "test_kmi=$TEST_KMI" >> "$GITHUB_OUTPUT"
 
   # shadow_ctr_checker is a plain userspace diagnostic binary (see
   # shadow_ctr_checker/README.md): it has no kernel-module build dependency
   # at all (no DDK image, no KDIR, no Module.symvers), so it is built once
-  # for arm64 with a standard cross toolchain, independent of the per-KMI
-  # kernel-module matrix below, then bundled into every per-KMI artifact by
-  # the "build" job (and also uploaded standalone here, for consumers who
-  # only want the checker without any kernel modules).
+  # for arm64 with a standard cross toolchain, completely independent of the
+  # per-KMI kernel-module "build" job below -- neither job needs/depends on
+  # the other, and the .ko artifact produced by "build" no longer bundles
+  # this checker binary at all.
   build-checker:
     runs-on: ubuntu-latest
     steps:
@@ -174,7 +194,7 @@ jobs:
           path: shadow_ctr_checker/shadow_ctr_checker
 
   build:
-    needs: [prepare, build-checker]
+    needs: [prepare]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -183,12 +203,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      - name: Download shadow_ctr_checker (arm64)
-        uses: actions/download-artifact@v8
-        with:
-          name: shadow_ctr_checker-arm64
-          path: modules-out-checker/
 
       - name: Pull DDK build image (${{ matrix.kmi }}-${{ env.DDK_RELEASE }})
         run: |
@@ -205,8 +219,7 @@ jobs:
 
               make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
-              # collect every built .ko into one staging dir so all modules
-              # for this KMI can be uploaded together as a single artifact.
+              # collect the built .ko into a staging dir for upload.
               mkdir -p /workspace/modules-out
               cp "$ROOT/shadow_ctr.ko" /workspace/modules-out/
 
@@ -217,244 +230,131 @@ jobs:
             '
           # The DDK container runs as root, so modules-out/ (created inside
           # the container via the bind mount) is root-owned on the host;
-          # reopen it for the "runner" user before the next step adds the
-          # userspace checker binary to the bundle.
+          # reopen it for the "runner" user before uploading.
           sudo chown -R "$(id -u):$(id -g)" modules-out
 
-      # Bundle the userspace shadow_ctr_checker diagnostic binary (built once
-      # by build-checker, see above) into this KMI's artifact too, so a
-      # single downloaded bundle contains everything needed to both load the
-      # modules and diagnose real isolation on-device.
-      - name: Add shadow_ctr_checker to the ${{ matrix.kmi }} bundle
-        run: |
-          cp modules-out-checker/shadow_ctr_checker modules-out/
-          chmod +x modules-out/shadow_ctr_checker
-          ls -la modules-out
-
-      # --- single artifact bundling every module + the checker binary for
-      #     this KMI --------------------------------------------------------
-      - name: Upload all shadow_ctr modules for ${{ matrix.kmi }}
+      # --- single artifact containing only shadow_ctr.ko for this KMI ---
+      # (no longer bundles shadow_ctr_checker -- see build-checker above)
+      - name: Upload shadow_ctr.ko for ${{ matrix.kmi }}
         uses: actions/upload-artifact@v7
         with:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
 
-  # Fetch the assets needed for the real-dockerd smoke test that "test"
-  # below injects into the plain v2.1.0 ramdisk (in addition to
-  # shadow_ctr.ko/shadow_ctr_checker):
-  #   1. Docker's official static-binaries tarball for linux/aarch64
-  #      (dockerd/docker/containerd/containerd-shim-runc-v2/runc/ctr/
-  #      docker-init/docker-proxy). These are fully statically linked (no
-  #      dynamic libc dependency at all), so they run unmodified on top of
-  #      the ramdisk's bionic/toybox userland without needing a separate
-  #      rootfs of their own.
-  #   2. TEST_CONTAINER_IMAGE (arm64v8/alpine) is `docker save`-d (not
-  #      exported/run, so no emulation is needed on the amd64 runner) into a
-  #      docker-loadable image tarball, to be `docker load`-ed once dockerd
-  #      is running inside the booted ramdisk.
-  # Independent of the per-KMI build matrix, so it runs in parallel with it.
-  build-docker-assets:
+  # Assemble everything the QEMU boot test needs: the injected (busybox)
+  # ramdisk, the two ext4 images, and (verbatim, unmodified) the three test
+  # kernels bundled in testsuite.zip. Independent of the full KMI matrix --
+  # only needs the single TEST_KMI .ko plus the checker binary.
+  build-test-assets:
+    needs: [prepare, build, build-checker]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-checker.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
     runs-on: ubuntu-latest
     steps:
-      # --- 1. Download and extract the static docker toolchain ---
-      - name: Download docker static binaries (${{ env.DOCKER_STATIC_URL }})
+      - name: Install test-asset build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cpio e2fsprogs
+
+      - name: Download shadow_ctr.ko (${{ env.TEST_KMI }})
+        uses: actions/download-artifact@v8
+        with:
+          name: shadow_ctr-modules-${{ env.TEST_KMI }}-arm64
+          path: payload/
+
+      - name: Download shadow_ctr_checker (arm64)
+        uses: actions/download-artifact@v8
+        with:
+          name: shadow_ctr_checker-arm64
+          path: payload/
+      - run: chmod +x payload/shadow_ctr_checker
+
+      # --- 1. Fetch testsuite.zip: three kernels + ramdisk.cpio ---
+      - name: Download and extract testsuite.zip
         run: |
           set -e
-          curl -fL -o docker-static.tgz "$DOCKER_STATIC_URL"
-          mkdir -p docker-assets
-          tar -xzf docker-static.tgz -C docker-assets
-          ls -la docker-assets/docker
+          curl -fL -o testsuite.zip "$TESTSUITE_URL"
+          mkdir -p testsuite
+          unzip -o testsuite.zip -d testsuite
+          ls -la testsuite
 
-      # --- 2. Save TEST_CONTAINER_IMAGE as a docker-loadable tarball ---
-      - name: Pull and save test container image (${{ env.TEST_CONTAINER_IMAGE }})
+      # --- 2. docker.io/arm64v8/alpine:latest -> exported tarball ---
+      #
+      # `docker export` (not `docker save`) is used deliberately: it dumps a
+      # created container's flat filesystem as a plain tarball, independent
+      # of any image-manifest/layer format, so the stage-2 script inside
+      # QEMU can reconstitute it with a plain `docker import` even though it
+      # never itself pulled the image from a registry.
+      - name: Pull and export test container image (${{ env.TEST_CONTAINER_IMAGE }})
         run: |
           set -e
           docker pull --platform linux/arm64 "$TEST_CONTAINER_IMAGE"
-          mkdir -p docker-assets/images
-          docker save "$TEST_CONTAINER_IMAGE" -o docker-assets/images/test-container.tar
-          ls -la docker-assets/images
+          cid=$(docker create --platform linux/arm64 "$TEST_CONTAINER_IMAGE" true)
+          docker export "$cid" -o alpine-export.tar
+          docker rm "$cid"
+          ls -la alpine-export.tar
 
-      - name: Upload docker assets (static binaries + test image)
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ctr-docker-assets
-          path: docker-assets/
-
-  # Boot-test the TEST_KMI (android14-6.1) build under QEMU: insmod
-  # shadow_ctr.ko, run shadow_ctr_checker, then configure and start a real
-  # dockerd (static binaries injected by build-docker-assets above) and
-  # exercise a real `docker load` + privileged `docker run`. The serial
-  # console log (insmod attempt, resulting kernel messages, checker's
-  # PASS/STUB/FAIL report, and the dockerd/docker output) is collected as a
-  # build artifact for inspection.
-  #
-  # Skipped (not failed) if a custom `kmis` workflow_dispatch input excluded
-  # TEST_KMI from the build matrix above, since there is then no matching
-  # artifact to download.
-  test:
-    needs: [prepare, build, build-docker-assets]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-docker-assets.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        kernel_variant: [stock, current]
-    steps:
-      - name: Install test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cpio qemu-system-arm
-
-      - name: Download built modules (arm64)
-        uses: actions/download-artifact@v7
-        with:
-          name: shadow_ctr-modules-${{ env.TEST_KMI }}-arm64
-          path: modules-out/
-
-      - name: Mark checker binary executable
-        run: chmod +x modules-out/shadow_ctr_checker
-
-      - name: Download docker assets (static binaries + test image)
-        uses: actions/download-artifact@v7
-        with:
-          name: shadow_ctr-docker-assets
-          path: docker-assets/
-
-      # --- 1. Fetch the test ramdisk and the kernel image under test ---
-      #
-      # The ramdisk always comes from the v2.1.0 testkernelramdisk.zip. The
-      # kernel booted alongside it depends on kernel_variant:
-      #   - "stock": use the "kernel" file bundled in that same zip verbatim
-      #     (a stock, unpatched Android GKI kernel).
-      #   - "current": extract the kernel from the current
-      #     SukiSU/SUSFS-patched android14-6.1.124-2025-02 boot.img (v2.2.0
-      #     release), i.e. the kernel the shadow_ctr modules are actually
-      #     built against.
-
-      - name: Download test ramdisk + kernel zip (v2.1.0)
-        run: |
-          curl -fL -o testkernelramdisk.zip "$TEST_RAMDISK_URL"
-          mkdir -p test-image
-          unzip -o testkernelramdisk.zip -d test-image
-          ls -la test-image
-
-      - name: Download test kernel boot image (v2.2.0)
-        if: matrix.kernel_variant == 'current'
-        run: |
-          curl -fL -o test-kernel-boot.img "$TEST_KERNEL_URL"
-
-      - name: Extract kernel from boot image
-        if: matrix.kernel_variant == 'current'
-        run: |
-          git clone --depth=1 https://android.googlesource.com/platform/system/tools/mkbootimg \
-            -b main-kernel-build-2024 mkbootimg-tools
-          python3 mkbootimg-tools/unpack_bootimg.py \
-            --boot_img test-kernel-boot.img --out out-bootimg --format mkbootimg
-          cp out-bootimg/kernel test-image/kernel
-          ls -la test-image
-
-      # For the "stock" variant, test-image/kernel is left as-is: the
-      # "kernel" file that was already unzipped from testkernelramdisk.zip.
-
-      # --- 2. Inject the freshly built module, checker and static docker
-      #        toolchain into the ramdisk ---
-
-      - name: Inject shadow_ctr module, docker toolchain and init script into ramdisk
+      # --- 3. image1.ext4: full ramdisk.cpio contents + stage-2 init ---
+      - name: Assemble image1.ext4 (ramdisk contents + stage-2 init script)
         run: |
           set -e
-          workdir="$GITHUB_WORKSPACE/ramdisk-root"
-          mkdir -p "$workdir"
-          (cd "$workdir" && cpio -idm < "$GITHUB_WORKSPACE/test-image/ramdisk.cpio")
+          mkdir -p ramdisk-root
+          (cd ramdisk-root && cpio -idm < "$GITHUB_WORKSPACE/testsuite/ramdisk.cpio")
 
-          # Drop the freshly built merged .ko at the ramdisk root, plus the
-          # standalone shadow_ctr_checker userspace binary.
-          mkdir -p "$workdir/modules"
-          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr.ko" "$workdir/modules/"
-          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr_checker" "$workdir/"
-          chmod 755 "$workdir/shadow_ctr_checker"
-
-          # Statically-linked dockerd/docker/containerd/runc toolchain (no
-          # dynamic libc dependency, so it runs unmodified on this bionic/
-          # toybox ramdisk) plus the test container image tarball.
-          mkdir -p "$workdir/docker" "$workdir/images"
-          cp "$GITHUB_WORKSPACE"/docker-assets/docker/* "$workdir/docker/"
-          chmod 755 "$workdir"/docker/*
-          cp "$GITHUB_WORKSPACE/docker-assets/images/test-container.tar" "$workdir/images/"
-          ls -la "$workdir/modules" "$workdir/shadow_ctr_checker" "$workdir/docker" "$workdir/images"
-
-          # PID-1 test script, executed directly via the kernel's rdinit=
-          # command line option (bypassing the image's real Android init,
-          # which expects a full device environment). It mounts the
-          # pseudo-filesystems bionic needs, inserts the merged module,
-          # dumps the resulting kernel log + status, then starts a real
-          # dockerd and exercises a `docker load` + privileged `docker run`.
-          # All ramdisk utilities are invoked with absolute paths: bionic's
-          # dynamic linker requires /proc/self/exe (or a resolvable argv[0])
-          # to load shared objects, which only holds once /proc is mounted
-          # and the path is absolute.
-          cat > "$workdir/test_init.sh" <<'EOF'
+          # Stage-2 init script: runs as PID 1 once busybox switch_root (in
+          # the injected ramdisk below) has handed control to this real
+          # root. All ramdisk utilities are invoked with absolute paths:
+          # bionic's dynamic linker needs /proc/self/exe (or a resolvable
+          # argv[0]) to load shared objects, which only holds once /proc is
+          # mounted and the path is absolute.
+          cat > ramdisk-root/stage2_test_init.sh <<'EOF'
           #!/system/bin/sh
           set -x
-          # Mount devtmpfs first and immediately re-point stdio at /dev/kmsg
-          # instead of /dev/console: PID 1's original fds (opened by the
-          # kernel against the pre-devtmpfs /dev/console node before this
-          # script ever ran) are otherwise easy to lose track of once /dev
-          # is replaced, silently dropping every echo/trace/command-output
-          # line for the rest of the script even though it keeps executing.
-          # /dev/console re-open has been observed to itself go silently
-          # missing on some (but not all) kernel builds -- e.g. stock,
-          # unpatched GKI kernels -- for reasons that don't reproduce with
-          # every kernel under test, dropping 100% of script output for the
-          # whole run despite the script provably completing (the trailing
-          # sysrq poweroff still fires on schedule). /dev/kmsg writes are
-          # turned into kernel printk records, which is the one output path
-          # that has reliably reached the QEMU console log in every kernel
-          # tested so far, so route stdout/stderr through it instead of
-          # relying on a plain tty re-open.
-          /system/bin/mount -t devtmpfs devtmpfs /dev
+          # Mount devtmpfs/proc/sysfs first and immediately re-point stdio
+          # at /dev/kmsg instead of /dev/console: PID 1's original fds are
+          # otherwise easy to lose track of once /dev is replaced, silently
+          # dropping every echo/trace/command-output line for the rest of
+          # the script even though it keeps executing. /dev/kmsg writes
+          # become kernel printk records, which reliably reaches the QEMU
+          # console log.
+          /system/bin/mount -t devtmpfs devtmpfs /dev 2>/dev/null
           exec </dev/console >/dev/kmsg 2>&1
           /system/bin/mount -t proc proc /proc
           /system/bin/mount -t sysfs sysfs /sys
-          # PATH must include /docker (the injected static dockerd/docker/
-          # containerd/runc toolchain) or every dockerd/docker invocation
-          # below fails with "not found".
-          export PATH=/docker:/system/bin:/system/xbin
+          export PATH=/system/bin
           /system/bin/mkdir -p /dev/pts
           /system/bin/mount -t devpts devpts /dev/pts
           /system/bin/mkdir -p /sys/fs/cgroup
           /system/bin/mount -t cgroup2 cgroup2 /sys/fs/cgroup || /system/bin/mount -t tmpfs cgroup /sys/fs/cgroup
-          # PID 1 is running directly on the kernel's built-in initramfs
-          # "rootfs" (there is no switch_root to a real block-device root in
-          # this test), and runc's pivot_root() call refuses to operate with
-          # that as the old root ("pivot_root .: invalid argument"), even
-          # though the container's own new-root bind mount is otherwise set
-          # up correctly. Bind-mounting / onto itself turns it into an
-          # ordinary mount entry that pivot_root can pivot away from, which
-          # is the standard workaround for running a container runtime
-          # directly on top of an initramfs root.
+          # runc's pivot_root() refuses to operate with the initramfs-
+          # derived root as its old root ("invalid argument"); bind-
+          # mounting / onto itself turns it into an ordinary mount entry
+          # that pivot_root can pivot away from.
           /system/bin/mount -o bind / /
           # A proper tmpfs (with xattr support) at /tmp: shadow_ctr_checker's
           # overlay2 self-test mkdtemp()s its lower/upper/work dirs under
-          # /tmp, and the raw initramfs root does not reliably support the
-          # trusted.overlay.* xattr overlayfs needs there, which otherwise
-          # trips a "failed to set xattr on upper" kernel warning. It also
-          # backs dockerd's own vfs storage driver.
+          # /tmp, and it also backs dockerd's own vfs storage driver.
           /system/bin/mkdir -p /tmp
           /system/bin/mount -t tmpfs tmpfs /tmp
+          /system/bin/ifconfig lo up
 
-          M=/modules
+          echo "=== SHADOW_CTR_QEMU_TEST: mount image2.ext4 -> /mnt ==="
+          /system/bin/mkdir -p /mnt
+          /system/bin/mount -t ext4 /dev/vdb /mnt
+          echo "mount image2.ext4 -> $?"
+          /system/bin/chmod 755 /mnt/shadow_ctr_checker
+
+          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
+          /mnt/shadow_ctr_checker
+          echo "shadow_ctr_checker (pre-insmod) -> $?"
+
           echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
-          /system/bin/insmod $M/shadow_ctr.ko
+          /system/bin/insmod /mnt/shadow_ctr.ko
           echo "insmod shadow_ctr.ko -> $?"
-
-          echo "=== SHADOW_CTR_QEMU_TEST: dmesg ==="
           /system/bin/dmesg
-          # checker runs next, as a plain userspace binary (statically
-          # linked, no dependency on this ramdisk's libc), so it observes
-          # everything already loaded.
-          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker ==="
-          /shadow_ctr_checker
-          echo "shadow_ctr_checker -> $?"
+
+          echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
+          /mnt/shadow_ctr_checker
+          echo "shadow_ctr_checker (post-insmod) -> $?"
 
           echo "=== SHADOW_CTR_QEMU_TEST: configuring dockerd (vfs storage) ==="
           /system/bin/mkdir -p /etc/docker
@@ -473,20 +373,21 @@ jobs:
             /system/bin/sleep 1
           done
 
-          echo "=== SHADOW_CTR_QEMU_TEST: docker load (test container image) ==="
-          docker load -i /images/test-container.tar
-          echo "docker load -> $?"
+          # /mnt/alpine.tar is a `docker export` of a container's flat
+          # filesystem, not a `docker save` image archive, so it must be
+          # reconstituted with `docker import` (which tags a flat rootfs
+          # tarball as an image), not `docker load` (which only understands
+          # docker save's manifest+layers format). This tag must match
+          # TEST_CONTAINER_IMAGE above; it can't be substituted via the
+          # workflow's GitHub Actions expression syntax here because the enclosing
+          # heredoc is quoted ('EOF') to avoid the shell expanding this
+          # script's own $-variables at write time.
+          echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
+          docker import /mnt/alpine.tar docker.io/arm64v8/alpine:latest
+          echo "docker import -> $?"
 
-          # Real, privileged, host-networked run of the just-loaded test
-          # container image (its default entrypoint/cmd), to prove dockerd
-          # can actually run a real container end-to-end under the
-          # shadow_ctr-patched kernel, not just report its own version. This
-          # tag must match env.TEST_CONTAINER_IMAGE above: it can't be
-          # substituted via the workflow's ${{ }} expression syntax here
-          # because the enclosing heredoc is quoted ('EOF') to avoid the
-          # shell expanding this script's own $-variables at write time.
           echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
-          docker run --privileged --rm --network host docker.io/arm64v8/alpine:latest
+          docker run --privileged --rm --network host -it docker.io/arm64v8/alpine:latest true < /dev/null
           echo "docker run -> $?"
 
           echo "=== SHADOW_CTR_QEMU_TEST: dockerd log ==="
@@ -496,42 +397,124 @@ jobs:
           echo o > /proc/sysrq-trigger
           while true; do :; done
           EOF
-          chmod 755 "$workdir/test_init.sh"
+          chmod 755 ramdisk-root/stage2_test_init.sh
 
-          (cd "$workdir" && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio")
-          ls -la "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio"
+          # mke2fs -d populates the whole filesystem (perms/symlinks
+          # included) from a plain directory in one step, so no loopback
+          # mount / root privileges are needed to build image1.ext4.
+          dd if=/dev/zero of=image1.ext4 bs=1M count="$IMAGE1_SIZE_MB"
+          mkfs.ext4 -q -F -d ramdisk-root image1.ext4
+          ls -la image1.ext4
 
-      # --- 3. Boot under QEMU and collect the serial log ---
-      #
-      # A generous timeout: starting dockerd + docker load + a real
-      # `docker run` takes noticeably longer than a plain insmod+checker
-      # smoke test.
+      # --- 4. image2.ext4: shadow_ctr.ko + shadow_ctr_checker + alpine.tar ---
+      - name: Assemble image2.ext4 (module + checker + alpine tarball)
+        run: |
+          set -e
+          mkdir -p image2-root
+          cp payload/shadow_ctr.ko image2-root/
+          cp payload/shadow_ctr_checker image2-root/
+          chmod 755 image2-root/shadow_ctr_checker
+          cp alpine-export.tar image2-root/alpine.tar
+          ls -la image2-root
 
-      - name: Boot test kernel (${{ matrix.kernel_variant }}) + ramdisk under QEMU
+          dd if=/dev/zero of=image2.ext4 bs=1M count="$IMAGE2_SIZE_MB"
+          mkfs.ext4 -q -F -d image2-root image2.ext4
+          ls -la image2.ext4
+
+      # --- 5. injected ramdisk: busybox stage-1 init that mounts
+      #        image1.ext4 (/dev/vda) and switch_root's into it ---
+      - name: Build injected (busybox) ramdisk
+        run: |
+          set -e
+          docker pull --platform linux/arm64 busybox:musl
+          cid=$(docker create --platform linux/arm64 busybox:musl true)
+          mkdir -p injected-ramdisk
+          docker cp "$cid:/bin/busybox" injected-ramdisk/busybox
+          docker rm "$cid"
+
+          mkdir -p injected-ramdisk/dev injected-ramdisk/proc injected-ramdisk/sys injected-ramdisk/newroot
+          chmod 755 injected-ramdisk/busybox
+
+          cat > injected-ramdisk/init <<'EOF'
+          #!/busybox sh
+          /busybox mount -t devtmpfs devtmpfs /dev
+          exec </dev/console >/dev/kmsg 2>&1
+          /busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
+          /busybox mount -t ext4 /dev/vda /newroot
+          /busybox echo "mount image1.ext4 -> $?"
+          exec /busybox switch_root /newroot /stage2_test_init.sh
+          EOF
+          chmod 755 injected-ramdisk/init
+
+          (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
+          ls -la injected-ramdisk.cpio
+
+      # --- 6. bundle: injected ramdisk + three kernels + two ext4 images ---
+      - name: Assemble QEMU asset bundle
+        run: |
+          mkdir -p qemu-assets
+          cp injected-ramdisk.cpio qemu-assets/
+          cp testsuite/kernel-stock-* qemu-assets/kernel-stock
+          cp testsuite/kernel-sukisu-ctrpatches-* qemu-assets/kernel-sukisu-ctrpatches
+          cp testsuite/kernel-sukisu-[0-9]* qemu-assets/kernel-sukisu
+          cp image1.ext4 qemu-assets/
+          cp image2.ext4 qemu-assets/
+          ls -la qemu-assets
+
+      - name: Upload injected ramdisk, kernels and ext4 images
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-qemu-assets
+          path: qemu-assets/
+
+  # Boot-test all three testsuite kernels under QEMU with the exact same
+  # injected ramdisk + ext4 images, sequentially in a single job (no
+  # matrix): this installs qemu-system-arm and downloads the (sizeable)
+  # ramdisk/ext4 images only once instead of three times. Skipped (not
+  # failed) if build-test-assets itself was skipped (e.g. a custom `kmis`
+  # workflow_dispatch input excluded TEST_KMI from the build matrix).
+  test:
+    needs: [build-test-assets]
+    if: ${{ !cancelled() && needs.build-test-assets.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm
+
+      - name: Download injected ramdisk, kernels and ext4 images
+        uses: actions/download-artifact@v8
+        with:
+          name: shadow_ctr-qemu-assets
+          path: qemu-assets/
+
+      # A generous per-kernel timeout: starting dockerd + docker import + a
+      # real `docker run` takes noticeably longer than a plain
+      # insmod+checker smoke test.
+      - name: Boot all three kernels under QEMU
         run: |
           set +e
-          timeout --signal=KILL 300 \
-            qemu-system-aarch64 \
-              -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
-              -kernel test-image/kernel \
-              -initrd test-image/ramdisk-test.cpio \
-              -append "console=ttyAMA0 rdinit=/test_init.sh earlycon panic=-1" \
-            > qemu-console.log 2>&1
-          echo "QEMU exited with status $?"
-          tail -n 200 qemu-console.log
+          mkdir -p qemu-logs
+          for variant in stock sukisu sukisu-ctrpatches; do
+            echo "=== booting kernel variant: $variant ==="
+            timeout --signal=KILL 300 \
+              qemu-system-aarch64 \
+                -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
+                -kernel "qemu-assets/kernel-$variant" \
+                -initrd qemu-assets/injected-ramdisk.cpio \
+                -drive file=qemu-assets/image1.ext4,format=raw,if=virtio \
+                -drive file=qemu-assets/image2.ext4,format=raw,if=virtio \
+                -append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
+              > "qemu-logs/qemu-console-$variant.log" 2>&1
+            echo "QEMU ($variant) exited with status $?"
+            tail -n 100 "qemu-logs/qemu-console-$variant.log"
+          done
+          ls -la qemu-logs
 
-      - name: Assemble QEMU test artifact bundle
-        if: always()
-        run: |
-          mkdir -p qemu-test-bundle
-          cp test-image/kernel qemu-test-bundle/tested-kernel 2>/dev/null || true
-          cp test-image/ramdisk-test.cpio qemu-test-bundle/injected-ramdisk.cpio 2>/dev/null || true
-          cp qemu-console.log qemu-test-bundle/qemu-console.log 2>/dev/null || true
-          ls -la qemu-test-bundle
-
-      - name: Upload tested kernel, injected ramdisk and QEMU log
+      - name: Upload QEMU console logs (stock / sukisu / sukisu-ctrpatches)
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-qemu-test-bundle-${{ matrix.kernel_variant }}
-          path: qemu-test-bundle/
+          name: shadow_ctr-qemu-logs
+          path: qemu-logs/
