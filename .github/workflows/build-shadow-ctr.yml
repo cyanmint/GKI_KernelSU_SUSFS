@@ -315,14 +315,25 @@ jobs:
           cat > "$workdir/docker_test_init.sh" <<'EOF'
           #!/bin/sh
           set -x
-          # Mount devtmpfs first and immediately re-bind stdio to the fresh
-          # /dev/console it creates: PID 1's original fds (opened by the
+          # Mount devtmpfs first and immediately re-point stdio at /dev/kmsg
+          # instead of /dev/console: PID 1's original fds (opened by the
           # kernel against the pre-devtmpfs /dev/console node before this
           # script ever ran) are otherwise easy to lose track of once /dev
           # is replaced, silently dropping every echo/trace/command-output
           # line for the rest of the script even though it keeps executing.
+          # /dev/console re-open has been observed to itself go silently
+          # missing on some (but not all) kernel builds -- e.g. stock,
+          # unpatched GKI kernels -- for reasons that don't reproduce with
+          # every kernel under test, dropping 100% of script output for the
+          # whole run despite the script provably completing (the trailing
+          # sysrq poweroff still fires on schedule). /dev/kmsg writes are
+          # turned into kernel printk records, which is the one output path
+          # that has reliably reached the QEMU console log in every kernel
+          # tested so far (raw dmesg lines always show up even when the
+          # console re-open above silently fails), so route stdout/stderr
+          # through it instead of relying on a plain tty re-open.
           mount -t devtmpfs devtmpfs /dev
-          exec </dev/console >/dev/console 2>&1
+          exec </dev/console >/dev/kmsg 2>&1
           # busybox ash's built-in default PATH (/sbin:/usr/sbin:/bin:/usr/bin)
           # does not include /usr/local/bin or /usr/local/sbin, where the
           # docker-library image installs dockerd/docker/containerd/runc, so
@@ -335,6 +346,16 @@ jobs:
           mount -t devpts devpts /dev/pts
           mkdir -p /sys/fs/cgroup
           mount -t cgroup2 cgroup2 /sys/fs/cgroup || mount -t tmpfs cgroup /sys/fs/cgroup
+          # PID 1 is running directly on the kernel's built-in initramfs
+          # "rootfs" (there is no switch_root to a real block-device root in
+          # this test), and runc's pivot_root() call refuses to operate with
+          # that as the old root ("pivot_root .: invalid argument"), even
+          # though the container's own new-root bind mount is otherwise set
+          # up correctly. Bind-mounting / onto itself turns it into an
+          # ordinary mount entry that pivot_root can pivot away from, which
+          # is the standard workaround for running a container runtime
+          # directly on top of an initramfs root.
+          mount --bind / /
           # A proper tmpfs (with xattr support) at /tmp: shadow_ctr_checker's
           # overlay2 self-test mkdtemp()s its lower/upper/work dirs under
           # /tmp, and the raw initramfs root does not reliably support the
