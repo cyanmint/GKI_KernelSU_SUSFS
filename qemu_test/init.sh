@@ -40,10 +40,11 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	/busybox mount -t ext4 /dev/nvme0n1 /newroot
 	/busybox echo "mount image1.ext4 -> $?"
 
-	/busybox cp -R /ctr /newroot/
+	/busybox cp /shadow_ctr_checker /newroot/
+	/busybox cp /shadow_ctr.ko /newroot/
+	/busybox cp /busybox /newroot/
 	/busybox cat /init > /newroot/second_init
 	/busybox chmod 755 /newroot/second_init
-	/busybox cp /busybox /newroot/
 
 	exec /busybox switch_root /newroot /second_init
 fi
@@ -87,16 +88,16 @@ echo "=== SHADOW_CTR_QEMU_TEST: /ctr (module + checker) copied onto the new root
 /system/bin/chmod 755 /ctr/shadow_ctr_checker
 
 echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
-/ctr/shadow_ctr_checker
+/shadow_ctr_checker
 echo "shadow_ctr_checker (pre-insmod) -> $?"
 
 echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
-/system/bin/insmod /ctr/shadow_ctr.ko
+/system/bin/insmod /shadow_ctr.ko
 echo "insmod shadow_ctr.ko -> $?"
 /system/bin/dmesg
 
 echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
-/ctr/shadow_ctr_checker
+/shadow_ctr_checker
 echo "shadow_ctr_checker (post-insmod) -> $?"
 
 echo "=== SHADOW_CTR_QEMU_TEST: configuring dockerd (vfs storage) ==="
