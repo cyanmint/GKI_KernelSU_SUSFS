@@ -75,9 +75,9 @@
 #     script insmods shadow_ctr.ko, configures dockerd to use the "vfs"
 #     storage driver, starts dockerd as a real daemon, `docker load`s the
 #     injected ubuntu image, and finally exercises a real, privileged,
-#     host-networked `docker run` of arm64v8/docker:latest -- i.e. an actual
-#     dockerd running under the shadow_ctr-patched kernel, not just a
-#     checker binary observing raw syscalls.
+#     host-networked `docker run` of the loaded arm64v8/ubuntu:latest image
+#     -- i.e. an actual dockerd running under the shadow_ctr-patched kernel,
+#     not just a checker binary observing raw syscalls.
 # The full test matrix is therefore [stock, current] kernel x [old, docker]
 # ramdisk (4 combinations).
 #
@@ -315,13 +315,27 @@ jobs:
           cat > "$workdir/docker_test_init.sh" <<'EOF'
           #!/bin/sh
           set -x
+          # Mount devtmpfs first and immediately re-bind stdio to the fresh
+          # /dev/console it creates: PID 1's original fds (opened by the
+          # kernel against the pre-devtmpfs /dev/console node before this
+          # script ever ran) are otherwise easy to lose track of once /dev
+          # is replaced, silently dropping every echo/trace/command-output
+          # line for the rest of the script even though it keeps executing.
+          mount -t devtmpfs devtmpfs /dev
+          exec </dev/console >/dev/console 2>&1
           mount -t proc proc /proc
           mount -t sysfs sysfs /sys
-          mount -t devtmpfs devtmpfs /dev
           mkdir -p /dev/pts
           mount -t devpts devpts /dev/pts
           mkdir -p /sys/fs/cgroup
           mount -t cgroup2 cgroup2 /sys/fs/cgroup || mount -t tmpfs cgroup /sys/fs/cgroup
+          # A proper tmpfs (with xattr support) at /tmp: shadow_ctr_checker's
+          # overlay2 self-test mkdtemp()s its lower/upper/work dirs under
+          # /tmp, and the raw initramfs root does not reliably support the
+          # trusted.overlay.* xattr overlayfs needs there, which otherwise
+          # trips a "failed to set xattr on upper" kernel warning.
+          mkdir -p /tmp
+          mount -t tmpfs tmpfs /tmp
 
           echo "=== SHADOW_CTR_DOCKER_TEST: shadow_ctr_checker (pre-insmod) ==="
           /shadow_ctr_checker
@@ -357,17 +371,12 @@ jobs:
           docker load -i /images/ubuntu.tar
           echo "docker load -> $?"
 
-          # Non-interactive equivalent of:
-          #   docker run --privileged --rm --network host \
-          #     --entrypoint /bin/ash -it docker.io/arm64v8/docker:latest
-          # (no allocated tty is available for -it under a scripted rdinit=
-          # boot, so a sanity command is passed instead of an interactive
-          # shell) to prove a privileged, host-networked container can run
-          # for real inside this environment.
-          echo "=== SHADOW_CTR_DOCKER_TEST: docker run (nested docker sanity) ==="
-          docker run --privileged --rm --network host \
-            --entrypoint /bin/ash docker.io/arm64v8/docker:latest \
-            -c 'docker --version && echo NESTED_DOCKER_OK'
+          # Real, privileged, host-networked run of the just-loaded rootfs 2
+          # image (arm64v8/ubuntu:latest, its default entrypoint/cmd), to
+          # prove dockerd can actually run a real container end-to-end under
+          # the shadow_ctr-patched kernel, not just report its own version.
+          echo "=== SHADOW_CTR_DOCKER_TEST: docker run (rootfs 2 / ubuntu sanity) ==="
+          docker run --privileged --rm --network host docker.io/arm64v8/ubuntu:latest
           echo "docker run -> $?"
 
           echo "=== SHADOW_CTR_DOCKER_TEST: dockerd log ==="
