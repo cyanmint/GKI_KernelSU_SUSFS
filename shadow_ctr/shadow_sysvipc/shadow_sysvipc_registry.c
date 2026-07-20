@@ -88,12 +88,12 @@ static void svipc_resource_init_common(struct svipc_resource *res)
 }
 
 /*
- * svipc_resource_alloc_sem_val() - allocate the per-semaphore value array
+ * svipc_resource_alloc_sem_array() - allocate the per-semaphore value array
  * for a freshly created TYPE_SEM resource, mirroring semget(2)'s own
  * "all values initialised to 0" rule (real ipc/sem.c's sem_alloc()).
  * No-op (and never fails) for any other resource type.
  */
-static int svipc_resource_alloc_sem_val(struct svipc_resource *res)
+static int svipc_resource_alloc_sem_array(struct svipc_resource *res)
 {
 	if (res->type != SHADOW_SYSVIPC_TYPE_SEM || !res->nsems)
 		return 0;
@@ -228,7 +228,7 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 			res->ns_id = svipc_current_ns_id();
 			refcount_set(&res->refcount, 1);
 			svipc_resource_init_common(res);
-			if (svipc_resource_alloc_sem_val(res)) {
+			if (svipc_resource_alloc_sem_array(res)) {
 				mutex_unlock(&svipc_map_lock);
 				kfree(res);
 				return -ENOMEM;
@@ -261,7 +261,7 @@ int svipc_resource_create_or_get(u32 type, s32 key, u32 flags,
 		res->size = size;
 		refcount_set(&res->refcount, 1);
 		svipc_resource_init_common(res);
-		if (svipc_resource_alloc_sem_val(res)) {
+		if (svipc_resource_alloc_sem_array(res)) {
 			kfree(res);
 			return -ENOMEM;
 		}

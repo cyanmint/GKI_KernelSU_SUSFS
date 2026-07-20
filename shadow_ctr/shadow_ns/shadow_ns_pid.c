@@ -163,7 +163,8 @@ void shadow_ns_pidns_priv_free(struct shadow_pidns_priv *priv)
  * waitid() hands back into a vpid *after* the task has actually been
  * reaped by its parent (see shadow_ns_hook_exit_group()'s own comment). A
  * busy container can easily recycle a real host pid faster than that sweep
- * runs. shadow_ns_pidns_register() is only ever called once, synchronously, for a definitely-fresh @rpid right
+ * runs. shadow_ns_pidns_register() is only ever called once, synchronously,
+ * for a definitely-fresh @rpid right
  * after that task was created (shadow_ns_install_child_state(), itself
  * called immediately after the real clone()/fork() syscall returns its
  * child's tgid) -- so if @rpid already has an entry in @pidns at this

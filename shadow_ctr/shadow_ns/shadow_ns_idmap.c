@@ -75,8 +75,8 @@ ssize_t shadow_ns_idmap_write(struct shadow_id_map *map, const char *buf, size_t
 		pos += consumed;
 
 		if (count == 0 ||
-		    (u64)first + count > U32_MAX ||
-		    (u64)lower_first + count > U32_MAX) {
+		    (u64)first + count > (u64)U32_MAX + 1 ||
+		    (u64)lower_first + count > (u64)U32_MAX + 1) {
 			ret = -EINVAL;
 			goto out_free;
 		}

@@ -225,10 +225,20 @@ long svipc_sys_shmat(int shmid, const void __user *ushmaddr, int shmflg,
 		goto out_put;
 	}
 
+	/*
+	 * shmat(2)'s @shmaddr is only ever a placement *hint* unless SHM_REMAP
+	 * is also given (see man shmat(2)): with a non-NULL hint but no
+	 * SHM_REMAP, real do_shmat() still lets the kernel pick a different
+	 * address if the hint's range is already occupied, rather than
+	 * unconditionally forcing (and clobbering) exactly that address the
+	 * way MAP_FIXED would. Only add MAP_FIXED when SHM_REMAP was
+	 * explicitly requested, matching that semantic.
+	 */
 	get_file(res->shm_file);
 	addr = svipc_shm_vm_mmap(res->shm_file, (unsigned long)ushmaddr,
 				  res->size, prot,
-				  ushmaddr ? MAP_SHARED | MAP_FIXED : MAP_SHARED,
+				  (ushmaddr && (shmflg & SHM_REMAP)) ?
+					  MAP_SHARED | MAP_FIXED : MAP_SHARED,
 				  0);
 	fput(res->shm_file);
 	if (IS_ERR_VALUE(addr)) {

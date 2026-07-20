@@ -71,24 +71,48 @@ static bool svipc_sem_ops_fit_locked(struct svipc_resource *res,
 	return true;
 }
 
+/*
+ * svipc_sem_ops_overflow_locked() - would applying every op in @sops push
+ * any semaphore's value above SEMVMX? Caller must hold res->sem_lock.
+ *
+ * Real semop(2) fails immediately with -ERANGE for this case rather than
+ * blocking (unlike the ordinary "not satisfiable yet" conditions
+ * svipc_sem_ops_fit_locked() above checks, which do block/retry), so this
+ * is checked as a separate, one-shot precondition -- never retried in a
+ * wait loop -- right before applying. Letting
+ * svipc_sem_ops_apply_locked() below use a plain, unclamped addition once
+ * both this and svipc_sem_ops_fit_locked() have passed, instead of silently
+ * clamping a value that should instead have produced a hard -ERANGE error.
+ */
+static bool svipc_sem_ops_overflow_locked(struct svipc_resource *res,
+					  struct sembuf *sops, unsigned int nsops)
+{
+	unsigned int i;
+
+	for (i = 0; i < nsops; i++) {
+		if (sops[i].sem_op > 0) {
+			int val = res->sem_val[sops[i].sem_num];
+
+			if (val + sops[i].sem_op > SVIPC_SEMVMX)
+				return true;
+		}
+	}
+	return false;
+}
+
 /* Apply every op in @sops to @res's values. Caller must hold res->sem_lock
- * and must have already confirmed svipc_sem_ops_fit_locked() so this never
- * needs to roll back partway through.
+ * and must have already confirmed svipc_sem_ops_fit_locked() and
+ * svipc_sem_ops_overflow_locked() so every resulting value is guaranteed to
+ * already be within [0, SVIPC_SEMVMX] and this never needs to clamp or roll
+ * back partway through.
  */
 static void svipc_sem_ops_apply_locked(struct svipc_resource *res,
 				       struct sembuf *sops, unsigned int nsops)
 {
 	unsigned int i;
 
-	for (i = 0; i < nsops; i++) {
-		int newval = res->sem_val[sops[i].sem_num] + sops[i].sem_op;
-
-		if (newval > SVIPC_SEMVMX)
-			newval = SVIPC_SEMVMX;
-		if (newval < 0)
-			newval = 0;
-		res->sem_val[sops[i].sem_num] = newval;
-	}
+	for (i = 0; i < nsops; i++)
+		res->sem_val[sops[i].sem_num] += sops[i].sem_op;
 }
 
 static bool svipc_sem_ops_valid(const struct svipc_resource *res,
@@ -166,6 +190,11 @@ long svipc_sys_semop(int semid, struct sembuf __user *tsops, unsigned int nsops,
 	for (;;) {
 		mutex_lock(&res->sem_lock);
 		if (svipc_sem_ops_fit_locked(res, sops, nsops)) {
+			if (svipc_sem_ops_overflow_locked(res, sops, nsops)) {
+				mutex_unlock(&res->sem_lock);
+				ret = -ERANGE;
+				goto out_put;
+			}
 			svipc_sem_ops_apply_locked(res, sops, nsops);
 			mutex_unlock(&res->sem_lock);
 			wake_up_interruptible_all(&res->sem_wait);
