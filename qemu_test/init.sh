@@ -31,7 +31,7 @@
 
 if [ "$(/busybox basename "$0")" = "init" ]; then
 	# --- stage 1: initramfs ---
-	/busybox mkdir -p /sys
+	/busybox mkdir -p /sys /dev /newroot
 	/busybox mount -t sysfs sysfs /sys
 	/busybox mdev -s
 	exec </dev/console >/dev/kmsg 2>&1
