@@ -74,6 +74,15 @@ ssize_t shadow_ns_idmap_write(struct shadow_id_map *map, const char *buf, size_t
 		}
 		pos += consumed;
 
+		/*
+		 * An extent covers the inclusive id range [x, x+count-1], so
+		 * the largest valid count for a given start x is
+		 * (U32_MAX - x + 1), i.e. this rejects only once x+count
+		 * would exceed U32_MAX+1 -- x == U32_MAX, count == 1 (last
+		 * id == U32_MAX exactly) is the boundary case that must
+		 * still be accepted, and is: (u64)U32_MAX + 1 is not
+		 * itself > (u64)U32_MAX + 1.
+		 */
 		if (count == 0 ||
 		    (u64)first + count > (u64)U32_MAX + 1 ||
 		    (u64)lower_first + count > (u64)U32_MAX + 1) {
