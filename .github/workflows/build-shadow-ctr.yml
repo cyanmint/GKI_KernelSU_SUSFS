@@ -51,35 +51,32 @@
 # it at all -- it is downloaded and used completely verbatim.
 #
 # Once the TEST_KMI (android14-6.1) .ko build and the checker build finish,
-# the "test" job downloads both, fetches testsuite.zip, and assembles the
-# two remaining things the QEMU boot test needs before booting all three
-# kernels in the same job:
-#   - a small "injected ramdisk" (initramfs) whose /init is a busybox-based
-#     stage-1 script (qemu_test/first_stage_init.sh). Its job is to mount
-#     image1.ext4 as the new root and image2.ext4 at a directory inside it
-#     (both attached as NVMe devices -- the test kernels have no virtio
-#     support), then busybox switch_root into image1.ext4 and exec the
-#     stage-2 init living on image2.ext4 -- the standard, kernel-supported
-#     way to hand off from a cpio-based initramfs to a real block-device
-#     root (functionally the "pivot_root into it" step: it moves /dev into
-#     the new root, chroots into it, and execs the given stage-2 init
-#     there).
-#   - image2.ext4: a small ext4 filesystem carrying the freshly built
-#     shadow_ctr.ko, the shadow_ctr_checker binary and the stage-2 init
-#     script (qemu_test/second_stage_init.sh) -- everything the stage-2
-#     script needs to insmod/exec once it is running as the new root.
-#     Keeping this payload on its own image (mounted on /mnt inside
-#     image1.ext4 by stage-1, before switch_root) keeps image1.ext4's
-#     prebuilt contents untouched by the shadow_ctr build artifacts.
-# The stage-2 script (running as PID 1 of the real root, itself read from
-# image2.ext4 already mounted at /mnt) then: runs shadow_ctr_checker,
-# insmods shadow_ctr.ko, runs shadow_ctr_checker again, starts a real
-# dockerd in the background (capturing its output to a log file), `docker
-# import`s the alpine tarball already sitting at the root of image1.ext4,
-# `docker run --privileged --rm --network host -it`s it, and finally powers
-# off via sysrq -- i.e. an actual dockerd running under the
-# shadow_ctr-patched kernel, not just a checker binary observing raw
-# syscalls.
+# the "test" job downloads both, fetches testsuite.zip, and builds a single
+# injected (busybox) ramdisk before booting all three kernels in the same
+# job:
+#   - the injected ramdisk's /init is a merged busybox script
+#     (qemu_test/init.sh, dispatching on argv[0]) that acts as both stage-1
+#     and stage-2 init. As stage 1 (argv[0] == "init"), it populates /dev
+#     via mdev (the test kernels have no devtmpfs support), mounts
+#     image1.ext4 (/dev/nvme0n1, the prebuilt testsuite root filesystem --
+#     the test kernels have no virtio support either, hence NVMe) at
+#     /newroot, copies /ctr (shadow_ctr.ko + shadow_ctr_checker, baked into
+#     this same ramdisk) and /busybox onto it, writes its own script onto
+#     the new root as /second_init, then busybox switch_root's into
+#     /newroot and execs /second_init -- the standard, kernel-supported way
+#     to hand off from a cpio-based initramfs to a real block-device root.
+#     Since /second_init's argv[0] is no longer "init", the very same script
+#     now runs its stage-2 body instead of stage-1.
+# The stage-2 body (running as PID 1 of the real root, image1.ext4) then:
+# populates /dev again (switch_root does not preserve the initramfs's
+# un-mounted /dev contents, so mdev must repopulate it), runs
+# shadow_ctr_checker, insmods shadow_ctr.ko (from /ctr, copied there by
+# stage 1), runs shadow_ctr_checker again, starts a real dockerd in the
+# background (capturing its output to a log file), `docker import`s the
+# alpine tarball already sitting at the root of image1.ext4, `docker run
+# --privileged --rm --network host -it`s it, and finally powers off via
+# sysrq -- i.e. an actual dockerd running under the shadow_ctr-patched
+# kernel, not just a checker binary observing raw syscalls.
 #
 # The boot step exercises all three kernels bundled in testsuite.zip
 # sequentially in a *single* job (not a matrix), so QEMU is installed and
@@ -130,10 +127,6 @@ env:
   # docker/dockerd/containerd/runc preinstalled under /system/bin, and the
   # exported alpine tarball already baked in at its root) in one archive.
   TESTSUITE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/testsuite.zip
-  # Size (MiB) of image2.ext4, the only ext4 image this workflow still
-  # assembles; it only carries shadow_ctr.ko, shadow_ctr_checker and
-  # second_stage_init.sh.
-  IMAGE2_SIZE_MB: '32'
 
 jobs:
   prepare:
@@ -238,15 +231,16 @@ jobs:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
 
-  # Build the injected (busybox) ramdisk and image2.ext4 (module + checker
-  # + stage-2 init), then boot-test all three testsuite kernels under QEMU
-  # against them plus the prebuilt image1.ext4 from testsuite.zip -- all in
-  # one job, since assembling these lightweight assets no longer needs its
-  # own separate session (no more building image1.ext4 or exporting an
-  # alpine tarball). Independent of the full KMI matrix -- only needs the
-  # single TEST_KMI .ko plus the checker binary. Skipped (not failed) if
-  # TEST_KMI was excluded from the build matrix (e.g. via a custom `kmis`
-  # workflow_dispatch input).
+  # Build a single injected (busybox) ramdisk carrying shadow_ctr.ko,
+  # shadow_ctr_checker and the merged init script, then boot-test all three
+  # testsuite kernels under QEMU against it plus the prebuilt image1.ext4
+  # from testsuite.zip -- all in one job, since assembling this ramdisk no
+  # longer needs its own separate session (no more building image1.ext4,
+  # exporting an alpine tarball, or assembling a second ext4 image).
+  # Independent of the full KMI matrix -- only needs the single TEST_KMI .ko
+  # plus the checker binary. Skipped (not failed) if TEST_KMI was excluded
+  # from the build matrix (e.g. via a custom `kmis` workflow_dispatch
+  # input).
   test:
     needs: [prepare, build, build-checker]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-checker.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
@@ -258,7 +252,7 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cpio e2fsprogs qemu-system-arm
+          sudo apt-get install -y cpio qemu-system-arm
 
       - name: Download shadow_ctr.ko (${{ env.TEST_KMI }})
         uses: actions/download-artifact@v8
@@ -288,46 +282,30 @@ jobs:
           cp testsuite/kernel-sukisu-[0-9]* testsuite/kernel-sukisu
           ls -la testsuite
 
-      # --- 2. image2.ext4: shadow_ctr.ko + shadow_ctr_checker +
-      #        second_stage_init.sh ---
-      - name: Assemble image2.ext4 (module + checker + stage-2 init)
-        run: |
-          set -e
-          mkdir -p image2-root
-          cp payload/shadow_ctr.ko image2-root/
-          cp payload/shadow_ctr_checker image2-root/
-          chmod 755 image2-root/shadow_ctr_checker
-
-          # Stage-2 init script: runs as PID 1 once busybox switch_root (in
-          # the injected ramdisk below) has handed control to the real root
-          # (image1.ext4), which mounts this image at /mnt beforehand.
-          # Committed at qemu_test/second_stage_init.sh for better
-          # management (rather than generated inline here).
-          cp qemu_test/second_stage_init.sh image2-root/second_stage_init.sh
-          chmod 755 image2-root/second_stage_init.sh
-          ls -la image2-root
-
-          dd if=/dev/zero of=image2.ext4 bs=1M count="$IMAGE2_SIZE_MB"
-          mkfs.ext4 -q -F -d image2-root image2.ext4
-          ls -la image2.ext4
-
-      # --- 3. injected ramdisk: busybox stage-1 init that mounts
+      # --- 2. injected ramdisk: /ctr (module + checker), /busybox and the
+      #        merged init script (qemu_test/init.sh), which mounts
       #        image1.ext4 (/dev/nvme0n1) and switch_root's into it ---
       - name: Build injected (busybox) ramdisk
         run: |
           set -e
           docker pull --platform linux/arm64 busybox:musl
           cid=$(docker create --platform linux/arm64 busybox:musl true)
-          mkdir -p injected-ramdisk
+          mkdir -p injected-ramdisk/dev injected-ramdisk/newroot injected-ramdisk/ctr
           docker cp "$cid:/bin/busybox" injected-ramdisk/busybox
           docker rm "$cid"
-
-          mkdir -p injected-ramdisk/dev injected-ramdisk/proc injected-ramdisk/sys injected-ramdisk/newroot
           chmod 755 injected-ramdisk/busybox
 
-          # Stage-1 init script: committed at qemu_test/first_stage_init.sh
-          # for better management (rather than generated inline here).
-          cp qemu_test/first_stage_init.sh injected-ramdisk/init
+          cp payload/shadow_ctr.ko injected-ramdisk/ctr/
+          cp payload/shadow_ctr_checker injected-ramdisk/ctr/
+          chmod 755 injected-ramdisk/ctr/shadow_ctr_checker
+
+          # Merged stage-1/stage-2 init script: committed at
+          # qemu_test/init.sh for better management (rather than generated
+          # inline here). Dispatches on argv[0]: run as /init it performs
+          # stage 1 (mdev-populate /dev, mount image1.ext4, copy /ctr and
+          # /busybox onto it, switch_root); copied onto the new root and run
+          # as /second_init it performs stage 2 instead.
+          cp qemu_test/init.sh injected-ramdisk/init
           chmod 755 injected-ramdisk/init
 
           (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
@@ -349,8 +327,6 @@ jobs:
                 -initrd injected-ramdisk.cpio \
                 -drive file=testsuite/image1.ext4,if=none,id=image1,format=raw \
                 -device nvme,serial=11451401,drive=image1 \
-                -drive file=image2.ext4,if=none,id=image2,format=raw \
-                -device nvme,serial=11451402,drive=image2 \
                 -append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
               > "qemu-logs/qemu-console-$variant.log" 2>&1
             echo "QEMU ($variant) exited with status $?"
