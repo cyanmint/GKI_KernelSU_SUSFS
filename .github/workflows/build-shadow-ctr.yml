@@ -65,6 +65,22 @@
 #     SukiSU/SUSFS-patched GKI kernel build that the shadow_ctr modules are
 #     actually built and meant to be insmod'd against.
 #
+# Orthogonally, a second axis picks which ramdisk is booted (build-docker-
+# ramdisk builds the second one):
+#   - "old": the plain v2.1.0 boot-sanity ramdisk described above.
+#   - "docker": a ramdisk built from the real arm64v8/docker:latest rootfs
+#     (exported, not run, so no emulation is needed on the amd64 runner),
+#     with the arm64v8/ubuntu:latest rootfs injected as a docker-loadable
+#     image tarball alongside shadow_ctr.ko/shadow_ctr_checker. Its init
+#     script insmods shadow_ctr.ko, configures dockerd to use the "vfs"
+#     storage driver, starts dockerd as a real daemon, `docker load`s the
+#     injected ubuntu image, and finally exercises a real, privileged,
+#     host-networked `docker run` of arm64v8/docker:latest -- i.e. an actual
+#     dockerd running under the shadow_ctr-patched kernel, not just a
+#     checker binary observing raw syscalls.
+# The full test matrix is therefore [stock, current] kernel x [old, docker]
+# ramdisk (4 combinations).
+#
 # Credit: SukiSU-Ultra (https://github.com/SukiSU-Ultra/SukiSU-Ultra).
 
 name: Build and test shadow_ctr module
@@ -95,6 +111,14 @@ env:
   TEST_KMI: android14-6.1
   TEST_RAMDISK_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.1.0/testkernelramdisk.zip
   TEST_KERNEL_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/android14-6.1.124-2025-02-boot.img
+  # Real dockerd-in-QEMU ramdisk: rootfs 1 (arm64v8/docker, an Alpine-based
+  # image with a full busybox userland plus dockerd/containerd/runc) is
+  # exported into the ramdisk root so it can serve directly as PID 1's
+  # userland; rootfs 2 (arm64v8/ubuntu) is saved as a docker-loadable image
+  # tarball and injected alongside it, to be `docker load`-ed once dockerd is
+  # running inside the booted ramdisk.
+  DOCKER_ROOTFS_IMAGE: docker.io/arm64v8/docker:latest
+  UBUNTU_ROOTFS_IMAGE: docker.io/arm64v8/ubuntu:latest
 
 jobs:
   prepare:
@@ -217,6 +241,153 @@ jobs:
           name: shadow_ctr-modules-${{ matrix.kmi }}-arm64
           path: modules-out/
 
+  # Build a second, "real dockerd" test ramdisk (in addition to the plain
+  # boot-sanity ramdisk from v2.1.0 used by "test" below):
+  #   1. rootfs 1 (arm64v8/docker) is exported (docker create + docker
+  #      export, no emulation needed since nothing is executed) and used
+  #      directly as the ramdisk root -- it is Alpine-based and ships a full
+  #      busybox userland plus dockerd/containerd/runc/docker-cli, so it can
+  #      serve as PID 1's userland on its own.
+  #   2. rootfs 2 (arm64v8/ubuntu) is instead `docker save`-d (not exported)
+  #      into an image tarball, so it stays `docker load`-able by the dockerd
+  #      that will run inside the booted ramdisk.
+  #   3. shadow_ctr.ko (for TEST_KMI) + shadow_ctr_checker + a dockerd init
+  #      script + the ubuntu image tarball are injected into the ramdisk.
+  # The resulting cpio is consumed by the "test" job's docker ramdisk_variant
+  # below.
+  build-docker-ramdisk:
+    needs: [prepare, build-checker, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shadow_ctr_checker (arm64)
+        uses: actions/download-artifact@v8
+        with:
+          name: shadow_ctr_checker-arm64
+          path: modules-out-checker/
+
+      - name: Download built shadow_ctr.ko (${{ env.TEST_KMI }}, arm64)
+        uses: actions/download-artifact@v8
+        with:
+          name: shadow_ctr-modules-${{ env.TEST_KMI }}-arm64
+          path: modules-out/
+
+      - name: Install cpio
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cpio
+
+      # --- 1. Export rootfs 1 (arm64v8/docker) as the ramdisk root ---
+      - name: Pull and export rootfs 1 (${{ env.DOCKER_ROOTFS_IMAGE }})
+        run: |
+          set -e
+          docker pull --platform linux/arm64 "$DOCKER_ROOTFS_IMAGE"
+          cid=$(docker create --platform linux/arm64 "$DOCKER_ROOTFS_IMAGE")
+          mkdir -p docker-ramdisk-root
+          docker export "$cid" | tar -C docker-ramdisk-root -xf -
+          docker rm "$cid"
+          ls -la docker-ramdisk-root
+
+      # --- 2. Save rootfs 2 (arm64v8/ubuntu) as a docker-loadable tarball ---
+      - name: Pull and save rootfs 2 (${{ env.UBUNTU_ROOTFS_IMAGE }})
+        run: |
+          set -e
+          docker pull --platform linux/arm64 "$UBUNTU_ROOTFS_IMAGE"
+          mkdir -p docker-ramdisk-root/images
+          docker save "$UBUNTU_ROOTFS_IMAGE" -o docker-ramdisk-root/images/ubuntu.tar
+          ls -la docker-ramdisk-root/images
+
+      # --- 3. Inject shadow_ctr.ko, shadow_ctr_checker and the init script ---
+      - name: Inject shadow_ctr module, checker and init script
+        run: |
+          set -e
+          workdir="$GITHUB_WORKSPACE/docker-ramdisk-root"
+
+          mkdir -p "$workdir/modules"
+          cp "$GITHUB_WORKSPACE/modules-out/shadow_ctr.ko" "$workdir/modules/"
+          cp "$GITHUB_WORKSPACE/modules-out-checker/shadow_ctr_checker" "$workdir/"
+          chmod 755 "$workdir/shadow_ctr_checker"
+
+          # PID-1 init script, run directly via rdinit=. rootfs 1
+          # (arm64v8/docker) is Alpine-based, so /bin/sh (busybox ash) and
+          # mount/insmod are already present at the ramdisk root -- no extra
+          # userland needs to be added.
+          cat > "$workdir/docker_test_init.sh" <<'EOF'
+          #!/bin/sh
+          set -x
+          mount -t proc proc /proc
+          mount -t sysfs sysfs /sys
+          mount -t devtmpfs devtmpfs /dev
+          mkdir -p /dev/pts
+          mount -t devpts devpts /dev/pts
+          mkdir -p /sys/fs/cgroup
+          mount -t cgroup2 cgroup2 /sys/fs/cgroup || mount -t tmpfs cgroup /sys/fs/cgroup
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: shadow_ctr_checker (pre-insmod) ==="
+          /shadow_ctr_checker
+          echo "checker(pre) -> $?"
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: inserting shadow_ctr.ko ==="
+          insmod /modules/shadow_ctr.ko
+          echo "insmod shadow_ctr.ko -> $?"
+          dmesg | tail -n 60
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: shadow_ctr_checker (post-insmod) ==="
+          /shadow_ctr_checker
+          echo "checker(post) -> $?"
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: configuring dockerd (vfs storage) ==="
+          mkdir -p /etc/docker
+          cat > /etc/docker/daemon.json <<'JSON'
+          {
+            "storage-driver": "vfs",
+            "iptables": false,
+            "bridge": "none"
+          }
+          JSON
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: starting dockerd (daemon) ==="
+          dockerd --config-file=/etc/docker/daemon.json > /dockerd.log 2>&1 &
+          for i in $(seq 1 30); do
+            [ -S /var/run/docker.sock ] && break
+            sleep 1
+          done
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: docker load (rootfs 2 / ubuntu) ==="
+          docker load -i /images/ubuntu.tar
+          echo "docker load -> $?"
+
+          # Non-interactive equivalent of:
+          #   docker run --privileged --rm --network host \
+          #     --entrypoint /bin/ash -it docker.io/arm64v8/docker:latest
+          # (no allocated tty is available for -it under a scripted rdinit=
+          # boot, so a sanity command is passed instead of an interactive
+          # shell) to prove a privileged, host-networked container can run
+          # for real inside this environment.
+          echo "=== SHADOW_CTR_DOCKER_TEST: docker run (nested docker sanity) ==="
+          docker run --privileged --rm --network host \
+            --entrypoint /bin/ash docker.io/arm64v8/docker:latest \
+            -c 'docker --version && echo NESTED_DOCKER_OK'
+          echo "docker run -> $?"
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: dockerd log ==="
+          cat /dockerd.log
+
+          echo "=== SHADOW_CTR_DOCKER_TEST: DONE ==="
+          echo o > /proc/sysrq-trigger
+          while true; do :; done
+          EOF
+          chmod 755 "$workdir/docker_test_init.sh"
+
+          (cd "$workdir" && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/ramdisk-docker-test.cpio")
+          ls -la "$GITHUB_WORKSPACE/ramdisk-docker-test.cpio"
+
+      - name: Upload docker test ramdisk
+        uses: actions/upload-artifact@v7
+        with:
+          name: shadow_ctr-docker-ramdisk
+          path: ramdisk-docker-test.cpio
+
   # Boot-test the TEST_KMI (android14-6.1) build under QEMU: insmod
   # shadow_ctr.ko, run shadow_ctr_checker, and collect the serial console log
   # (including the insmod attempt, resulting kernel messages, and the
@@ -225,14 +396,26 @@ jobs:
   # Skipped (not failed) if a custom `kmis` workflow_dispatch input excluded
   # TEST_KMI from the build matrix above, since there is then no matching
   # artifact to download.
+  #
+  # ramdisk_variant selects which ramdisk is booted, in addition to the
+  # existing kernel_variant axis (so the full matrix is [stock, current]
+  # kernel x [old, docker] ramdisk):
+  #   - "old": the plain v2.1.0 boot-sanity ramdisk (system-as-root, unchanged
+  #     from before), with shadow_ctr.ko injected and exercised by
+  #     shadow_ctr_checker directly.
+  #   - "docker": the ramdisk built by build-docker-ramdisk above (rootfs 1 =
+  #     arm64v8/docker, with rootfs 2 = arm64v8/ubuntu injected as a
+  #     docker-loadable tarball), which insmods shadow_ctr.ko, starts a real
+  #     dockerd (vfs storage driver) and runs an actual privileged container.
   test:
-    needs: [prepare, build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
+    needs: [prepare, build, build-docker-ramdisk]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-docker-ramdisk.result == 'success' && contains(fromJson(needs.prepare.outputs.matrix), needs.prepare.outputs.test_kmi) }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         kernel_variant: [stock, current]
+        ramdisk_variant: [old, docker]
     steps:
       - name: Install test dependencies
         run: |
@@ -240,13 +423,22 @@ jobs:
           sudo apt-get install -y cpio qemu-system-arm
 
       - name: Download built modules (arm64)
+        if: matrix.ramdisk_variant == 'old'
         uses: actions/download-artifact@v7
         with:
           name: shadow_ctr-modules-${{ env.TEST_KMI }}-arm64
           path: modules-out/
 
       - name: Mark checker binary executable
+        if: matrix.ramdisk_variant == 'old'
         run: chmod +x modules-out/shadow_ctr_checker
+
+      - name: Download docker test ramdisk (rootfs 1 + rootfs 2 + modules)
+        if: matrix.ramdisk_variant == 'docker'
+        uses: actions/download-artifact@v7
+        with:
+          name: shadow_ctr-docker-ramdisk
+          path: docker-ramdisk/
 
       # --- 1. Fetch the test ramdisk and the kernel image under test ---
       #
@@ -285,8 +477,12 @@ jobs:
       # "kernel" file that was already unzipped from testkernelramdisk.zip.
 
       # --- 2. Inject the freshly built modules into the ramdisk ---
+      # (only for the "old" ramdisk_variant: the "docker" variant's ramdisk,
+      # built by build-docker-ramdisk above, already has shadow_ctr.ko,
+      # shadow_ctr_checker and its own init script baked in.)
 
       - name: Inject shadow_ctr module into ramdisk
+        if: matrix.ramdisk_variant == 'old'
         run: |
           set -e
           workdir="$GITHUB_WORKSPACE/ramdisk-root"
@@ -337,16 +533,30 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/test-image/ramdisk-test.cpio"
 
       # --- 3. Boot under QEMU and collect the serial log ---
+      #
+      # The "docker" variant needs a longer timeout: it pulls no network
+      # image at boot (rootfs 2 is already baked into the ramdisk as a
+      # tarball), but starting dockerd + docker load + a real `docker run`
+      # takes noticeably longer than the plain insmod+checker smoke test.
 
-      - name: Boot test kernel (${{ matrix.kernel_variant }}) + ramdisk under QEMU
+      - name: Boot test kernel (${{ matrix.kernel_variant }}) + ${{ matrix.ramdisk_variant }} ramdisk under QEMU
         run: |
           set +e
-          timeout --signal=KILL 120 \
+          if [ "${{ matrix.ramdisk_variant }}" = "docker" ]; then
+            initrd="docker-ramdisk/ramdisk-docker-test.cpio"
+            rdinit="/docker_test_init.sh"
+            to=300
+          else
+            initrd="test-image/ramdisk-test.cpio"
+            rdinit="/test_init.sh"
+            to=120
+          fi
+          timeout --signal=KILL "$to" \
             qemu-system-aarch64 \
               -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
               -kernel test-image/kernel \
-              -initrd test-image/ramdisk-test.cpio \
-              -append "console=ttyAMA0 rdinit=/test_init.sh earlycon panic=-1" \
+              -initrd "$initrd" \
+              -append "console=ttyAMA0 rdinit=$rdinit earlycon panic=-1" \
             > qemu-console.log 2>&1
           echo "QEMU exited with status $?"
           tail -n 200 qemu-console.log
@@ -357,6 +567,7 @@ jobs:
           mkdir -p qemu-test-bundle
           cp test-image/kernel qemu-test-bundle/tested-kernel 2>/dev/null || true
           cp test-image/ramdisk-test.cpio qemu-test-bundle/injected-ramdisk.cpio 2>/dev/null || true
+          cp docker-ramdisk/ramdisk-docker-test.cpio qemu-test-bundle/injected-ramdisk.cpio 2>/dev/null || true
           cp qemu-console.log qemu-test-bundle/qemu-console.log 2>/dev/null || true
           ls -la qemu-test-bundle
 
@@ -364,5 +575,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: shadow_ctr-qemu-test-bundle-${{ matrix.kernel_variant }}
+          name: shadow_ctr-qemu-test-bundle-${{ matrix.kernel_variant }}-${{ matrix.ramdisk_variant }}
           path: qemu-test-bundle/
