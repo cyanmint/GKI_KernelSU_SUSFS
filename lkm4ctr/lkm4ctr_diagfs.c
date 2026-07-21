@@ -104,6 +104,26 @@
 #define LKM4CTR_DIAGFS_MAGIC	0x4C4B4D34 /* "LKM4" */
 #define LKM4CTR_DIAGFS_TAG	"diagfs"
 
+/*
+ * mount_nodev() and generic_delete_inode() are ordinary EXPORT_SYMBOL()
+ * functions, not GPL-only, but unlike simple_dir_inode_operations/
+ * simple_dir_operations above they are plain code, not data -- so they
+ * *can* be recovered via shadow_hook_resolve()'s register_kprobe() trick
+ * if CONFIG_TRIM_UNUSED_KSYMS strips them (confirmed: "Unknown symbol
+ * mount_nodev"/"Unknown symbol generic_delete_inode" on insmod against a
+ * production GKI kernel), same class of issue as module_refcount()/
+ * call_usermodehelper() below. Resolved lazily at lkm4ctr_diagfs_init()
+ * time instead of calling them directly.
+ */
+typedef struct dentry *(*lkm4ctr_mount_nodev_t)(struct file_system_type *fs_type,
+						 int flags, void *data,
+						 int (*fill_super)(struct super_block *,
+								    void *, int));
+typedef int (*lkm4ctr_generic_delete_inode_t)(struct inode *inode);
+
+static lkm4ctr_mount_nodev_t lkm4ctr_mount_nodev_fn;
+static lkm4ctr_generic_delete_inode_t lkm4ctr_generic_delete_inode_fn;
+
 /* shadow_ns_diag.c; deliberately forward-declared rather than pulling in
  * shadow_ns_internal.h, matching how lkm4ctr_main.c forward-declares every
  * other subsystem's init/exit entry points instead of including private
@@ -781,9 +801,25 @@ static void lkm4ctr_diagfs_evict_inode(struct inode *inode)
 	kfree(inode->i_private);
 }
 
+/*
+ * Thin wrapper so super_ops.drop_inode can have a compile-time-known
+ * address even though the real generic_delete_inode() is only resolved at
+ * runtime (see lkm4ctr_generic_delete_inode_fn's comment above).
+ * generic_delete_inode() unconditionally returns 1 (always delete), so
+ * that is exactly what this falls back to if resolution somehow never ran
+ * (lkm4ctr_diagfs_init() refuses to register the filesystem in that case,
+ * so this should never actually be reached).
+ */
+static int lkm4ctr_diagfs_drop_inode(struct inode *inode)
+{
+	if (lkm4ctr_generic_delete_inode_fn)
+		return lkm4ctr_generic_delete_inode_fn(inode);
+	return 1;
+}
+
 static const struct super_operations lkm4ctr_diagfs_super_ops = {
 	.statfs		= simple_statfs,
-	.drop_inode	= generic_delete_inode,
+	.drop_inode	= lkm4ctr_diagfs_drop_inode,
 	.evict_inode	= lkm4ctr_diagfs_evict_inode,
 };
 
@@ -866,7 +902,9 @@ static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int sil
 static struct dentry *lkm4ctr_diagfs_mount(struct file_system_type *fs_type,
 					    int flags, const char *dev_name, void *data)
 {
-	return mount_nodev(fs_type, flags, data, lkm4ctr_diagfs_fill_super);
+	if (!lkm4ctr_mount_nodev_fn)
+		return ERR_PTR(-ENOSYS);
+	return lkm4ctr_mount_nodev_fn(fs_type, flags, data, lkm4ctr_diagfs_fill_super);
 }
 
 /*
@@ -891,8 +929,20 @@ static struct file_system_type lkm4ctr_diagfs_type = {
 
 int lkm4ctr_diagfs_init(void)
 {
-	int ret = register_filesystem(&lkm4ctr_diagfs_type);
+	int ret;
 
+	lkm4ctr_mount_nodev_fn =
+		(lkm4ctr_mount_nodev_t)shadow_hook_resolve("mount_nodev");
+	lkm4ctr_generic_delete_inode_fn =
+		(lkm4ctr_generic_delete_inode_t)shadow_hook_resolve("generic_delete_inode");
+
+	if (!lkm4ctr_mount_nodev_fn || !lkm4ctr_generic_delete_inode_fn) {
+		LKM4CTR_ERR(LKM4CTR_DIAGFS_TAG,
+			    "could not resolve mount_nodev/generic_delete_inode; diagfs unavailable");
+		return -ENOSYS;
+	}
+
+	ret = register_filesystem(&lkm4ctr_diagfs_type);
 	if (ret)
 		LKM4CTR_ERR(LKM4CTR_DIAGFS_TAG, "register_filesystem() failed: %d", ret);
 	else
