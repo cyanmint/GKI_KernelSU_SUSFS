@@ -107,6 +107,35 @@
  * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
  * @kp:       kprobe instance driving the hook (kprobe backend only).
  * @installed: whether the hook is currently active.
+ * @retprobe: kretprobe placed on @function itself (regardless of which
+ *            forward-hook backend is active), used purely to make module
+ *            unload safe -- see the "rmmod safety" note below.
+ * @retprobe_installed: whether @retprobe is currently registered.
+ *
+ * rmmod safety
+ * ------------
+ * A redirected call spends real time executing inside @function (part of
+ * this module's .text), on a CPU that may be entirely unrelated to whoever
+ * calls shadow_hook_remove()/rmmod. Unregistering the forward hook (ftrace
+ * or kprobe) only stops *new* calls from being redirected; it does not wait
+ * for calls already in flight to finish, so a concurrent rmmod could free
+ * the module's memory while another CPU is still executing inside
+ * @function, corrupting the kernel (typically observed as a panic seconds
+ * after rmmod, once something happens to run into the freed pages).
+ *
+ * @retprobe closes that window using the same mechanism relied upon
+ * everywhere else in the kernel to keep a module alive while it is in use:
+ * module reference counting. shadow_hook_install() places @retprobe on
+ * @function and its return handler calls module_put(@owner); the forward
+ * hook's redirect point (shadow_hook_thunk()/shadow_hook_pre_handler())
+ * calls try_module_get(@owner) immediately before redirecting into
+ * @function, and skips the redirect (falling back to genuine kernel
+ * behaviour) if that fails, which only happens once the module is already
+ * on its way out. With this in place, module_refcount() is non-zero for as
+ * long as any redirected call is in flight, so the kernel's own
+ * sys_delete_module() refuses rmmod (-EBUSY, "Module ... is in use")
+ * instead of racing with it -- exactly the same protection a misc/char
+ * device gets from struct file_operations::owner while a file is open.
  */
 struct shadow_hook {
 	const char * const	*names;
@@ -121,6 +150,8 @@ struct shadow_hook {
 	struct kprobe		kp;
 #endif
 	bool			installed;
+	struct kretprobe	retprobe;
+	bool			retprobe_installed;
 };
 
 /*

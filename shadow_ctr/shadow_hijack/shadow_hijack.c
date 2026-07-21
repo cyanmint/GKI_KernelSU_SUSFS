@@ -52,6 +52,26 @@
  * checks within_module(caller_pc, hook->owner), which is enough to recognise
  * the pass-through call. This is applied identically in both backends (the
  * ftrace thunk and the kprobe pre_handler).
+ *
+ * rmmod safety
+ * ------------
+ * Neither backend's "unregister" call waits for calls already redirected
+ * into hook->function to finish executing, so an rmmod running concurrently
+ * with such a call could previously free the module's memory out from under
+ * it -- typically surfacing as a kernel panic some time (not necessarily
+ * immediately) after rmmod, once the freed pages are reused or something
+ * else runs into them. Every hook now also carries a kretprobe placed on
+ * hook->function itself; the redirect points (shadow_hook_thunk(),
+ * shadow_hook_pre_handler()) take a module reference with
+ * try_module_get(hook->owner) immediately before redirecting, and the
+ * kretprobe's return handler drops it once hook->function actually
+ * returns. This keeps module_refcount() non-zero for exactly as long as any
+ * redirected call is in flight anywhere in the system, so the kernel's own
+ * sys_delete_module() refuses rmmod (-EBUSY, "Module ... is in use")
+ * instead of racing with it -- the same protection struct
+ * file_operations::owner gives an ordinary char/misc device while one of
+ * its files is open. See the struct shadow_hook comment in
+ * common/shadow_hook.h for the full rationale.
  */
 
 #include <linux/kernel.h>
@@ -129,6 +149,65 @@ static unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
 #error "shadow_hook: unsupported architecture"
 #endif
 
+/*
+ * --- rmmod safety: kretprobe-based module refcounting -------------------
+ *
+ * See the "rmmod safety" note on struct shadow_hook (common/shadow_hook.h)
+ * for the full rationale. In short: a kretprobe placed on hook->function
+ * itself (not the hooked symbol) gives us a portable, prototype-agnostic
+ * way to know exactly when a redirected call finishes, regardless of
+ * hook->function's real signature (pt_regs-based syscall wrappers,
+ * chrdev_open()'s (inode, file) pair, ...). Its return handler drops the
+ * module reference that the forward hook's redirect point acquires just
+ * before redirecting, so module_refcount() stays non-zero for exactly as
+ * long as a redirected call is in flight anywhere in the system.
+ */
+static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+	struct kretprobe *rp = get_kretprobe(ri);
+	struct shadow_hook *hook;
+
+	if (!rp)
+		return 0;
+
+	hook = container_of(rp, struct shadow_hook, retprobe);
+	module_put(hook->owner);
+	return 0;
+}
+
+/*
+ * shadow_hook_retprobe_install() - best-effort; a failure here only means
+ * this particular hook loses rmmod protection (shadow_hook_thunk()/
+ * shadow_hook_pre_handler() check hook->retprobe_installed before taking a
+ * reference, so we never acquire a module reference we could fail to
+ * release). CONFIG_KRETPROBES is implied by CONFIG_KPROBES on every arch
+ * this module targets, so this is not expected to fail in practice.
+ */
+static void shadow_hook_retprobe_install(struct shadow_hook *hook)
+{
+	int err;
+
+	memset(&hook->retprobe, 0, sizeof(hook->retprobe));
+	hook->retprobe.kp.addr = (kprobe_opcode_t *)hook->function;
+	hook->retprobe.handler = shadow_hook_retprobe_ret;
+
+	err = register_kretprobe(&hook->retprobe);
+	if (err) {
+		pr_warn("shadow_hook: register_kretprobe() failed for %s: %d; rmmod will not wait for in-flight calls to this hook\n",
+			hook->resolved_name, err);
+		return;
+	}
+	hook->retprobe_installed = true;
+}
+
+static void shadow_hook_retprobe_remove(struct shadow_hook *hook)
+{
+	if (!hook->retprobe_installed)
+		return;
+	unregister_kretprobe(&hook->retprobe);
+	hook->retprobe_installed = false;
+}
+
 #if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 
 /*
@@ -147,6 +226,13 @@ static unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
  * is the return address of whoever called the hooked function, and hook->owner
  * is the owning shadow_ctr.ko module performing the pass-through call. See
  * the file header for why.
+ *
+ * try_module_get(hook->owner) immediately before redirecting acquires the
+ * module reference that hook->retprobe's return handler releases once
+ * hook->function actually finishes -- see the "rmmod safety" note on
+ * struct shadow_hook. If it fails (module already on its way out, or this
+ * particular hook's retprobe never installed), fall through to genuine
+ * kernel behaviour instead of redirecting.
  */
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_ARGS
 static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
@@ -157,8 +243,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 
 	if (!regs)
 		return;
-	if (!within_module(parent_ip, hook->owner))
-		shadow_hook_redirect(regs, hook->function);
+	if (within_module(parent_ip, hook->owner))
+		return;
+	if (hook->retprobe_installed && !try_module_get(hook->owner))
+		return;
+	shadow_hook_redirect(regs, hook->function);
 }
 #else
 static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
@@ -166,8 +255,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 {
 	struct shadow_hook *hook = container_of(ops, struct shadow_hook, ops);
 
-	if (!within_module(parent_ip, hook->owner))
-		shadow_hook_redirect(regs, hook->function);
+	if (within_module(parent_ip, hook->owner))
+		return;
+	if (hook->retprobe_installed && !try_module_get(hook->owner))
+		return;
+	shadow_hook_redirect(regs, hook->function);
 }
 #endif
 
@@ -224,6 +316,7 @@ int shadow_hook_install(struct shadow_hook *hook)
 	}
 
 	hook->installed = true;
+	shadow_hook_retprobe_install(hook);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
@@ -236,6 +329,7 @@ void shadow_hook_remove(struct shadow_hook *hook)
 	unregister_ftrace_function(&hook->ops);
 	ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
 	hook->installed = false;
+	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
@@ -288,8 +382,19 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	 * kprobes we have fully handled the trap ourselves (regs->pc/ip
 	 * already points at hook->function) and the replaced instruction must
 	 * not be single-stepped.
+	 *
+	 * try_module_get(hook->owner) immediately before redirecting acquires
+	 * the module reference that hook->retprobe's return handler releases
+	 * once hook->function actually finishes -- see the "rmmod safety"
+	 * note on struct shadow_hook. If it fails (module already on its way
+	 * out, or this particular hook's retprobe never installed), fall
+	 * through to genuine kernel behaviour (return 0) instead of
+	 * redirecting.
 	 */
 	if (within_module(shadow_hook_caller_pc(regs), hook->owner))
+		return 0;
+
+	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return 0;
 
 	shadow_hook_redirect(regs, hook->function);
@@ -328,6 +433,7 @@ int shadow_hook_install(struct shadow_hook *hook)
 	}
 
 	hook->installed = true;
+	shadow_hook_retprobe_install(hook);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
@@ -339,6 +445,7 @@ void shadow_hook_remove(struct shadow_hook *hook)
 
 	unregister_kprobe(&hook->kp);
 	hook->installed = false;
+	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
