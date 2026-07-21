@@ -19,7 +19,7 @@ void lkm4ctr_diagfs_exit(void);
 int lkm4ctr_hotreload_init(void);
 void lkm4ctr_hotreload_exit(void);
 
-#define LKM4CTR_VERSION "4.0"
+#define LKM4CTR_VERSION "4.0.1"
 #define LKM4CTR_TAG	"lkm4ctr"
 
 /*

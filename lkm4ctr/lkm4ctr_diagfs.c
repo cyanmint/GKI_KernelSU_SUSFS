@@ -736,7 +736,7 @@ static size_t lkm4ctr_diagfs_references_snprintf(const struct lkm4ctr_diagfs_inf
 				 "module_refcount() unavailable (module_refcount symbol not yet resolved; write to global/control at least once to trigger resolution)\n");
 	} else {
 		accounted = mounts + inflight;
-		other = max(0, refcount - 1 - accounted);
+		other = max(0, (refcount - 1) - accounted);
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
 				 "module_refcount()=%d\n", refcount);
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
@@ -1566,7 +1566,7 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 			     waited_ms, refcount, refcount - 1,
 			     atomic_read(&lkm4ctr_diagfs_mount_count),
 			     shadow_hook_inflight_count(),
-			     max(0, refcount - 1 - atomic_read(&lkm4ctr_diagfs_mount_count) -
+			     max(0, (refcount - 1) - atomic_read(&lkm4ctr_diagfs_mount_count) -
 				 shadow_hook_inflight_count()),
 			     LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS - waited_ms);
 		msleep(LKM4CTR_SAFE_UNLOAD_POLL_MS);
