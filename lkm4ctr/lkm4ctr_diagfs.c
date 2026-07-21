@@ -469,7 +469,8 @@ static bool lkm4ctr_diagfs_is_unload_cmd(const char *cmd, bool is_global)
 {
 	if (!strcmp(cmd, "unload") || !strcmp(cmd, "remove") || !strcmp(cmd, "graceful"))
 		return true;
-	/* "1" is only a global safe_unload alias, never valid for a
+	/*
+	 * "1" is only a global safe_unload alias, never valid for a
 	 * per-submodule status write.
 	 */
 	return is_global && !strcmp(cmd, "1");
@@ -585,7 +586,9 @@ static ssize_t lkm4ctr_diagfs_status_write(struct file *file, const char __user 
 	}
 
 	mod = lkm4ctr_diagfs_find_module(info->tag);
-	if (!mod || (!mod->mod_init && !mod->mod_exit))
+	if (!mod)
+		return -ENOSYS;
+	if (!mod->mod_init && !mod->mod_exit)
 		return -ENOSYS;
 
 	switch (action) {
