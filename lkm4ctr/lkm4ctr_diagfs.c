@@ -184,6 +184,27 @@ typedef int (*lkm4ctr_generic_delete_inode_t)(struct inode *inode);
 static lkm4ctr_mount_nodev_t lkm4ctr_mount_nodev_fn;
 static lkm4ctr_generic_delete_inode_t lkm4ctr_generic_delete_inode_fn;
 
+/*
+ * module_refcount() and call_usermodehelper() are ordinary EXPORT_SYMBOL()
+ * functions, not GPL-only, but that alone doesn't save them from
+ * CONFIG_TRIM_UNUSED_KSYMS on production GKI kernels: like
+ * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure() elsewhere in
+ * this module, they get stripped whenever nothing built into vmlinux
+ * itself calls them. Resolved lazily via lkm4ctr_diagfs_resolve() instead
+ * of shadow_hijack.c's shadow_hook_resolve() -- self-unload/rmmod is core
+ * diagfs functionality that must keep working independently of
+ * shadow_hijack's own load/unload state, same rationale as
+ * lkm4ctr_diagfs_resolve() itself above. Declared this early (rather than
+ * down by lkm4ctr_safe_unload_resolve() where they used to live) so the
+ * "references" renderer below can also read module_refcount() directly.
+ */
+typedef int (*lkm4ctr_module_refcount_t)(struct module *mod);
+typedef int (*lkm4ctr_call_usermodehelper_t)(const char *path, char **argv,
+					      char **envp, int wait);
+
+static lkm4ctr_module_refcount_t lkm4ctr_module_refcount_fn;
+static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
+
 extern size_t shadow_ns_diag_snprintf(char *buf, size_t buflen);
 extern size_t shadow_ns_diag_snprintf_type(u32 type, char *buf, size_t buflen);
 extern size_t shadow_mqueue_diag_snprintf(char *buf, size_t buflen);
@@ -200,6 +221,16 @@ extern void shadow_cgdevices_exit(void);
 extern int shadow_hijack_init(void);
 extern void shadow_hijack_exit(void);
 
+/* lkm4ctr_hotreload.c - see lkm4ctr/lkm4ctr_hotreload.h for full contracts. */
+extern size_t lkm4ctr_hotreload_status_snprintf(char *buf, size_t buflen);
+extern int lkm4ctr_hotreload_trigger(const char *path);
+
+/* helper.sh.c - the diagfs helper.sh contents, generated from the canonical
+ * shell script; see that file for what it does.
+ */
+extern const char lkm4ctr_helper_sh_data[];
+extern const unsigned long lkm4ctr_helper_sh_size;
+
 enum lkm4ctr_diagfs_kind {
 	LKM4CTR_DIAG_CONTROL,
 	LKM4CTR_DIAG_STATUS,
@@ -209,6 +240,10 @@ enum lkm4ctr_diagfs_kind {
 	LKM4CTR_DIAG_GLOBAL_RESOURCES,
 	LKM4CTR_DIAG_MQUEUE_MSG,
 	LKM4CTR_DIAG_SYSVIPC_RESOURCES,
+	LKM4CTR_DIAG_REFERENCES,
+	LKM4CTR_DIAG_HOTRELOAD_STATUS,
+	LKM4CTR_DIAG_HOTRELOAD_TRIGGER,
+	LKM4CTR_DIAG_HELPER_SCRIPT,
 };
 
 enum lkm4ctr_diagfs_lifecycle_state {
@@ -266,6 +301,21 @@ static struct task_struct *lkm4ctr_unload_thread;
 static DEFINE_MUTEX(lkm4ctr_unload_lock);
 static bool lkm4ctr_unload_in_progress;
 static bool lkm4ctr_unload_force;
+/*
+ * lkm4ctr_unload_force2 - "force2" escalation flag, checked by
+ * lkm4ctr_safe_unload_fn()'s wait loop exactly like lkm4ctr_unload_force is
+ * (see lkm4ctr_diagfs_control_write()): once set, the aggressive path
+ * below skips all further waiting, forcibly drops any remaining
+ * module_refcount() via repeated module_put(THIS_MODULE) calls (bypassing
+ * the normal "wait for in-flight calls to finish naturally" protocol), and
+ * finally requests rmmod with the force flag (`rmmod -f`, i.e.
+ * delete_module(2)'s O_TRUNC), ignoring version/refcount safety checks the
+ * same way an administrator running `rmmod -f` by hand would. This is
+ * strictly more aggressive than plain "force"/"forceunload" and should
+ * only ever be reached deliberately -- see the file header and
+ * lkm4ctr_diagfs_parse_control_cmd() above.
+ */
+static bool lkm4ctr_unload_force2;
 static atomic_t lkm4ctr_diagfs_mount_count = ATOMIC_INIT(0);
 
 /*
@@ -343,6 +393,7 @@ static bool lkm4ctr_diagfs_any_module_transition_locked(void)
 
 static const struct file_operations lkm4ctr_diagfs_ro_fops;
 static const struct file_operations lkm4ctr_diagfs_control_fops;
+static const struct file_operations lkm4ctr_diagfs_hotreload_trigger_fops;
 
 static struct inode *lkm4ctr_diagfs_make_inode(struct super_block *sb, umode_t mode)
 {
@@ -417,8 +468,17 @@ static struct dentry *lkm4ctr_diagfs_create_file(struct super_block *sb,
 		return ERR_PTR(-ENOMEM);
 	}
 	inode->i_private = info;
-	inode->i_fop = (kind == LKM4CTR_DIAG_CONTROL) ?
-		&lkm4ctr_diagfs_control_fops : &lkm4ctr_diagfs_ro_fops;
+	switch (kind) {
+	case LKM4CTR_DIAG_CONTROL:
+		inode->i_fop = &lkm4ctr_diagfs_control_fops;
+		break;
+	case LKM4CTR_DIAG_HOTRELOAD_TRIGGER:
+		inode->i_fop = &lkm4ctr_diagfs_hotreload_trigger_fops;
+		break;
+	default:
+		inode->i_fop = &lkm4ctr_diagfs_ro_fops;
+		break;
+	}
 
 	inode_lock(d_inode(parent));
 	dentry = d_alloc_name(parent, name);
@@ -599,6 +659,126 @@ static size_t lkm4ctr_diagfs_sysvipc_resources_snprintf(const struct lkm4ctr_dia
 	return shadow_sysvipc_diag_snprintf(buf, buflen);
 }
 
+/*
+ * lkm4ctr_diagfs_references_snprintf() - explain *why* module_refcount() is
+ * whatever it currently is, i.e. who is actually holding a reference to
+ * this module right now. This is what "try again"/-EBUSY failures on
+ * rmmod are ultimately about: module_refcount() itself is just a number,
+ * this file is meant to answer "a reference to *what*, exactly?" without
+ * an operator having to already know this module's internals.
+ *
+ * Every summand below is a real, tracked contributor:
+ *   - the diagfs mount count (each active `mount -t lkm4ctr` pins a
+ *     reference via file_system_type->owner, exactly like any other
+ *     in-use filesystem module -- see lkm4ctr_diagfs_mount_count).
+ *   - in-flight shadow_hook-redirected calls (shadow_hook_inflight_count(),
+ *     see common/shadow_hook.h and shadow_hijack.c).
+ * Anything left over after subtracting those (and the worker thread's own
+ * transient reference while a self-unload is in progress) is an
+ * *external* reference this module cannot itself explain -- typically
+ * another kernel module that links against one of lkm4ctr.ko's
+ * EXPORT_SYMBOL_GPL() entry points (shadow_hook_install() etc.), or a
+ * kernel object type this file doesn't yet know to break out (userspace
+ * itself never holds a struct module reference merely by having a
+ * pathname open).
+ */
+static size_t lkm4ctr_diagfs_references_snprintf(const struct lkm4ctr_diagfs_info *info,
+						  char *buf, size_t buflen)
+{
+	size_t pos = 0;
+	int refcount = -1;
+	int mounts = atomic_read(&lkm4ctr_diagfs_mount_count);
+	int inflight = shadow_hook_inflight_count();
+	int accounted, other;
+
+	(void)info;
+
+	if (lkm4ctr_module_refcount_fn)
+		refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
+
+	if (refcount < 0) {
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "module_refcount() unavailable (module_refcount symbol not yet resolved; write to global/control at least once to trigger resolution)\n");
+	} else {
+		accounted = mounts + inflight;
+		other = refcount - 1 - accounted;
+		if (other < 0)
+			other = 0;
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "module_refcount()=%d\n", refcount);
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "  1 base reference (module is loaded)\n");
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "  %d active lkm4ctr diagfs mount(s) (file_system_type->owner)\n",
+				 mounts);
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "  %d in-flight shadow_hook-redirected call(s) across every submodule\n",
+				 inflight);
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "  %d other/unaccounted reference(s)%s\n",
+				 other,
+				 other ?
+				 " (likely another module using an EXPORT_SYMBOL_GPL() of this module, or a reference this file does not yet break out)" :
+				 "");
+	}
+
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "submodule states:\n");
+	{
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
+			struct lkm4ctr_diagfs_module *mod = &lkm4ctr_diagfs_modules[i];
+
+			pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+					 "  %-16s %s\n", mod->tag,
+					 lkm4ctr_diagfs_state_name(
+						 lkm4ctr_diagfs_module_stable_state(mod)));
+		}
+	}
+
+	return pos;
+}
+
+/*
+ * Hot reload's own status/log/trigger renderers live in
+ * lkm4ctr_hotreload.c (a self-contained subsystem, not gated by the usual
+ * per-submodule load/unload lifecycle above); these are thin adapters to
+ * the shared lkm4ctr_diagfs_render_fn signature, same pattern as
+ * lkm4ctr_diagfs_mqueue_msg_snprintf() wrapping shadow_mqueue_diag_snprintf()
+ * above.
+ */
+static size_t lkm4ctr_diagfs_hotreload_status_snprintf(const struct lkm4ctr_diagfs_info *info,
+							char *buf, size_t buflen)
+{
+	(void)info;
+	return lkm4ctr_hotreload_status_snprintf(buf, buflen);
+}
+
+static size_t lkm4ctr_diagfs_hotreload_trigger_snprintf(const struct lkm4ctr_diagfs_info *info,
+							 char *buf, size_t buflen)
+{
+	(void)info;
+	return scnprintf(buf, buflen,
+			 "write an absolute path to a replacement lkm4ctr.ko to trigger a hot reload, e.g.:\n"
+			 "  echo /path/to/new/lkm4ctr.ko > do-hot-reload\n"
+			 "see ./status and ./log in this same directory for progress.\n");
+}
+
+/*
+ * helper.sh is served verbatim from the C string generated into
+ * lkm4ctr/helper.sh.c; unlike every other diagfs file this is not a
+ * "live" render of kernel state, so the wrapper below just copies the
+ * embedded script text (it is plain text and NUL-terminated, so %s is
+ * exact and safe).
+ */
+static size_t lkm4ctr_diagfs_helper_script_snprintf(const struct lkm4ctr_diagfs_info *info,
+						     char *buf, size_t buflen)
+{
+	(void)info;
+	return scnprintf(buf, buflen, "%s", lkm4ctr_helper_sh_data);
+}
+
 typedef size_t (*lkm4ctr_diagfs_render_fn)(const struct lkm4ctr_diagfs_info *info,
 						   char *buf, size_t buflen);
 
@@ -621,6 +801,14 @@ static lkm4ctr_diagfs_render_fn lkm4ctr_diagfs_render_for(enum lkm4ctr_diagfs_ki
 		return lkm4ctr_diagfs_mqueue_msg_snprintf;
 	case LKM4CTR_DIAG_SYSVIPC_RESOURCES:
 		return lkm4ctr_diagfs_sysvipc_resources_snprintf;
+	case LKM4CTR_DIAG_REFERENCES:
+		return lkm4ctr_diagfs_references_snprintf;
+	case LKM4CTR_DIAG_HOTRELOAD_STATUS:
+		return lkm4ctr_diagfs_hotreload_status_snprintf;
+	case LKM4CTR_DIAG_HOTRELOAD_TRIGGER:
+		return lkm4ctr_diagfs_hotreload_trigger_snprintf;
+	case LKM4CTR_DIAG_HELPER_SCRIPT:
+		return lkm4ctr_diagfs_helper_script_snprintf;
 	default:
 		return NULL;
 	}
@@ -714,6 +902,7 @@ enum lkm4ctr_diagfs_control_cmd {
 	LKM4CTR_CONTROL_LOAD,
 	LKM4CTR_CONTROL_UNLOAD,
 	LKM4CTR_CONTROL_FORCE_UNLOAD,
+	LKM4CTR_CONTROL_FORCE_UNLOAD2,
 };
 
 static bool lkm4ctr_diagfs_is_unload_cmd(const char *cmd, bool is_global)
@@ -733,6 +922,17 @@ static int lkm4ctr_diagfs_parse_control_cmd(const char *cmd, bool is_global,
 	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload") ||
 		   !strcmp(cmd, "forceunload")) {
 		*out = LKM4CTR_CONTROL_FORCE_UNLOAD;
+	} else if (is_global && !strcmp(cmd, "force2")) {
+		/*
+		 * "force2" is a global-only escalation, deliberately not
+		 * accepted as a first command on a fresh (not-yet-unloading)
+		 * global/control -- see the file header note above and
+		 * lkm4ctr_diagfs_control_write() below: it either escalates
+		 * an already-running force-unload to the aggressive path, or
+		 * (same as writing "force" then immediately "force2") starts
+		 * one directly in aggressive mode.
+		 */
+		*out = LKM4CTR_CONTROL_FORCE_UNLOAD2;
 	} else {
 		return -EINVAL;
 	}
@@ -1019,24 +1219,10 @@ static const char * const lkm4ctr_umount_candidates[] = {
 };
 
 /*
- * module_refcount() and call_usermodehelper() are ordinary EXPORT_SYMBOL()
- * functions, not GPL-only, but that alone doesn't save them from
- * CONFIG_TRIM_UNUSED_KSYMS on production GKI kernels: like
- * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure() elsewhere in
- * this module, they get stripped whenever nothing built into vmlinux
- * itself calls them. Resolved lazily via lkm4ctr_diagfs_resolve() instead
- * of shadow_hijack.c's shadow_hook_resolve() -- self-unload/rmmod is core
- * diagfs functionality that must keep working independently of
- * shadow_hijack's own load/unload state, same rationale as
- * lkm4ctr_diagfs_resolve() itself above.
+ * module_refcount_fn/call_usermodehelper_fn are declared earlier (near
+ * lkm4ctr_diagfs_resolve()) so the "references" renderer can use them too;
+ * only the lazy resolver itself lives here.
  */
-typedef int (*lkm4ctr_module_refcount_t)(struct module *mod);
-typedef int (*lkm4ctr_call_usermodehelper_t)(const char *path, char **argv,
-					      char **envp, int wait);
-
-static lkm4ctr_module_refcount_t lkm4ctr_module_refcount_fn;
-static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
-
 #define LKM4CTR_RESOLVE_ONE(fn, name)						\
 	do {									\
 		if (!(fn)) {							\
@@ -1142,18 +1328,33 @@ static int lkm4ctr_auto_umount_diagfs(void)
 	return ret;
 }
 
-static int lkm4ctr_run_rmmod(void)
+static int lkm4ctr_run_rmmod(bool aggressive)
 {
 	char *envp[] = { "HOME=/", "PATH=/sbin:/usr/sbin:/bin:/usr/bin:/system/bin", NULL };
 	const char * const *path;
 	int ret = -ENOENT;
 
 	for (path = lkm4ctr_rmmod_candidates; *path; path++) {
-		char *argv[] = { (char *)*path, "lkm4ctr", NULL };
+		/*
+		 * "-f" is rmmod(8)'s force flag (delete_module(2)'s O_TRUNC),
+		 * requiring CONFIG_MODULE_FORCE_UNLOAD on the target kernel:
+		 * it tells the kernel to ignore module_refcount() (and, on
+		 * kernels new enough to still check it, the module version)
+		 * entirely rather than returning -EBUSY/-EWOULDBLOCK/-EAGAIN.
+		 * Only ever passed by the force2 path below, after this
+		 * worker has already forcibly overridden module_refcount()
+		 * itself (see lkm4ctr_force2_override_refcount()) -- "-f" is
+		 * this file's one remaining line of defense if that somehow
+		 * still wasn't enough.
+		 */
+		char *argv_plain[] = { (char *)*path, "lkm4ctr", NULL };
+		char *argv_force[] = { (char *)*path, "-f", "lkm4ctr", NULL };
+		char **argv = aggressive ? argv_force : argv_plain;
 
 		ret = lkm4ctr_call_usermodehelper_fn(*path, argv, envp, UMH_WAIT_EXEC);
 		if (ret == 0) {
-			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG, "launched \"%s lkm4ctr\"", *path);
+			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG, "launched \"%s%s lkm4ctr\"",
+				     *path, aggressive ? " -f" : "");
 			return 0;
 		}
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG, "\"%s\" failed to exec: %d", *path, ret);
@@ -1164,8 +1365,59 @@ static int lkm4ctr_run_rmmod(void)
 	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 		    "cause: module was successfully quiesced and drained, so the module itself is not the problem -- likely no rmmod (or busybox applet providing it) is installed/executable on this system");
 	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-		    "resolution: ensure a working rmmod exists and is executable on one of /system/bin, /sbin, /usr/sbin, /usr/bin, /bin, then retry -- or simply run `rmmod lkm4ctr` by hand right now, it will succeed immediately since hooks are already quiesced and the refcount is already drained; module left quiesced but loaded");
+		    "resolution: ensure a working rmmod exists and is executable on one of /system/bin, /sbin, /usr/sbin, /usr/bin, /bin, then retry -- or simply run `rmmod%s lkm4ctr` by hand right now, it will succeed immediately since hooks are already quiesced and the refcount is already drained; module left quiesced but loaded",
+		    aggressive ? " -f" : "");
 	return ret;
+}
+
+/*
+ * lkm4ctr_force2_override_refcount() - the aggressive core of "force2".
+ *
+ * module_put(THIS_MODULE) is an ordinary, always-inline, always-linked
+ * kernel helper (include/linux/module.h) -- unlike module_refcount()/
+ * call_usermodehelper() elsewhere in this file, it needs no
+ * lkm4ctr_diagfs_resolve() trick, so it is always available. Calling it
+ * additional times beyond what this module's own bookkeeping actually
+ * released is exactly the "hook related kernel functions and do the force
+ * rmmod ignoring anything" escalation this command is documented (control
+ * file help text, README.md) to be: it directly overrides module_refcount()
+ * regardless of *why* it was still non-zero (an in-flight shadow_hook call,
+ * an unexpectedly-still-mounted diagfs, or any other external reference),
+ * rather than waiting for or explaining it. This is unsafe in the general
+ * case -- if a reference genuinely reflected a CPU still executing inside
+ * this module's .text, dropping it early does not stop that CPU, it only
+ * hides the fact from module_refcount() -- but "force2" is explicitly an
+ * administrator override of last resort for a module that refuses to
+ * rmmod any other way, exactly like `rmmod -f` itself already is.
+ */
+#define LKM4CTR_FORCE2_MAX_ITER		4096
+
+static void lkm4ctr_force2_override_refcount(void)
+{
+	int refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
+	int dropped = 0;
+
+	LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+		     "force2: aggressively overriding module_refcount()=%d by calling module_put() %d extra time(s), ignoring whether each reference has genuinely finished",
+		     refcount, refcount > 1 ? refcount - 1 : 0);
+
+	while (refcount > 1 && dropped < LKM4CTR_FORCE2_MAX_ITER) {
+		module_put(THIS_MODULE);
+		dropped++;
+		refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
+		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "force2: module_put() #%d done, module_refcount() now %d",
+			     dropped, refcount);
+	}
+
+	if (refcount > 1)
+		LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+			    "force2: module_refcount() still %d after %d overriding module_put() call(s) (hit the %d-iteration safety ceiling); proceeding to rmmod -f anyway",
+			    refcount, dropped, LKM4CTR_FORCE2_MAX_ITER);
+	else
+		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "force2: module_refcount() forced down to %d after %d overriding module_put() call(s)",
+			     refcount, dropped);
 }
 
 static int lkm4ctr_safe_unload_fn(void *unused)
@@ -1174,38 +1426,52 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 	int ret;
 	int refcount;
 	bool force;
+	bool force2;
 
 	mutex_lock(&lkm4ctr_unload_lock);
 	force = lkm4ctr_unload_force;
+	force2 = lkm4ctr_unload_force2;
 	mutex_unlock(&lkm4ctr_unload_lock);
 
 	__module_get(THIS_MODULE);
 
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
 		     "%s unload started: quiescing hooks (in-flight shadow_hook-redirected syscalls are allowed to finish, new entries are refused with -EAGAIN)",
-		     force ? "force" : "safe");
+		     force2 ? "force2" : force ? "force" : "safe");
 	shadow_hook_quiesce(true);
 
 	if (force)
-		lkm4ctr_diagfs_unload_all_now("force", true);
+		lkm4ctr_diagfs_unload_all_now(force2 ? "force2" : "force", true);
 
 	lkm4ctr_auto_umount_diagfs();
 
 	refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "module_refcount()=%d after quiesce (must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums, after which force unload proceeds to rmmod anyway despite outstanding references)",
-		     refcount, LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS);
+		     "module_refcount()=%d after quiesce (%d diagfs mount(s), %d in-flight hook call(s) currently accounted for; must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums, after which force unload proceeds to rmmod anyway despite outstanding references)",
+		     refcount, atomic_read(&lkm4ctr_diagfs_mount_count),
+		     shadow_hook_inflight_count(), LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS);
 
-	while ((refcount = lkm4ctr_module_refcount_fn(THIS_MODULE)) > 1) {
+	while (!force2 && (refcount = lkm4ctr_module_refcount_fn(THIS_MODULE)) > 1) {
 		bool escalated = false;
+		bool escalated2 = false;
 
-		if (!force) {
-			mutex_lock(&lkm4ctr_unload_lock);
-			if (lkm4ctr_unload_force) {
-				force = true;
-				escalated = true;
-			}
-			mutex_unlock(&lkm4ctr_unload_lock);
+		mutex_lock(&lkm4ctr_unload_lock);
+		if (!force && lkm4ctr_unload_force) {
+			force = true;
+			escalated = true;
+		}
+		if (!force2 && lkm4ctr_unload_force2) {
+			force2 = true;
+			escalated2 = true;
+		}
+		mutex_unlock(&lkm4ctr_unload_lock);
+
+		if (escalated2) {
+			LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+				     "unload escalated to the aggressive force2 path mid-wait via diagfs control write: force-unloading every submodule (if not already) and forcibly overriding the remaining reference(s) instead of continuing to wait");
+			if (!escalated)
+				lkm4ctr_diagfs_unload_all_now("force2", true);
+			break;
 		}
 		if (escalated) {
 			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
@@ -1224,18 +1490,18 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 					    "cause: this lkm4ctr diagfs is currently mounted %d time(s); every active mount pins module_refcount() via file_system_type->owner, exactly like rmmod refuses any other in-use filesystem module, and this alone will block self-unload forever",
 					    mounts);
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing global/control through right now -- then write to global/control again");
+					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing global/control through right now -- then write to global/control again, or escalate to `echo force2 > global/control` to override it forcibly");
 			} else {
 				if (force)
 					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task",
-						    refcount - 1);
+						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task (%d currently tracked in-flight)",
+						    refcount - 1, shadow_hook_inflight_count());
 				else
 					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task, or a resource created via a hook (e.g. an anon-inode fd) is still held open",
-						    refcount - 1);
+						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task (%d currently tracked in-flight), or a resource created via a hook (e.g. an anon-inode fd) is still held open",
+						    refcount - 1, shadow_hook_inflight_count());
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "resolution: this is a real in-flight kernel call still executing somewhere -- it cannot be forced to finish sooner without risking a crash, so simply wait and retry; if the count never drops on retry this may be a reference leak worth reporting");
+					    "resolution: this is a real in-flight kernel call still executing somewhere -- it cannot be forced to finish sooner without risking a crash, so simply wait and retry; if the count never drops on retry this may be a reference leak worth reporting, or escalate to `echo force2 > global/control` to override it forcibly (unsafe, last resort)");
 			}
 
 			if (force) {
@@ -1253,7 +1519,7 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 				 * with its own -EBUSY rather than crashing.
 				 */
 				LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
-					     "force unload: proceeding to rmmod despite %d outstanding reference(s) instead of aborting -- administrator override always takes priority; retry manually (or via forceunload again) if the kernel itself still refuses",
+					     "force unload: proceeding to rmmod despite %d outstanding reference(s) instead of aborting -- administrator override always takes priority; retry manually (or via forceunload again, or force2 for the aggressive override) if the kernel itself still refuses",
 					     refcount - 1);
 				break;
 			}
@@ -1262,26 +1528,41 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 			shadow_hook_quiesce(false);
 			goto abort;
 		}
-		if (waited_ms && waited_ms % 5000 == 0)
-			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-				     "still waiting after %lums: module_refcount()=%d (%d extra reference(s) remaining, %lums until timeout)",
-				     waited_ms, refcount, refcount - 1,
-				     LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS - waited_ms);
+		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "still waiting after %lums: module_refcount()=%d (%d extra reference(s) remaining: %d diagfs mount(s), %d in-flight hook call(s), %d other; %lums until timeout)",
+			     waited_ms, refcount, refcount - 1,
+			     atomic_read(&lkm4ctr_diagfs_mount_count),
+			     shadow_hook_inflight_count(),
+			     max(0, refcount - 1 - atomic_read(&lkm4ctr_diagfs_mount_count) -
+				 shadow_hook_inflight_count()),
+			     LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS - waited_ms);
 		msleep(LKM4CTR_SAFE_UNLOAD_POLL_MS);
 		waited_ms += LKM4CTR_SAFE_UNLOAD_POLL_MS;
 	}
 
-	if (!force) {
+	if (!force && !force2) {
 		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
 			     "drained after %lums (module_refcount()=%d), about to gracefully unload every submodule",
 			     waited_ms, refcount);
 		lkm4ctr_diagfs_unload_all_now("graceful", false);
+	} else if (force2) {
+		/*
+		 * force2 always aggressively unloads every submodule first
+		 * (idempotent if lkm4ctr_diagfs_unload_all_now() already ran
+		 * above from the initial force branch or a mid-wait
+		 * escalation), then forcibly drops any remaining
+		 * module_refcount() instead of continuing to wait/poll for
+		 * it, and finally requests the aggressive `rmmod -f`.
+		 */
+		lkm4ctr_diagfs_unload_all_now("force2", true);
+		lkm4ctr_force2_override_refcount();
 	}
 
+	refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "drained after %lums (module_refcount()=%d), launching rmmod",
-		     waited_ms, refcount);
-	ret = lkm4ctr_run_rmmod();
+		     "drained after %lums (module_refcount()=%d), launching rmmod%s",
+		     waited_ms, refcount, force2 ? " -f (force2)" : "");
+	ret = lkm4ctr_run_rmmod(force2);
 	if (ret) {
 		shadow_hook_quiesce(false);
 		goto abort;
@@ -1302,6 +1583,8 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 abort:
 	mutex_lock(&lkm4ctr_unload_lock);
 	lkm4ctr_unload_in_progress = false;
+	lkm4ctr_unload_force = false;
+	lkm4ctr_unload_force2 = false;
 	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
 	mutex_unlock(&lkm4ctr_unload_lock);
 	module_put(THIS_MODULE);
@@ -1332,6 +1615,7 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 	if (info->is_global) {
 		struct task_struct *thread;
 		bool force;
+		bool force2;
 
 		if (action == LKM4CTR_CONTROL_LOAD) {
 			int ret = lkm4ctr_diagfs_load_all();
@@ -1339,24 +1623,37 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 			return ret ? ret : count;
 		}
 
-		force = (action == LKM4CTR_CONTROL_FORCE_UNLOAD);
+		force2 = (action == LKM4CTR_CONTROL_FORCE_UNLOAD2);
+		force = force2 || (action == LKM4CTR_CONTROL_FORCE_UNLOAD);
 		if (!lkm4ctr_safe_unload_resolve())
 			return -EOPNOTSUPP;
 
 		mutex_lock(&lkm4ctr_unload_lock);
 		if (lkm4ctr_unload_in_progress) {
 			/*
-			 * An unload is already running (graceful or force). Never
-			 * answer a repeated write here with -EBUSY: that would be
-			 * exactly the kind of self-imposed block an administrator
-			 * writing "forceunload" must always be able to get past.
-			 * If it's not already in force mode, escalate it in place
-			 * -- lkm4ctr_safe_unload_fn()'s wait loop polls this same
-			 * flag and switches to the force path (skip further
-			 * waiting, force-unload every submodule, then drive
-			 * rmmod) on its very next check. A repeated write in the
-			 * same mode is simply a no-op success.
+			 * An unload is already running (graceful, force, or
+			 * force2). Never answer a repeated write here with
+			 * -EBUSY: that would be exactly the kind of
+			 * self-imposed block an administrator writing
+			 * "forceunload"/"force2" must always be able to get
+			 * past. If it's not already in that mode, escalate it
+			 * in place -- lkm4ctr_safe_unload_fn()'s wait loop
+			 * polls these same flags and switches path (force:
+			 * skip further waiting, force-unload every submodule,
+			 * then drive rmmod; force2: additionally skip straight
+			 * to forcibly overriding module_refcount() and running
+			 * `rmmod -f`) on its very next check. A repeated write
+			 * in the same mode is simply a no-op success.
 			 */
+			if (force2 && !lkm4ctr_unload_force2) {
+				lkm4ctr_unload_force = true;
+				lkm4ctr_unload_force2 = true;
+				lkm4ctr_diagfs_global_state = LKM4CTR_STATE_FORCE_UNLOADING;
+				mutex_unlock(&lkm4ctr_unload_lock);
+				LKM4CTR_WARN(LKM4CTR_DIAGFS_TAG,
+					     "escalating already in-progress unload to the aggressive force2 path via diagfs control write: any outstanding reference will now be forcibly overridden instead of waited on");
+				return count;
+			}
 			if (force && !lkm4ctr_unload_force) {
 				lkm4ctr_unload_force = true;
 				lkm4ctr_diagfs_global_state = LKM4CTR_STATE_FORCE_UNLOADING;
@@ -1375,6 +1672,7 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 		}
 		lkm4ctr_unload_in_progress = true;
 		lkm4ctr_unload_force = force;
+		lkm4ctr_unload_force2 = force2;
 		lkm4ctr_diagfs_global_state = force ?
 			LKM4CTR_STATE_FORCE_UNLOADING :
 			LKM4CTR_STATE_GRACEFUL_UNLOADING;
@@ -1422,6 +1720,9 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 			return ret;
 		break;
 	}
+	default:
+		/* force2 is a global-only escalation; no per-module meaning. */
+		return -ENOSYS;
 	}
 
 	return count;
@@ -1434,6 +1735,48 @@ static const struct file_operations lkm4ctr_diagfs_control_fops = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 	.write		= lkm4ctr_diagfs_control_write,
+};
+
+/*
+ * do-hot-reload write handler. Deliberately tiny: all the real work
+ * (validation, quiesce/drain, spawning the rmmod+insmod handoff) lives in
+ * lkm4ctr_hotreload.c's lkm4ctr_hotreload_trigger(); this is purely the
+ * diagfs glue, same division of labour as
+ * lkm4ctr_diagfs_control_write()/lkm4ctr_safe_unload_fn() above.
+ */
+#define LKM4CTR_HOTRELOAD_PATH_MAX	256
+
+static ssize_t lkm4ctr_diagfs_hotreload_trigger_write(struct file *file,
+						      const char __user *ubuf,
+						      size_t count, loff_t *ppos)
+{
+	char path[LKM4CTR_HOTRELOAD_PATH_MAX];
+	int ret;
+
+	(void)file;
+	(void)ppos;
+	if (count == 0 || count >= sizeof(path))
+		return -EINVAL;
+	if (copy_from_user(path, ubuf, count))
+		return -EFAULT;
+	path[count] = '\0';
+	strim(path);
+	if (!path[0])
+		return -EINVAL;
+
+	ret = lkm4ctr_hotreload_trigger(path);
+	if (ret)
+		return ret;
+	return count;
+}
+
+static const struct file_operations lkm4ctr_diagfs_hotreload_trigger_fops = {
+	.owner		= THIS_MODULE,
+	.open		= lkm4ctr_diagfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+	.write		= lkm4ctr_diagfs_hotreload_trigger_write,
 };
 
 /* ------------------------------------------------------------------- */
@@ -1522,6 +1865,11 @@ static int lkm4ctr_diagfs_fill_module_dir(struct super_block *sb,
 					    mod->tag, false, false, 0);
 	if (ret)
 		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "references", 0444,
+					    LKM4CTR_DIAG_REFERENCES,
+					    mod->tag, false, false, 0);
+	if (ret)
+		return ret;
 
 	if (!strcmp(mod->tag, "shadow_hijack")) {
 		return lkm4ctr_diagfs_create_checked(sb, dir, "functions", 0444,
@@ -1565,6 +1913,31 @@ static int lkm4ctr_diagfs_fill_module_dir(struct super_block *sb,
 	return 0;
 }
 
+static int lkm4ctr_diagfs_fill_hotreload_dir(struct super_block *sb,
+					     struct dentry *global_dir)
+{
+	struct dentry *dir;
+	int ret;
+
+	dir = lkm4ctr_diagfs_mkdir(sb, global_dir, "hotreload");
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "status", 0444,
+					    LKM4CTR_DIAG_HOTRELOAD_STATUS,
+					    NULL, false, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "log", 0444,
+					    LKM4CTR_DIAG_LOG,
+					    "hotreload", false, false, 0);
+	if (ret)
+		return ret;
+	return lkm4ctr_diagfs_create_checked(sb, dir, "do-hot-reload", 0200,
+					    LKM4CTR_DIAG_HOTRELOAD_TRIGGER,
+					    NULL, false, false, 0);
+}
+
 static int lkm4ctr_diagfs_fill_global_dir(struct super_block *sb,
 					  struct dentry *root)
 {
@@ -1590,9 +1963,17 @@ static int lkm4ctr_diagfs_fill_global_dir(struct super_block *sb,
 					    NULL, false, false, 0);
 	if (ret)
 		return ret;
-	return lkm4ctr_diagfs_create_checked(sb, dir, "resources", 0444,
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "resources", 0444,
 					    LKM4CTR_DIAG_GLOBAL_RESOURCES,
 					    NULL, true, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "references", 0444,
+					    LKM4CTR_DIAG_REFERENCES,
+					    NULL, true, false, 0);
+	if (ret)
+		return ret;
+	return lkm4ctr_diagfs_fill_hotreload_dir(sb, dir);
 }
 
 static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int silent)
@@ -1624,6 +2005,19 @@ static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int sil
 		return -ENOMEM;
 
 	ret = lkm4ctr_diagfs_fill_global_dir(sb, sb->s_root);
+	if (ret)
+		return ret;
+
+	/*
+	 * helper.sh lives at the diagfs mount root (a sibling of global/ and
+	 * every submodule directory), not under global/, so that
+	 * `. "$lkm4ctr_diagfs/helper.sh"` reads naturally regardless of
+	 * which submodules happen to be present. 0555 matches the
+	 * user-requested "chmod 555 r-x" read+execute-only permission.
+	 */
+	ret = lkm4ctr_diagfs_create_checked(sb, sb->s_root, "helper.sh", 0555,
+					    LKM4CTR_DIAG_HELPER_SCRIPT, NULL,
+					    true, false, 0);
 	if (ret)
 		return ret;
 
@@ -1680,6 +2074,7 @@ int lkm4ctr_diagfs_init(void)
 	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
 	lkm4ctr_unload_in_progress = false;
 	lkm4ctr_unload_force = false;
+	lkm4ctr_unload_force2 = false;
 	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++)
 		lkm4ctr_diagfs_modules[i].state =
 			lkm4ctr_diagfs_module_stable_state(&lkm4ctr_diagfs_modules[i]);

@@ -16,6 +16,8 @@ int shadow_cgdevices_init(void);
 void shadow_cgdevices_exit(void);
 int lkm4ctr_diagfs_init(void);
 void lkm4ctr_diagfs_exit(void);
+int lkm4ctr_hotreload_init(void);
+void lkm4ctr_hotreload_exit(void);
 
 #define LKM4CTR_VERSION "4.0"
 #define LKM4CTR_TAG	"lkm4ctr"
@@ -45,6 +47,8 @@ static int __init lkm4ctr_init(void)
 			     ret);
 	}
 
+	lkm4ctr_hotreload_init();
+
 	LKM4CTR_INFO(LKM4CTR_TAG,
 		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mountpoint> then \"echo load\" to <mountpoint>/global/control or a specific <mountpoint>/<name>/control)");
 	return 0;
@@ -63,6 +67,7 @@ static int __init lkm4ctr_init(void)
 static void __exit lkm4ctr_exit(void)
 {
 	lkm4ctr_diagfs_exit();
+	lkm4ctr_hotreload_exit();
 	shadow_cgdevices_exit();
 	shadow_mqueue_exit();
 	shadow_sysvipc_exit();
