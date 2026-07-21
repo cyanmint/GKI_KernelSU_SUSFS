@@ -465,12 +465,13 @@ enum lkm4ctr_diagfs_status_cmd {
 	LKM4CTR_STATUS_FORCE,		/* force unload */
 };
 
-static int lkm4ctr_diagfs_parse_status_cmd(const char *cmd, enum lkm4ctr_diagfs_status_cmd *out)
+static int lkm4ctr_diagfs_parse_status_cmd(const char *cmd, bool is_global,
+					    enum lkm4ctr_diagfs_status_cmd *out)
 {
-	if (!strcmp(cmd, "load") || !strcmp(cmd, "load_all")) {
+	if (!strcmp(cmd, "load") || (is_global && !strcmp(cmd, "load_all"))) {
 		*out = LKM4CTR_STATUS_LOAD;
-	} else if (!strcmp(cmd, "1") || !strcmp(cmd, "unload") || !strcmp(cmd, "remove") ||
-		   !strcmp(cmd, "graceful")) {
+	} else if (!strcmp(cmd, "unload") || !strcmp(cmd, "remove") || !strcmp(cmd, "graceful") ||
+		   (is_global && !strcmp(cmd, "1"))) {
 		*out = LKM4CTR_STATUS_UNLOAD;
 	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload")) {
 		*out = LKM4CTR_STATUS_FORCE;
@@ -556,7 +557,7 @@ static ssize_t lkm4ctr_diagfs_status_write(struct file *file, const char __user 
 	cmd[count] = '\0';
 	strim(cmd);
 
-	if (lkm4ctr_diagfs_parse_status_cmd(cmd, &action))
+	if (lkm4ctr_diagfs_parse_status_cmd(cmd, false, &action))
 		return -EINVAL;
 
 	if (!strcmp(info->tag, "shadow_hijack")) {
@@ -921,6 +922,13 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again");
 			} else {
+				/*
+				 * Reached only from the drain-wait timeout above,
+				 * which happens before the post-drain graceful
+				 * lkm4ctr_diagfs_unload_all_now("graceful") call
+				 * further down -- so in the !force case here,
+				 * submodule resources genuinely may still be held.
+				 */
 				if (force)
 					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task",
@@ -953,7 +961,7 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 		 * this same safe-unload sequence.
 		 */
 		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-			     "drained after %lums (module_refcount()=%d), gracefully unloading every submodule",
+			     "drained after %lums (module_refcount()=%d), about to gracefully unload every submodule",
 			     waited_ms, refcount);
 		lkm4ctr_diagfs_unload_all_now("graceful");
 	}
@@ -1018,7 +1026,7 @@ static ssize_t lkm4ctr_diagfs_safe_unload_write(struct file *file, const char __
 	cmd[count] = '\0';
 	strim(cmd);
 
-	if (lkm4ctr_diagfs_parse_status_cmd(cmd, &action))
+	if (lkm4ctr_diagfs_parse_status_cmd(cmd, true, &action))
 		return -EINVAL;
 
 	/* "load"/"load_all" -- the global load-all shortcut: synchronous,
