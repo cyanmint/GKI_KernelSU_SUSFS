@@ -57,6 +57,14 @@
  *                                    load/unload/forceunload/force2/logcat/
  *                                    references/hot-upgrade/help).
  *
+ *   ./mnt/readme.txt                - read-only (0444), a full plain-text
+ *                                    description of this whole diagfs tree
+ *                                    and how to use it (contents generated
+ *                                    into readme.txt.c as a plain C string,
+ *                                    kept in sync with this comment block by
+ *                                    hand). Self-contained: readable with
+ *                                    "cat" alone, no source tree needed.
+ *
  *   ./mnt/hijack/{control,status,log,functions,references}
  *                                  - diagnostics for the shared hook engine.
  *                                    load/unload/forceunload behave like any
@@ -266,6 +274,12 @@ extern int lkm4ctr_hotreload_trigger(const char *path);
 extern const char lkm4ctr_helper_sh_data[];
 extern const unsigned long lkm4ctr_helper_sh_size;
 
+/* readme.txt.c - the diagfs readme.txt contents; see that file for the full
+ * description of the diagfs tree and how to use it.
+ */
+extern const char lkm4ctr_readme_txt_data[];
+extern const unsigned long lkm4ctr_readme_txt_size;
+
 enum lkm4ctr_diagfs_kind {
 	LKM4CTR_DIAG_CONTROL,
 	LKM4CTR_DIAG_STATUS,
@@ -279,6 +293,7 @@ enum lkm4ctr_diagfs_kind {
 	LKM4CTR_DIAG_HOTRELOAD_STATUS,
 	LKM4CTR_DIAG_HOTRELOAD_TRIGGER,
 	LKM4CTR_DIAG_HELPER_SCRIPT,
+	LKM4CTR_DIAG_README,
 };
 
 enum lkm4ctr_diagfs_lifecycle_state {
@@ -812,6 +827,17 @@ static size_t lkm4ctr_diagfs_helper_script_snprintf(const struct lkm4ctr_diagfs_
 	return scnprintf(buf, buflen, "%s", lkm4ctr_helper_sh_data);
 }
 
+/*
+ * readme.txt is served verbatim from the C string generated into
+ * lkm4ctr/readme.txt.c, the same way helper.sh is served above.
+ */
+static size_t lkm4ctr_diagfs_readme_snprintf(const struct lkm4ctr_diagfs_info *info,
+					      char *buf, size_t buflen)
+{
+	(void)info;
+	return scnprintf(buf, buflen, "%s", lkm4ctr_readme_txt_data);
+}
+
 typedef size_t (*lkm4ctr_diagfs_render_fn)(const struct lkm4ctr_diagfs_info *info,
 						   char *buf, size_t buflen);
 
@@ -842,6 +868,8 @@ static lkm4ctr_diagfs_render_fn lkm4ctr_diagfs_render_for(enum lkm4ctr_diagfs_ki
 		return lkm4ctr_diagfs_hotreload_trigger_snprintf;
 	case LKM4CTR_DIAG_HELPER_SCRIPT:
 		return lkm4ctr_diagfs_helper_script_snprintf;
+	case LKM4CTR_DIAG_README:
+		return lkm4ctr_diagfs_readme_snprintf;
 	default:
 		return NULL;
 	}
@@ -2052,6 +2080,19 @@ static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int sil
 	 */
 	ret = lkm4ctr_diagfs_create_checked(sb, sb->s_root, "helper.sh", 0555,
 					    LKM4CTR_DIAG_HELPER_SCRIPT, NULL,
+					    true, false, 0);
+	if (ret)
+		return ret;
+
+	/*
+	 * readme.txt lives alongside helper.sh at the diagfs mount root: a
+	 * full plain-text description of this whole tree and how to use it,
+	 * self-contained so it is useful even without this repository's
+	 * source tree. Read-only, not executable (0444), unlike helper.sh's
+	 * 0555.
+	 */
+	ret = lkm4ctr_diagfs_create_checked(sb, sb->s_root, "readme.txt", 0444,
+					    LKM4CTR_DIAG_README, NULL,
 					    true, false, 0);
 	if (ret)
 		return ret;
