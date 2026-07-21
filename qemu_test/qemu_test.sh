@@ -125,6 +125,12 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	busybox chmod 755 /newroot/second_init
 
 	busybox echo "=== SHADOW_CTR_QEMU_TEST: exec second init ==="
+	# switch_root replaces PID 1 with the given command, run under the new
+	# root; /busybox (copied onto image1.ext4 above) provides "env" here
+	# since image1.ext4's own /system/bin/env may not exist yet at this
+	# point, but /system/bin/sh (the real root's bionic-linked shell,
+	# already baked into image1.ext4) is used to interpret /second_init so
+	# stage 2 runs under the actual target userland's shell, not busybox's.
 	exec busybox switch_root /newroot /busybox env -i /system/bin/sh /second_init
 fi
 
@@ -146,6 +152,11 @@ set -x
 # though it keeps executing. /dev/kmsg writes become kernel printk records,
 # which reliably reaches the QEMU console log.
 
+# /do-mounts.sh and /do-umounts.sh (sourced below) are baked into
+# image1.ext4's own root (not part of this ramdisk), so they only exist
+# once switch_root has actually landed here; they mount/unmount the
+# standard set of pseudo-filesystems (proc, /dev/pts, cgroups, etc.) that
+# image1.ext4's userland (dockerd/containerd/runc) expects at runtime.
 source /do-mounts.sh
 PATH=/:$PATH
 
@@ -177,6 +188,8 @@ docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest p
 docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
 
 echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+# unmounts whatever /do-mounts.sh mounted above, so the following
+# remount,ro is clean.
 source /do-umounts.sh
 /system/bin/mount -o remount,ro /
 echo o > /proc/sysrq-trigger
