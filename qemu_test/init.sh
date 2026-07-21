@@ -31,7 +31,6 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	/busybox mkdir -p /sys /dev /newroot
 	/busybox mount -t sysfs sysfs /sys
 	/busybox mdev -s
-	exec </dev/ttyAMA0 >/dev/kmsg 2>&1
 	/busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
 
 	/busybox mount -t ext4 /dev/nvme0n1 /newroot
@@ -43,6 +42,8 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	/busybox cat /init > /newroot/second_init
 	/busybox chmod 755 /newroot/second_init
 
+
+    /busybox echo "=== SHADOW_CTR_QEMU_TEST: exec second init ==="
 	exec /busybox switch_root /newroot /second_init
 fi
 
@@ -63,7 +64,6 @@ set -x
 # which reliably reaches the QEMU console log.
 /busybox mount -t sysfs sysfs /sys 2>/dev/null
 /busybox mdev -s
-exec </dev/console >/dev/kmsg 2>&1
 /system/bin/mount -t proc proc /proc
 export PATH=/system/bin
 /system/bin/mkdir -p /dev/pts
@@ -104,14 +104,6 @@ for i in $(/system/bin/seq 1 30); do
   /system/bin/sleep 1
 done
 
-# /alpine.tar (already sitting at the root of this filesystem, i.e.
-# image1.ext4) is a `docker export` of a container's flat filesystem, not a
-# `docker save` image archive, so it must be reconstituted with `docker
-# import` (which tags a flat rootfs tarball as an image), not `docker load`
-# (which only understands docker save's manifest+layers format). This tag
-# must match the image image1.ext4 was baked with (docker.io/arm64v8/alpine:latest).
-echo "=== SHADOW_CTR_QEMU_TEST: docker import (alpine tarball) ==="
-
 echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
 docker run --privileged --rm --network host -it docker.io/arm64v8/alpine:latest true < /dev/null
 docker run --privileged --rm --network host -it docker.io/arm64v8/ubuntu:latest true < /dev/null
@@ -121,5 +113,6 @@ echo "=== SHADOW_CTR_QEMU_TEST: dockerd log ==="
 cat /dockerd.log
 
 echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+/system/bin/mount -o remount,ro /
 echo o > /proc/sysrq-trigger
 while true; do :; done
