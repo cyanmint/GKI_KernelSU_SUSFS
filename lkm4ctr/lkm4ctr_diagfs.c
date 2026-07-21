@@ -1193,7 +1193,7 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 
 	refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "module_refcount()=%d after quiesce (must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums, ignored once escalated to force)",
+		     "module_refcount()=%d after quiesce (must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums, after which force unload proceeds to rmmod anyway despite outstanding references)",
 		     refcount, LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS);
 
 	while ((refcount = lkm4ctr_module_refcount_fn(THIS_MODULE)) > 1) {
