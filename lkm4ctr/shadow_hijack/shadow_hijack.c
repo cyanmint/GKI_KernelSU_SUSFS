@@ -163,21 +163,26 @@ static unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
  * long as a redirected call is in flight anywhere in the system.
  *
  * shadow_hook_ri_to_kretprobe() maps a struct kretprobe_instance back to
- * its owning struct kretprobe. get_kretprobe() is the portable accessor for
- * this: it has existed in include/linux/kprobes.h since very early kretprobe
- * support (originally a plain `return ri->rp;` accessor) and was later
- * updated in place to also handle the CONFIG_KRETPROBE_ON_RETHOOK rethook
- * form and the struct kretprobe_holder indirection. Because Android GKI
- * kernels backport such refactors independently of their nominal upstream
- * base version (e.g. android13-5.15 already carries the kretprobe_holder
- * layout, where struct kretprobe_instance has no plain `rp` field at all),
- * gating on LINUX_VERSION_CODE is unreliable; always go through
- * get_kretprobe() instead of touching struct kretprobe_instance directly.
+ * its owning struct kretprobe. Upstream replaced the plain `struct kretprobe
+ * *rp` field of struct kretprobe_instance with the struct kretprobe_holder
+ * indirection (and introduced the get_kretprobe() accessor) in the 5.15
+ * cycle; every supported Android GKI branch tracks that upstream cutoff
+ * exactly (android12-5.10 and android13-5.10 still have the plain `rp`
+ * field and no get_kretprobe() at all, while android13-5.15 and newer both
+ * have the holder indirection and get_kretprobe()), so gating on
+ * LINUX_VERSION_CODE >= 5.15 is reliable here.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 static struct kretprobe *shadow_hook_ri_to_kretprobe(struct kretprobe_instance *ri)
 {
 	return get_kretprobe(ri);
 }
+#else
+static struct kretprobe *shadow_hook_ri_to_kretprobe(struct kretprobe_instance *ri)
+{
+	return ri->rp;
+}
+#endif
 
 static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
 {

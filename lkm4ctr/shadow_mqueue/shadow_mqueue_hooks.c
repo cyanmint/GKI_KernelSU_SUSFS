@@ -233,26 +233,46 @@ out_put:
  * it. We write "tmpfs" into that page, point a copy of the original pt_regs
  * at it instead of the caller's "mqueue" string, and call through to
  * @real_sys_mount with the copy. vm_mmap()/vm_munmap() are ordinary
- * EXPORT_SYMBOL() helpers used throughout the VFS/ELF loader, so - unlike
- * get_tree_nodev()/simple_fill_super() - they are never trimmed. The mapping
- * is a full page because do_mmap() internally requires (and rounds up to) a
- * page-aligned length regardless of what is requested; only the first few
- * bytes are ever written or read.
+ * EXPORT_SYMBOL() helpers used throughout the VFS/ELF loader, but -- like
+ * path_put()/vfs_mkdir()/shmem_kernel_file_setup() elsewhere in this
+ * repository's lkm4ctr modules -- some "certified"/production Android GKI
+ * boot images build with CONFIG_TRIM_UNUSED_KSYMS, which strips their
+ * ksymtab entries whenever no *other* module the vendor ships happens to
+ * reference them, causing a hard "Unknown symbol" failure at insmod time.
+ * Resolve them via shadow_hook_resolve() (kallsyms-based, unaffected by
+ * trimming) instead of calling them directly. The mapping is a full page
+ * because do_mmap() internally requires (and rounds up to) a page-aligned
+ * length regardless of what is requested; only the first few bytes are ever
+ * written or read.
  *
  * The original dev_name/dir_name/flags/data arguments are passed through
  * unchanged: tmpfs accepts the same handful of options ("mode=", "size=",
  * "uid=", "gid=", ...) that runtimes typically pass for /dev/mqueue.
  */
+typedef unsigned long (*mq_vm_mmap_fn)(struct file *file, unsigned long addr,
+					unsigned long len, unsigned long prot,
+					unsigned long flag, unsigned long offset);
+typedef int (*mq_vm_munmap_fn)(unsigned long start, size_t len);
+
 static long mq_do_mount_fallback(const struct pt_regs *regs)
 {
 	struct pt_regs kregs;
 	unsigned long scratch;
 	long ret;
+	static mq_vm_mmap_fn vm_mmap_fn;
+	static mq_vm_munmap_fn vm_munmap_fn;
+
+	if (!vm_mmap_fn)
+		vm_mmap_fn = (mq_vm_mmap_fn)shadow_hook_resolve("vm_mmap");
+	if (!vm_munmap_fn)
+		vm_munmap_fn = (mq_vm_munmap_fn)shadow_hook_resolve("vm_munmap");
+	if (!vm_mmap_fn || !vm_munmap_fn)
+		return -ENOSYS;
 
 	memcpy(&kregs, regs, sizeof(kregs));
 
-	scratch = vm_mmap(NULL, 0, PAGE_SIZE, PROT_READ | PROT_WRITE,
-			  MAP_PRIVATE | MAP_ANONYMOUS, 0);
+	scratch = vm_mmap_fn(NULL, 0, PAGE_SIZE, PROT_READ | PROT_WRITE,
+			     MAP_PRIVATE | MAP_ANONYMOUS, 0);
 	if (IS_ERR_VALUE(scratch))
 		return (long)scratch;
 
@@ -260,13 +280,13 @@ static long mq_do_mount_fallback(const struct pt_regs *regs)
 	 * the string real_sys_mount() reads back out of userspace below is
 	 * itself NUL-terminated. */
 	if (copy_to_user((void __user *)scratch, "tmpfs", sizeof("tmpfs"))) {
-		vm_munmap(scratch, PAGE_SIZE);
+		vm_munmap_fn(scratch, PAGE_SIZE);
 		return -EFAULT;
 	}
 
 	SHADOW_SYSCALL_SET_ARG(&kregs, SHADOW_MQ_MOUNT_TYPE_ARG, scratch);
 	ret = real_sys_mount(&kregs);
-	vm_munmap(scratch, PAGE_SIZE);
+	vm_munmap_fn(scratch, PAGE_SIZE);
 	return ret;
 }
 
