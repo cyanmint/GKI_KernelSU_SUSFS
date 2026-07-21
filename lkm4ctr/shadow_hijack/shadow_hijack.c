@@ -163,25 +163,21 @@ static unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
  * long as a redirected call is in flight anywhere in the system.
  *
  * shadow_hook_ri_to_kretprobe() maps a struct kretprobe_instance back to
- * its owning struct kretprobe. The get_kretprobe() helper that encapsulates
- * this (correctly handling both the CONFIG_KRETPROBE_ON_RETHOOK rethook
- * form and the older struct kretprobe_holder indirection) was only added
- * upstream around v5.17; kernels at or before that (android12-5.10,
- * android13-5.10, android13-5.15, android14-5.15 in our KMI matrix) instead
- * have a plain `struct kretprobe *rp` field directly on
- * struct kretprobe_instance, with no get_kretprobe() declared at all.
+ * its owning struct kretprobe. get_kretprobe() is the portable accessor for
+ * this: it has existed in include/linux/kprobes.h since very early kretprobe
+ * support (originally a plain `return ri->rp;` accessor) and was later
+ * updated in place to also handle the CONFIG_KRETPROBE_ON_RETHOOK rethook
+ * form and the struct kretprobe_holder indirection. Because Android GKI
+ * kernels backport such refactors independently of their nominal upstream
+ * base version (e.g. android13-5.15 already carries the kretprobe_holder
+ * layout, where struct kretprobe_instance has no plain `rp` field at all),
+ * gating on LINUX_VERSION_CODE is unreliable; always go through
+ * get_kretprobe() instead of touching struct kretprobe_instance directly.
  */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
 static struct kretprobe *shadow_hook_ri_to_kretprobe(struct kretprobe_instance *ri)
 {
 	return get_kretprobe(ri);
 }
-#else
-static struct kretprobe *shadow_hook_ri_to_kretprobe(struct kretprobe_instance *ri)
-{
-	return ri->rp;
-}
-#endif
 
 static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
@@ -265,6 +261,63 @@ EXPORT_SYMBOL_GPL(shadow_hook_is_quiescing);
 #if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 
 /*
+ * ftrace_set_filter_ip()/register_ftrace_function()/
+ * unregister_ftrace_function() are EXPORT_SYMBOL_GPL()'d, but -- like
+ * path_put()/vfs_mkdir()/anon_inode_getfd_secure() elsewhere in this
+ * module -- some "certified"/production Android GKI boot images build
+ * with CONFIG_TRIM_UNUSED_KSYMS, which strips their ksymtab entries
+ * whenever no *other* module the vendor ships happens to reference them,
+ * causing a hard "Unknown symbol" failure at insmod time even though
+ * CONFIG_FUNCTION_TRACER/CONFIG_DYNAMIC_FTRACE are both enabled and this
+ * backend is otherwise fully applicable. Resolve them the same way as
+ * every other potentially-trimmed symbol instead of linking against them
+ * directly.
+ */
+typedef int (*shadow_ftrace_set_filter_ip_t)(struct ftrace_ops *, unsigned long,
+					      int, int);
+typedef int (*shadow_register_ftrace_function_t)(struct ftrace_ops *);
+typedef int (*shadow_unregister_ftrace_function_t)(struct ftrace_ops *);
+
+static shadow_ftrace_set_filter_ip_t shadow_ftrace_set_filter_ip_fn;
+static shadow_register_ftrace_function_t shadow_register_ftrace_function_fn;
+static shadow_unregister_ftrace_function_t shadow_unregister_ftrace_function_fn;
+
+/*
+ * shadow_hook_ftrace_api_ready() - resolve the ftrace registration API on
+ * first use and cache the results; idempotent. Only ever called from
+ * shadow_hook_install()/shadow_hook_remove(), both of which run from the
+ * single-threaded module init/exit sequencer (never concurrently), so no
+ * extra locking is needed here -- same assumption already relied upon by
+ * every other shadow_hook_resolve()-based lazy resolution in this codebase
+ * (e.g. shadow_mqueue_mount.c's mq_dev_mqueue_ensure()).
+ */
+static bool shadow_hook_ftrace_api_ready(void)
+{
+	if (!shadow_ftrace_set_filter_ip_fn) {
+		shadow_ftrace_set_filter_ip_fn = (shadow_ftrace_set_filter_ip_t)
+			shadow_hook_resolve("ftrace_set_filter_ip");
+		if (!shadow_ftrace_set_filter_ip_fn)
+			pr_debug("shadow_hook: could not resolve ftrace_set_filter_ip\n");
+	}
+	if (!shadow_register_ftrace_function_fn) {
+		shadow_register_ftrace_function_fn = (shadow_register_ftrace_function_t)
+			shadow_hook_resolve("register_ftrace_function");
+		if (!shadow_register_ftrace_function_fn)
+			pr_debug("shadow_hook: could not resolve register_ftrace_function\n");
+	}
+	if (!shadow_unregister_ftrace_function_fn) {
+		shadow_unregister_ftrace_function_fn = (shadow_unregister_ftrace_function_t)
+			shadow_hook_resolve("unregister_ftrace_function");
+		if (!shadow_unregister_ftrace_function_fn)
+			pr_debug("shadow_hook: could not resolve unregister_ftrace_function\n");
+	}
+
+	return shadow_ftrace_set_filter_ip_fn &&
+	       shadow_register_ftrace_function_fn &&
+	       shadow_unregister_ftrace_function_fn;
+}
+
+/*
  * --- ftrace_ops/IPMODIFY backend --------------------------------------
  *
  * The ftrace callback signature changed with
@@ -338,6 +391,9 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	if (!shadow_hook_ftrace_api_ready())
+		return -ENOENT;
+
 	for (name = hook->names; *name; name++) {
 		hook->address = shadow_hook_resolve(*name);
 		if (hook->address) {
@@ -358,18 +414,18 @@ int shadow_hook_install(struct shadow_hook *hook)
 			 | FTRACE_OPS_FL_IPMODIFY
 			 | FTRACE_OPS_FL_RECURSION;
 
-	err = ftrace_set_filter_ip(&hook->ops, hook->address, 0, 0);
+	err = shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 0, 0);
 	if (err) {
 		pr_debug("shadow_hook: ftrace_set_filter_ip(%s) failed: %d\n",
 			 hook->resolved_name, err);
 		return err;
 	}
 
-	err = register_ftrace_function(&hook->ops);
+	err = shadow_register_ftrace_function_fn(&hook->ops);
 	if (err) {
 		pr_debug("shadow_hook: register_ftrace_function(%s) failed: %d\n",
 			 hook->resolved_name, err);
-		ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
+		shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 1, 0);
 		return err;
 	}
 
@@ -384,8 +440,8 @@ void shadow_hook_remove(struct shadow_hook *hook)
 	if (!hook->installed)
 		return;
 
-	unregister_ftrace_function(&hook->ops);
-	ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
+	shadow_unregister_ftrace_function_fn(&hook->ops);
+	shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 1, 0);
 	hook->installed = false;
 	shadow_hook_retprobe_remove(hook);
 }
