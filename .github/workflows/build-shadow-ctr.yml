@@ -280,9 +280,9 @@ jobs:
           # Normalize the versioned kernel filenames to fixed names so the
           # boot loop below can reference them unambiguously (kernel-sukisu-*
           # would otherwise also glob-match kernel-sukisu-ctrpatches-*).
-          cp testsuite/kernel-stock-* testsuite/kernel-stock
-          cp testsuite/kernel-sukisu-ctrpatches-* testsuite/kernel-sukisu-ctrpatches
-          cp testsuite/kernel-sukisu-[0-9]* testsuite/kernel-sukisu
+          mv testsuite/kernel-stock-* testsuite/kernel-stock
+          mv testsuite/kernel-sukisu-ctrpatches-* testsuite/kernel-sukisu-ctrpatches
+          mv testsuite/kernel-sukisu-[0-9]* testsuite/kernel-sukisu
           ls -la testsuite
 
       # --- 2. injected ramdisk: /ctr (module + checker), /busybox and the
@@ -312,7 +312,7 @@ jobs:
           # stage 2 instead. (Host invocations of this same file, i.e. `bash
           # qemu_test.sh ...` below, take its third mode instead -- see the
           # script's own header comment.)
-          cp qemu_test/qemu_test.sh injected-ramdisk/init
+          cp qemu_test.sh injected-ramdisk/init
           chmod 755 injected-ramdisk/init
 
           (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
@@ -334,16 +334,8 @@ jobs:
           # "bash qemu_test.sh ..." here rather than "./qemu_test.sh ...",
           # which would honor that shebang instead.
           for variant in stock sukisu sukisu-ctrpatches; do
-            bash qemu_test/qemu_test.sh testsuite/image1.ext4 "testsuite/kernel-$variant" /init injected-ramdisk.cpio
+            bash qemu_test.sh testsuite/image1.ext4 "testsuite/kernel-$variant" /init injected-ramdisk.cpio
           done
-          ls -la qemu-logs
-
-      - name: Upload QEMU console logs (stock / sukisu / sukisu-ctrpatches)
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: shadow_ctr-qemu-logs
-          path: qemu-logs/
 
       - name: Upload injected-ramdisk.cpio
         if: always()
