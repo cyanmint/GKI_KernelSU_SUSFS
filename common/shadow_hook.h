@@ -216,4 +216,18 @@ size_t shadow_hook_registry_snprintf(const char *tag, char *buf, size_t buflen);
 bool shadow_hook_registry_tag_active(const char *tag);
 int shadow_hook_registry_set_active(const char *tag, bool enable);
 
+/*
+ * shadow_hook_inflight_count() - number of shadow_hook-redirected calls
+ * currently executing anywhere in the system (i.e. how many of the
+ * try_module_get(hook->owner) references acquired by the redirect points
+ * below have not yet been released by the matching kretprobe return
+ * handler). This is a strict subset of module_refcount(THIS_MODULE): it
+ * exists purely so lkm4ctr_diagfs.c's "references" introspection files can
+ * explain *why* module_refcount() is non-zero (as opposed to just
+ * reporting the raw number), which is what actually blocks rmmod. See
+ * lkm4ctr_diagfs.c's references renderer and shadow_hijack.c's
+ * shadow_hook_retprobe_ret()/shadow_hook_thunk()/shadow_hook_pre_handler().
+ */
+int shadow_hook_inflight_count(void);
+
 #endif /* _SHADOW_HOOK_H */

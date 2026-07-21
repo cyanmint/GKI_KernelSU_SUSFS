@@ -83,6 +83,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/list.h>
+#include <linux/atomic.h>
 
 #include "shadow_hook.h"
 #include "lkm4ctr_log.h"
@@ -115,6 +116,22 @@ struct shadow_hook_registry_group {
 
 static LIST_HEAD(shadow_hook_registry_groups);
 static DEFINE_MUTEX(shadow_hook_registry_lock);
+
+/*
+ * shadow_hook_inflight - count of currently in-flight redirected calls,
+ * incremented alongside every successful try_module_get(hook->owner) at
+ * each redirect point (shadow_hook_thunk() x2, shadow_hook_pre_handler())
+ * and decremented in shadow_hook_retprobe_ret() alongside the matching
+ * module_put(). Exists purely for diagnostics -- see the comment on
+ * shadow_hook_inflight_count() in common/shadow_hook.h.
+ */
+static atomic_t shadow_hook_inflight = ATOMIC_INIT(0);
+
+int shadow_hook_inflight_count(void)
+{
+	return atomic_read(&shadow_hook_inflight);
+}
+EXPORT_SYMBOL_GPL(shadow_hook_inflight_count);
 
 /* Caller must hold shadow_hook_registry_lock. */
 static struct shadow_hook_registry_group *
@@ -461,6 +478,7 @@ static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_reg
 		return 0;
 
 	hook = container_of(rp, struct shadow_hook, retprobe);
+	atomic_dec(&shadow_hook_inflight);
 	module_put(hook->owner);
 	return 0;
 }
@@ -630,6 +648,8 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return;
+	if (hook->retprobe_installed)
+		atomic_inc(&shadow_hook_inflight);
 	shadow_hook_redirect(regs, hook->function);
 }
 #else
@@ -644,6 +664,8 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return;
+	if (hook->retprobe_installed)
+		atomic_inc(&shadow_hook_inflight);
 	shadow_hook_redirect(regs, hook->function);
 }
 #endif
@@ -797,6 +819,9 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 
 	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return 0;
+
+	if (hook->retprobe_installed)
+		atomic_inc(&shadow_hook_inflight);
 
 	shadow_hook_redirect(regs, hook->function);
 	return 1;
