@@ -414,7 +414,8 @@ int shadow_sysvipc_init(void)
 	}
 	LKM4CTR_INFO("shadow_sysvipc", "init: %d hook(s) installed", ret);
 
-	LKM4CTR_INFO("shadow_sysvipc", "simulated SysV IPC subsystem loaded with transparent syscall hooks");
+	LKM4CTR_INFO("shadow_sysvipc",
+		     "simulated SysV IPC subsystem loaded with transparent syscall hooks");
 	return 0;
 }
 

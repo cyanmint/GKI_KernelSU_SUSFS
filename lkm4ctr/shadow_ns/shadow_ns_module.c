@@ -230,7 +230,9 @@ int shadow_ns_init(void)
 
 	shadow_ns_clone_flags = shadow_ns_compute_clone_flags();
 
-	LKM4CTR_INFO("shadow_ns", "builtin namespace flags 0x%lx (compiled against 0x%lx); simulated (fallback) flags 0x%lx", SHADOW_NS_ALL_FLAGS & ~shadow_ns_clone_flags, (unsigned long)SHADOW_NS_BUILTIN_FLAGS_COMPILETIME, (unsigned long)shadow_ns_clone_flags);
+	LKM4CTR_INFO("shadow_ns", "builtin namespace flags 0x%lx (compiled against 0x%lx); simulated (fallback) flags 0x%lx",
+		     SHADOW_NS_ALL_FLAGS & ~shadow_ns_clone_flags,
+		     (unsigned long)SHADOW_NS_BUILTIN_FLAGS_COMPILETIME, (unsigned long)shadow_ns_clone_flags);
 
 	hooked = shadow_hook_install_all(shadow_ns_core_hooks, "shadow_ns");
 	if (hooked < 0) {
@@ -248,9 +250,11 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		LKM4CTR_INFO("shadow_ns", "init: %d UTS-simulation hook(s) installed (CONFIG_UTS_NS absent)", hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d UTS-simulation hook(s) installed (CONFIG_UTS_NS absent)",
+			     hooked);
 	} else {
-		LKM4CTR_INFO("shadow_ns", "CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched");
+		LKM4CTR_INFO("shadow_ns",
+			     "CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched");
 	}
 
 	if (shadow_ns_clone_flags & CLONE_NEWPID) {
@@ -263,7 +267,8 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		LKM4CTR_INFO("shadow_ns", "init: %d PID-simulation hook(s) installed (CONFIG_PID_NS absent)", hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d PID-simulation hook(s) installed (CONFIG_PID_NS absent)",
+			     hooked);
 	} else {
 		LKM4CTR_INFO("shadow_ns", "CONFIG_PID_NS builtin; getpid/getppid/kill/wait4 left untouched");
 	}
@@ -280,7 +285,8 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		LKM4CTR_INFO("shadow_ns", "init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)", hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)",
+			     hooked);
 	} else {
 		LKM4CTR_INFO("shadow_ns", "CONFIG_USER_NS builtin; getuid/geteuid/getgid/getegid left untouched");
 	}
@@ -315,7 +321,8 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		LKM4CTR_INFO("shadow_ns", "init: %d procfs hook(s) installed (fabricating /proc/*/setgroups and/or isolating /proc for a simulated PID namespace)", hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d procfs hook(s) installed (fabricating /proc/*/setgroups and/or isolating /proc for a simulated PID namespace)",
+			     hooked);
 	}
 
 	INIT_DELAYED_WORK(&shadow_ns_reap_work, shadow_ns_reap_workfn);
