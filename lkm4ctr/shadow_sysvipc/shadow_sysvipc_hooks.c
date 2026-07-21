@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "shadow_sysvipc_internal.h"
+#include "lkm4ctr_log.h"
 
 static long (*real_sys_msgget)(const struct pt_regs *regs);
 static long (*real_sys_msgctl)(const struct pt_regs *regs);
@@ -404,30 +405,30 @@ int shadow_sysvipc_init(void)
 {
 	int ret;
 
-	pr_info("shadow_sysvipc: init: installing transparent syscall hooks\n");
+	LKM4CTR_INFO("shadow_sysvipc", "init: installing transparent syscall hooks");
 	ret = shadow_hook_install_all(svipc_all_hooks, "shadow_sysvipc");
 	if (ret < 0) {
-		pr_err("shadow_sysvipc: init: shadow_hook_install_all() failed: %d\n", ret);
+		LKM4CTR_ERR("shadow_sysvipc", "init: shadow_hook_install_all() failed: %d", ret);
 		shadow_hook_remove_all(svipc_all_hooks);
 		return ret;
 	}
-	pr_info("shadow_sysvipc: init: %d hook(s) installed\n", ret);
+	LKM4CTR_INFO("shadow_sysvipc", "init: %d hook(s) installed", ret);
 
-	pr_info("shadow_sysvipc: simulated SysV IPC subsystem loaded with transparent syscall hooks\n");
+	LKM4CTR_INFO("shadow_sysvipc", "simulated SysV IPC subsystem loaded with transparent syscall hooks");
 	return 0;
 }
 
 void shadow_sysvipc_exit(void)
 {
-	pr_info("shadow_sysvipc: exit: removing transparent syscall hooks\n");
+	LKM4CTR_INFO("shadow_sysvipc", "exit: removing transparent syscall hooks");
 	shadow_hook_remove_all(svipc_all_hooks);
 
-	pr_info("shadow_sysvipc: exit: releasing per-tgid state\n");
+	LKM4CTR_INFO("shadow_sysvipc", "exit: releasing per-tgid state");
 	svipc_tgid_release_all();
-	pr_info("shadow_sysvipc: exit: force-freeing remaining resources\n");
+	LKM4CTR_INFO("shadow_sysvipc", "exit: force-freeing remaining resources");
 	svipc_force_free_all_resources();
 
-	pr_info("shadow_sysvipc: simulated SysV IPC subsystem unloaded\n");
+	LKM4CTR_INFO("shadow_sysvipc", "simulated SysV IPC subsystem unloaded");
 }
 
 /*

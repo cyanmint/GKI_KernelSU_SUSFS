@@ -135,6 +135,7 @@
  * always there for this module to hook.
  */
 #include "shadow_ns_internal.h"
+#include "lkm4ctr_log.h"
 
 unsigned long shadow_ns_clone_flags;
 
@@ -225,61 +226,53 @@ int shadow_ns_init(void)
 	int ret;
 	int hooked;
 
-	pr_info("shadow_ns: init starting (version %s)\n", SHADOW_NS_VERSION);
+	LKM4CTR_INFO("shadow_ns", "init starting (version %s)", SHADOW_NS_VERSION);
 
 	shadow_ns_clone_flags = shadow_ns_compute_clone_flags();
 
-	pr_info("shadow_ns: builtin namespace flags 0x%lx (compiled against 0x%lx); simulated (fallback) flags 0x%lx\n",
-		SHADOW_NS_ALL_FLAGS & ~shadow_ns_clone_flags,
-		(unsigned long)SHADOW_NS_BUILTIN_FLAGS_COMPILETIME,
-		(unsigned long)shadow_ns_clone_flags);
+	LKM4CTR_INFO("shadow_ns", "builtin namespace flags 0x%lx (compiled against 0x%lx); simulated (fallback) flags 0x%lx", SHADOW_NS_ALL_FLAGS & ~shadow_ns_clone_flags, (unsigned long)SHADOW_NS_BUILTIN_FLAGS_COMPILETIME, (unsigned long)shadow_ns_clone_flags);
 
 	hooked = shadow_hook_install_all(shadow_ns_core_hooks, "shadow_ns");
 	if (hooked < 0) {
 		ret = hooked;
-		pr_err("shadow_ns: init: shadow_hook_install_all() failed: %d\n", ret);
+		LKM4CTR_ERR("shadow_ns", "init: shadow_hook_install_all() failed: %d", ret);
 		return ret;
 	}
-	pr_info("shadow_ns: init: %d core hook(s) installed\n", hooked);
+	LKM4CTR_INFO("shadow_ns", "init: %d core hook(s) installed", hooked);
 
 	if (shadow_ns_clone_flags & CLONE_NEWUTS) {
 		hooked = shadow_hook_install_all(shadow_ns_uts_hooks, "shadow_ns_uts");
 		if (hooked < 0) {
 			ret = hooked;
-			pr_err("shadow_ns: init: UTS shadow_hook_install_all() failed: %d\n",
-			       ret);
+			LKM4CTR_ERR("shadow_ns", "init: UTS shadow_hook_install_all() failed: %d", ret);
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		pr_info("shadow_ns: init: %d UTS-simulation hook(s) installed (CONFIG_UTS_NS absent)\n",
-			hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d UTS-simulation hook(s) installed (CONFIG_UTS_NS absent)", hooked);
 	} else {
-		pr_info("shadow_ns: CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched\n");
+		LKM4CTR_INFO("shadow_ns", "CONFIG_UTS_NS builtin; sethostname/setdomainname/uname left untouched");
 	}
 
 	if (shadow_ns_clone_flags & CLONE_NEWPID) {
 		hooked = shadow_hook_install_all(shadow_ns_pid_hooks, "shadow_ns_pid");
 		if (hooked < 0) {
 			ret = hooked;
-			pr_err("shadow_ns: init: PID shadow_hook_install_all() failed: %d\n",
-			       ret);
+			LKM4CTR_ERR("shadow_ns", "init: PID shadow_hook_install_all() failed: %d", ret);
 			if (shadow_ns_clone_flags & CLONE_NEWUTS)
 				shadow_hook_remove_all(shadow_ns_uts_hooks);
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		pr_info("shadow_ns: init: %d PID-simulation hook(s) installed (CONFIG_PID_NS absent)\n",
-			hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d PID-simulation hook(s) installed (CONFIG_PID_NS absent)", hooked);
 	} else {
-		pr_info("shadow_ns: CONFIG_PID_NS builtin; getpid/getppid/kill/wait4 left untouched\n");
+		LKM4CTR_INFO("shadow_ns", "CONFIG_PID_NS builtin; getpid/getppid/kill/wait4 left untouched");
 	}
 
 	if (shadow_ns_clone_flags & CLONE_NEWUSER) {
 		hooked = shadow_hook_install_all(shadow_ns_user_hooks, "shadow_ns_user");
 		if (hooked < 0) {
 			ret = hooked;
-			pr_err("shadow_ns: init: USER shadow_hook_install_all() failed: %d\n",
-			       ret);
+			LKM4CTR_ERR("shadow_ns", "init: USER shadow_hook_install_all() failed: %d", ret);
 			if (shadow_ns_clone_flags & CLONE_NEWPID)
 				shadow_hook_remove_all(shadow_ns_pid_hooks);
 			if (shadow_ns_clone_flags & CLONE_NEWUTS)
@@ -287,10 +280,9 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		pr_info("shadow_ns: init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)\n",
-			hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d USER-simulation hook(s) installed (CONFIG_USER_NS absent)", hooked);
 	} else {
-		pr_info("shadow_ns: CONFIG_USER_NS builtin; getuid/geteuid/getgid/getegid left untouched\n");
+		LKM4CTR_INFO("shadow_ns", "CONFIG_USER_NS builtin; getuid/geteuid/getgid/getegid left untouched");
 	}
 
 	/*
@@ -313,8 +305,7 @@ int shadow_ns_init(void)
 		hooked = shadow_hook_install_all(shadow_ns_procfs_hooks, "shadow_ns_procfs");
 		if (hooked < 0) {
 			ret = hooked;
-			pr_err("shadow_ns: init: procfs shadow_hook_install_all() failed: %d\n",
-			       ret);
+			LKM4CTR_ERR("shadow_ns", "init: procfs shadow_hook_install_all() failed: %d", ret);
 			if (shadow_ns_clone_flags & CLONE_NEWUSER)
 				shadow_hook_remove_all(shadow_ns_user_hooks);
 			if (shadow_ns_clone_flags & CLONE_NEWPID)
@@ -324,14 +315,13 @@ int shadow_ns_init(void)
 			shadow_hook_remove_all(shadow_ns_core_hooks);
 			return ret;
 		}
-		pr_info("shadow_ns: init: %d procfs hook(s) installed (fabricating /proc/*/setgroups and/or isolating /proc for a simulated PID namespace)\n",
-			hooked);
+		LKM4CTR_INFO("shadow_ns", "init: %d procfs hook(s) installed (fabricating /proc/*/setgroups and/or isolating /proc for a simulated PID namespace)", hooked);
 	}
 
 	INIT_DELAYED_WORK(&shadow_ns_reap_work, shadow_ns_reap_workfn);
 	schedule_delayed_work(&shadow_ns_reap_work, SHADOW_NS_REAP_INTERVAL);
 
-	pr_info("shadow_ns: loaded\n");
+	LKM4CTR_INFO("shadow_ns", "loaded");
 	return 0;
 }
 
@@ -341,7 +331,7 @@ void shadow_ns_exit(void)
 	struct shadow_task_group *tg;
 	unsigned long id;
 
-	pr_info("shadow_ns: exit: removing syscall hooks\n");
+	LKM4CTR_INFO("shadow_ns", "exit: removing syscall hooks");
 	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWIPC))
 		shadow_hook_remove_all(shadow_ns_procfs_hooks);
 	if (shadow_ns_clone_flags & CLONE_NEWUSER)
@@ -352,7 +342,7 @@ void shadow_ns_exit(void)
 		shadow_hook_remove_all(shadow_ns_uts_hooks);
 	shadow_hook_remove_all(shadow_ns_core_hooks);
 
-	pr_info("shadow_ns: exit: cancelling reap work\n");
+	LKM4CTR_INFO("shadow_ns", "exit: cancelling reap work");
 	cancel_delayed_work_sync(&shadow_ns_reap_work);
 
 	for (;;) {
@@ -379,5 +369,5 @@ void shadow_ns_exit(void)
 	mutex_unlock(&shadow_ns_map_lock);
 	xa_destroy(&shadow_ns_map);
 
-	pr_info("shadow_ns: unloaded\n");
+	LKM4CTR_INFO("shadow_ns", "unloaded");
 }

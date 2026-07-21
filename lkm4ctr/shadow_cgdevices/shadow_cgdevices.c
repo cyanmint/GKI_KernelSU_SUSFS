@@ -18,6 +18,7 @@
 #include <linux/fs.h>
 
 #include "shadow_hook.h"
+#include "lkm4ctr_log.h"
 
 #define SHADOW_CGDEVICES_VERSION "2.0"
 
@@ -66,24 +67,23 @@ int shadow_cgdevices_init(void)
 {
 	int hooked;
 
-	pr_info("shadow_cgdevices: init: installing transparent device-open hooks\n");
+	LKM4CTR_INFO("shadow_cgdevices", "init: installing transparent device-open hooks");
 	hooked = shadow_hook_install_all(cgdev_hooks, "shadow_cgdevices");
 	if (hooked < 0) {
-		pr_err("shadow_cgdevices: init: shadow_hook_install_all() failed: %d\n",
-		       hooked);
+		LKM4CTR_ERR("shadow_cgdevices", "init: shadow_hook_install_all() failed: %d", hooked);
 		shadow_hook_remove_all(cgdev_hooks);
 		return hooked;
 	}
-	pr_info("shadow_cgdevices: init: %d hook(s) installed\n", hooked);
-	pr_info("shadow_cgdevices: loaded with transparent device-open hooks only\n");
+	LKM4CTR_INFO("shadow_cgdevices", "init: %d hook(s) installed", hooked);
+	LKM4CTR_INFO("shadow_cgdevices", "loaded with transparent device-open hooks only");
 	return 0;
 }
 
 void shadow_cgdevices_exit(void)
 {
-	pr_info("shadow_cgdevices: exit: removing transparent device-open hooks\n");
+	LKM4CTR_INFO("shadow_cgdevices", "exit: removing transparent device-open hooks");
 	shadow_hook_remove_all(cgdev_hooks);
-	pr_info("shadow_cgdevices: unloaded\n");
+	LKM4CTR_INFO("shadow_cgdevices", "unloaded");
 }
 
 /*
