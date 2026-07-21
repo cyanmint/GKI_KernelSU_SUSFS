@@ -135,6 +135,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       test_kmi: ${{ steps.set-matrix.outputs.test_kmi }}
+      ddk_release: ${{ steps.set-matrix.outputs.ddk_release }}
     steps:
       - name: Compute KMI matrix
         id: set-matrix
@@ -149,10 +150,12 @@ jobs:
           print(json.dumps(kmis))
           " "$kmis")
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
-          # Expose TEST_KMI as a job output: the "env" context is not
-          # available in job-level "if:" conditions, so downstream jobs
-          # cannot reference env.TEST_KMI directly there.
+          # Expose TEST_KMI/DDK_RELEASE as job outputs: the "env" context is
+          # not available in job-level "if:" conditions or in
+          # "jobs.<job_id>.container", so downstream jobs cannot reference
+          # env.TEST_KMI/env.DDK_RELEASE directly there.
           echo "test_kmi=$TEST_KMI" >> "$GITHUB_OUTPUT"
+          echo "ddk_release=$DDK_RELEASE" >> "$GITHUB_OUTPUT"
 
   # shadow_ctr_checker is a plain userspace diagnostic binary (see
   # shadow_ctr_checker/README.md): it has no kernel-module build dependency
@@ -201,7 +204,7 @@ jobs:
     # checkout/build/upload steps all execute as the container's own user
     # throughout).
     container:
-      image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}
+      image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ needs.prepare.outputs.ddk_release }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
