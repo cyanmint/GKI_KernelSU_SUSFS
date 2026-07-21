@@ -46,7 +46,7 @@ static int __init lkm4ctr_init(void)
 	}
 
 	LKM4CTR_INFO(LKM4CTR_TAG,
-		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mnt> then \"echo load\" to ./mnt/safe_unload or a specific ./mnt/modules/<name>/status)");
+		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mountpoint> then \"echo load\" to <mountpoint>/safe_unload or a specific <mountpoint>/modules/<name>/status)");
 	return 0;
 }
 
