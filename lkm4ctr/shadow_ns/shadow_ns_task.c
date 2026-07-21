@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "shadow_ns_internal.h"
+#include "lkm4ctr_log.h"
 
 struct shadow_task_group *shadow_ns_task_group_lookup(pid_t tgid)
 {
@@ -372,8 +373,8 @@ long shadow_ns_clone_finalize(long ret, struct shadow_task_group *parent,
 
 	err = shadow_ns_install_child_state(child_tgid, parent, shadow_flags);
 	if (err)
-		pr_warn("shadow_ns: failed to install child state for tgid %d: %d\n",
-			child_tgid, err);
+		LKM4CTR_WARN("shadow_ns", "failed to install child state for tgid %d: %d",
+			     child_tgid, err);
 	return ret;
 }
 

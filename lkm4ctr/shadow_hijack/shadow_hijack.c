@@ -483,8 +483,9 @@ static void shadow_hook_retprobe_install(struct shadow_hook *hook)
 
 	err = register_kretprobe(&hook->retprobe);
 	if (err) {
-		pr_warn("shadow_hook: register_kretprobe() failed for %s: %d; rmmod will not wait for in-flight calls to this hook\n",
-			hook->resolved_name, err);
+		LKM4CTR_WARN("shadow_hijack",
+			     "register_kretprobe() failed for %s: %d; rmmod will not wait for in-flight calls to this hook",
+			     hook->resolved_name, err);
 		return;
 	}
 	hook->retprobe_installed = true;

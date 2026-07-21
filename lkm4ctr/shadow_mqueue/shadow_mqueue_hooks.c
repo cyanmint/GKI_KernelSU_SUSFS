@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "shadow_mqueue_internal.h"
+#include "lkm4ctr_log.h"
 
 static long (*real_sys_mq_open)(const struct pt_regs *regs);
 static long (*real_sys_mq_unlink)(const struct pt_regs *regs);
@@ -327,9 +328,8 @@ static long hook_sys_mount(const struct pt_regs *regs)
 	if (strcmp(type, "mqueue"))
 		return ret;
 
-	pr_info_ratelimited(
-		"shadow_mqueue: mount(\"mqueue\", ...) failed with -ENODEV; "
-		"retrying as tmpfs so the caller sees a working mountpoint\n");
+	LKM4CTR_LOG("shadow_mqueue",
+		    "mount(\"mqueue\", ...) failed with -ENODEV; retrying as tmpfs so the caller sees a working mountpoint");
 	return mq_do_mount_fallback(regs);
 }
 
