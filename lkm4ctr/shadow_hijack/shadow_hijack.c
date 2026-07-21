@@ -314,7 +314,7 @@ int shadow_hook_registry_set_active(const char *tag, bool enable)
 
 	if (!any_group_for_tag) {
 		LKM4CTR_WARN(tag,
-			     "no hook group is registered under \"%s\"; this submodule either was never initialised on this kernel (e.g. it detected genuine native kernel support and never needed to hook anything) or the tag is unknown -- %s request is a no-op",
+			     "no hook group is registered under \"%s\"; this submodule either was never initialized on this kernel (e.g. it detected genuine native kernel support and never needed to hook anything) or the tag is unknown -- %s request is a no-op",
 			     tag, enable ? "load" : "unload");
 		return 0;
 	}
@@ -329,9 +329,12 @@ int shadow_hook_registry_set_active(const char *tag, bool enable)
 				     snapshot[i]->tag, count);
 			installed = shadow_hook_install_all(snapshot[i]->hooks, snapshot[i]->tag);
 			if (installed < 0) {
-				LKM4CTR_ERR(tag,
-					    "failed to load hook group \"%s\": %d -- see the \"failed to install hook[N]\" line just above this one in this same log for the exact hook and the underlying error; common causes are the resolved symbol no longer matching the expected prototype on this kernel build, or the ftrace/kprobe backend rejecting an already-hooked address (only one shadow_hook may own a given symbol at a time)",
+				LKM4CTR_ERR(tag, "failed to load hook group \"%s\": %d",
 					    snapshot[i]->tag, installed);
+				LKM4CTR_ERR(tag,
+					    "cause: see the \"failed to install hook[N]\" line just above this one in this same log for the exact hook and the underlying error");
+				LKM4CTR_ERR(tag,
+					    "resolution: common causes are the resolved symbol no longer matching the expected prototype on this kernel build, or the ftrace/kprobe backend rejecting an already-hooked address (only one shadow_hook may own a given symbol at a time)");
 				if (!ret)
 					ret = installed;
 				continue;
@@ -661,6 +664,13 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	/*
+	 * Idempotent by design: shadow_hook_registry_set_active()'s runtime
+	 * force-load path (diagfs "status" writes) may call this on a hook
+	 * that is already installed (e.g. re-issuing "load" after it already
+	 * took effect), and must be able to do so safely without re-arming
+	 * the ftrace_ops/kprobe or double-counting install state.
+	 */
 	if (hook->installed)
 		return 0;
 
@@ -796,6 +806,7 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	/* Idempotent by design -- see the ftrace-backend variant's comment above. */
 	if (hook->installed)
 		return 0;
 

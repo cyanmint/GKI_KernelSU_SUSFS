@@ -313,7 +313,8 @@ static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 		buf = kmalloc(cap, GFP_KERNEL);
 		if (!buf)
 			return -ENOMEM;
-		need = fn(info->tag[0] ? info->tag : NULL, buf, cap);
+		/* info->tag is "" for the root-level (all-modules) log/hooks files; treat as NULL ("no filter"). */
+		need = fn(info->tag[0] != '\0' ? info->tag : NULL, buf, cap);
 		if (need < cap)
 			break;
 		kfree(buf);
@@ -561,8 +562,12 @@ static int lkm4ctr_auto_umount_diagfs(void)
 	mounts = atomic_read(&lkm4ctr_diagfs_mount_count);
 	if (mounts > 0) {
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
-			     "%d lkm4ctr diagfs mount(s) still marked active after the auto-unmount attempt (no working umount binary found on this system, or the lazy-detach superblock is still waiting on the last held reference to actually drop); self-unload will time out below unless these are cleared -- see the timeout guidance further down this log for exact resolution steps",
+			     "%d lkm4ctr diagfs mount(s) still marked active after the auto-unmount attempt",
 			     mounts);
+		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "cause: no working umount binary was found on this system, or the lazy-detach superblock is still waiting on the last held reference to actually drop");
+		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "resolution: self-unload will time out below unless these are cleared -- see the timeout guidance further down this log for exact resolution steps");
 	} else {
 		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG, "all lkm4ctr diagfs mounts successfully auto-unmounted");
 	}
@@ -587,9 +592,11 @@ static int lkm4ctr_run_rmmod(void)
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG, "\"%s\" failed to exec: %d", *path, ret);
 	}
 
+	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG, "no rmmod candidate could be exec'd (last error %d)", ret);
 	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-		    "cause: no rmmod candidate could be exec'd (last error %d); module was successfully quiesced and drained, so the module itself is not the problem. resolution: ensure a working rmmod (or busybox applet providing rmmod) exists and is executable on one of /system/bin, /sbin, /usr/sbin, /usr/bin, /bin, then retry -- or simply run `rmmod lkm4ctr` by hand right now, it will succeed immediately since hooks are already quiesced and the refcount is already drained. module left quiesced but loaded",
-		    ret);
+		    "cause: module was successfully quiesced and drained, so the module itself is not the problem -- likely no rmmod (or busybox applet providing it) is installed/executable on this system");
+	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+		    "resolution: ensure a working rmmod exists and is executable on one of /system/bin, /sbin, /usr/sbin, /usr/bin, /bin, then retry -- or simply run `rmmod lkm4ctr` by hand right now, it will succeed immediately since hooks are already quiesced and the refcount is already drained; module left quiesced but loaded");
 	return ret;
 }
 
@@ -621,12 +628,16 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 				    waited_ms, refcount - 1, refcount);
 			if (mounts > 0) {
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "cause: this lkm4ctr diagfs is currently mounted %d time(s); every active mount pins module_refcount() via file_system_type->owner, exactly like rmmod refuses any other in-use filesystem module, and this alone will block self-unload forever. resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again.",
+					    "cause: this lkm4ctr diagfs is currently mounted %d time(s); every active mount pins module_refcount() via file_system_type->owner, exactly like rmmod refuses any other in-use filesystem module, and this alone will block self-unload forever",
 					    mounts);
+				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again");
 			} else {
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task, or a resource created via a hook (e.g. an anon-inode fd) is still held open. resolution: check ./mnt/modules/<subsystem>/hooks and ./mnt/modules/shadow_ns/namespaces for tasks/namespaces still in use by shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices, let those operations finish or terminate the owning processes, then retry; if the count never drops on retry this may be a reference leak worth reporting together with that hooks/namespaces output.",
+					    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task, or a resource created via a hook (e.g. an anon-inode fd) is still held open",
 					    refcount - 1);
+				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+					    "resolution: check ./mnt/modules/<subsystem>/hooks and ./mnt/modules/shadow_ns/namespaces for tasks/namespaces still in use by shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices, let those operations finish or terminate the owning processes, then retry; if the count never drops on retry this may be a reference leak worth reporting together with that hooks/namespaces output");
 			}
 			shadow_hook_quiesce(false);
 			goto abort;
