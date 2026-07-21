@@ -29,16 +29,15 @@ config LKM4CTR
 config LKM4CTR_LOG_DMESG
 	bool "lkm4ctr: also log to the kernel log (dmesg)"
 	depends on LKM4CTR
-	default y
+	default n
 	help
 	  Every lkm4ctr log line is always recorded in an in-memory ring
 	  buffer, readable via the lkm4ctr diagfs's per-submodule and
 	  top-level `log` files regardless of this option.
 
-	  Say Y (the default) to additionally mirror every log line to the
-	  kernel log (dmesg) at the matching level, as lkm4ctr has always
-	  done historically.
+	  Say Y to additionally mirror every log line to the kernel log
+	  (dmesg) at the matching level.
 
-	  Say N to make lkm4ctr.ko completely silent in dmesg: it will never
-	  call printk at all, and every message is reachable only by
-	  mounting the lkm4ctr diagfs.
+	  Say N (the default) to make lkm4ctr.ko completely silent in
+	  dmesg: it will never call printk at all, and every message is
+	  reachable only by mounting the lkm4ctr diagfs.

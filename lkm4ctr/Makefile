@@ -50,12 +50,13 @@ ccflags-y += -I$(src)/../common
 # is only ever empty in every build this Makefile is used for, so the
 # obj-m fallback just above always applies), so CONFIG_LKM4CTR_LOG_DMESG
 # has no real Kconfig entry point to come from either. This Makefile
-# variable is the standalone-module equivalent: set to "n" (or override
-# via `make LKM4CTR_LOG_DMESG=n`) to build a lkm4ctr.ko that is completely
-# silent in dmesg, logging only to the lkm4ctr diagfs's `log` files; the
-# default "y" also mirrors every log line to the kernel log, matching this
-# module's behaviour before the diagfs/ring-buffer log existed.
-LKM4CTR_LOG_DMESG ?= y
+# variable is the standalone-module equivalent: it defaults to "n" so
+# lkm4ctr.ko is completely silent in dmesg out of the box, logging only
+# to the lkm4ctr diagfs's `log` files; override via
+# `make LKM4CTR_LOG_DMESG=y` to also mirror every log line to the kernel
+# log, matching this module's behaviour before the diagfs/ring-buffer log
+# existed.
+LKM4CTR_LOG_DMESG ?= n
 ifeq ($(LKM4CTR_LOG_DMESG),y)
 ccflags-y += -DCONFIG_LKM4CTR_LOG_DMESG=1
 endif
