@@ -97,7 +97,7 @@ if [ "$$" != "1" ]; then
 			-append "console=ttyAMA0 root=/dev/nvme0n1 init=$INIT earlycon panic=-1"
 	fi
 
-	timeout --signal=KILL 120 qemu-system-aarch64 2>&1
+	timeout --signal=KILL 120 qemu-system-aarch64 "$@" 2>&1
 	status=$?
 	echo "QEMU exited with status $status"
 
