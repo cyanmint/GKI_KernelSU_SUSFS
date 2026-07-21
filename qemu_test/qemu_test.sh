@@ -16,7 +16,11 @@
 #
 # Exits with QEMU's own exit status (propagated from `timeout`).
 
-set -u
+set -uo pipefail
+# Note: intentionally not "set -e" -- QEMU's exit status (including a
+# timeout/KILL) is captured explicitly below so the console log tail is
+# always printed and the script's own exit status still reflects QEMU's,
+# rather than the shell aborting immediately on a nonzero exit.
 
 if [ "$#" -ne 3 ]; then
 	echo "usage: $0 <image1.ext4 path> <kernel path> <variant name>" >&2

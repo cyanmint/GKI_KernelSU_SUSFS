@@ -316,6 +316,11 @@ jobs:
       # insmod+checker smoke test.
       - name: Boot all three kernels under QEMU
         run: |
+          # GitHub Actions runs step "run:" blocks with `bash -e`, so a
+          # nonzero exit from qemu_test.sh (e.g. a kernel panic/timeout)
+          # would otherwise abort this loop before the remaining variants
+          # are booted; "set +e" keeps all three variants running
+          # regardless of any individual failure.
           set +e
           chmod 755 qemu_test/qemu_test.sh
           for variant in stock sukisu sukisu-ctrpatches; do
