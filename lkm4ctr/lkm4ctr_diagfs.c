@@ -13,7 +13,12 @@
  *                                    "remove", "graceful") starts the
  *                                    graceful self-unload sequence; "forceunload"
  *                                    (aliases "force", "force_unload") starts
- *                                    the force self-unload sequence.
+ *                                    the force self-unload sequence; "force2"
+ *                                    starts (or escalates an already
+ *                                    in-progress unload to) the aggressive
+ *                                    force2 sequence -- see
+ *                                    lkm4ctr_force2_override_refcount() and
+ *                                    lkm4ctr_run_rmmod() below.
  *   ./mnt/global/status           - one of exactly: "active", "loading",
  *                                    "graceful unloading", "force unloading".
  *                                    "unloaded" is reserved for completeness
@@ -24,8 +29,35 @@
  *   ./mnt/global/resources        - best-effort aggregate of live resources
  *                                    already tracked by the namespace, POSIX
  *                                    mqueue, SysV IPC and hook registries.
+ *   ./mnt/global/references       - breaks module_refcount() down into diagfs
+ *                                    mount count + in-flight shadow_hook
+ *                                    calls + unaccounted "other" holders, to
+ *                                    explain why rmmod is refusing to unload.
+ *   ./mnt/global/hotreload/status - "first load" vs "hot-reloaded" boot kind,
+ *                                    plus in-progress hot-reload state.
+ *   ./mnt/global/hotreload/log    - hot-reload subsystem's own log.
+ *   ./mnt/global/hotreload/do-hot-reload
+ *                                  - write-only: an absolute path to a
+ *                                    replacement lkm4ctr.ko triggers a hot
+ *                                    reload (validate path -> quiesce hooks
+ *                                    -> drain refcount -> unmount diagfs ->
+ *                                    hand off to a detached
+ *                                    "rmmod && insmod <path> hotreload=1"
+ *                                    shell -> module_put_and_kthread_exit()).
+ *                                    See lkm4ctr_hotreload.c.
  *
- *   ./mnt/hijack/{control,status,log,functions}
+ *   ./mnt/helper.sh                - read-only (0555), a POSIX-sh helper
+ *                                    script (contents generated into
+ *                                    helper.sh.c as a plain C string) meant
+ *                                    to be sourced by a caller that has
+ *                                    exported $lkm4ctr_diagfs to this mount's
+ *                                    path: `. "$lkm4ctr_diagfs/helper.sh"`
+ *                                    then defines an `lkm4ctr` dispatcher
+ *                                    function (mount/umount/status/control/
+ *                                    load/unload/forceunload/force2/logcat/
+ *                                    references/hot-upgrade/help).
+ *
+ *   ./mnt/hijack/{control,status,log,functions,references}
  *                                  - diagnostics for the shared hook engine.
  *                                    load/unload/forceunload behave like any
  *                                    other submodule, with one ordering rule:
@@ -42,7 +74,7 @@
  *                                    listing of every currently registered
  *                                    hook across all submodules.
  *
- *   ./mnt/ns/{control,status,hooks,log,namespaces}
+ *   ./mnt/ns/{control,status,hooks,log,namespaces,references}
  *                                  - aggregate shadow_ns lifecycle, hooks,
  *                                    full namespace registry and task-group
  *                                    membership dump.
@@ -59,12 +91,15 @@
  *                                    file is still filtered to only that type's
  *                                    live namespace objects and member tgids.
  *
- *   ./mnt/sysvipc/{control,status,hooks,resources,log}
- *   ./mnt/mqueue/{control,status,hooks,log,msg}
- *   ./mnt/cgroupdevices/{control,status,hooks,log}
+ *   ./mnt/sysvipc/{control,status,hooks,resources,log,references}
+ *   ./mnt/mqueue/{control,status,hooks,log,msg,references}
+ *   ./mnt/cgroupdevices/{control,status,hooks,log,references}
  *                                  - the other runtime-loadable subsystems.
  *                                    mqueue/msg is a live listing file of the
  *                                    current in-memory queue/message state.
+ *                                    references breaks down that submodule's
+ *                                    own contribution to module_refcount()
+ *                                    the same way global/references does.
  *
  * The earlier ./mnt/modules/<subsystem>/status tree and the root-level
  * ./mnt/safe_unload / ./mnt/log files are intentionally gone. control/status

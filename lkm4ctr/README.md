@@ -13,7 +13,14 @@ The unified module links these internal subsystem source trees together:
 * `shadow_mqueue/` — POSIX mqueue hooks and queue engine
 * `shadow_cgdevices/` — device-open compatibility hooks
 * `lkm4ctr_diagfs.c` — the `lkm4ctr` diagnostics pseudo-filesystem: runtime
-  control/status plus hooks/namespaces/log/resource introspection
+  control/status plus hooks/namespaces/log/resource/reference introspection,
+  the `force2` aggressive-unload escalation, and the `helper.sh`/hot-reload
+  file wiring
+* `lkm4ctr_hotreload.c`/`.h` — the hot-reload subsystem: observational
+  `finit_module(2)` hook, path validation, and the worker thread that hands
+  off to a detached `rmmod && insmod <new.ko> hotreload=1` shell
+* `helper.sh.c` — the `./mnt/helper.sh` diagfs file contents, generated as a
+  plain C string
 
 Their sources stay split by subsystem for maintainability, but they now build
 and load only as one module with the single entry point in
@@ -37,13 +44,15 @@ cat /mnt/ns/pid/namespaces           # pid-only namespace membership listing
 Each runtime-loadable submodule exposes `control`, `status`, `log`, and (where
 relevant) `hooks` or a live-state listing file directly under the mount root:
 
-* `/mnt/global/{control,status,log,resources}`
-* `/mnt/hijack/{control,status,log,functions}`
-* `/mnt/ns/{control,status,hooks,log,namespaces}` plus
+* `/mnt/global/{control,status,log,resources,references}`
+* `/mnt/global/hotreload/{status,log,do-hot-reload}`
+* `/mnt/helper.sh` (read-only, mode 0555, mount root)
+* `/mnt/hijack/{control,status,log,functions,references}`
+* `/mnt/ns/{control,status,hooks,log,namespaces,references}` plus
   `/mnt/ns/{pid,ipc,mnt,net,user,uts,cgroup}/...`
-* `/mnt/sysvipc/{control,status,hooks,resources,log}`
-* `/mnt/mqueue/{control,status,hooks,log,msg}`
-* `/mnt/cgroupdevices/{control,status,hooks,log}`
+* `/mnt/sysvipc/{control,status,hooks,resources,log,references}`
+* `/mnt/mqueue/{control,status,hooks,log,msg,references}`
+* `/mnt/cgroupdevices/{control,status,hooks,log,references}`
 
 Per-submodule `control` accepts `load`, `unload` (`remove`/`graceful` aliases),
 and `forceunload` (`force`/`force_unload` aliases). `status` is read-only and
@@ -51,6 +60,13 @@ prints exactly one lifecycle state: `unloaded`, `loading`, `active`,
 `graceful unloading`, or `force unloading`. `shadow_hijack` keeps the same
 layout for symmetry, but its control file only reports help because the shared
 hook engine itself is always active while `lkm4ctr.ko` is loaded.
+
+Every submodule (and `global`) also exposes a `references` file that breaks
+`module_refcount()` down into: the diagfs mount count, currently in-flight
+redirected hook calls, and any remaining unaccounted "other" holders (most
+likely another module that itself calls an `EXPORT_SYMBOL_GPL()` from
+`lkm4ctr.ko`). This is meant to explain *why* an `rmmod`/unload attempt is
+stuck at "try again" instead of just reporting that it is.
 
 `rmmod lkm4ctr` (and `global/control`, below) always force-clean up whatever
 submodules are still active on the way out, so a submodule's own state can
@@ -87,6 +103,77 @@ Reading `./mnt/global/control` prints the accepted commands; reading
 `./mnt/global/status` prints the current lifecycle state. `./mnt/global/log`
 contains the combined log stream and `./mnt/global/resources` aggregates the
 live resources still tracked across the linked subsystems.
+
+## `force2`: aggressive forced unload
+
+Writing `force2` to `./mnt/global/control` starts (or, if a graceful/force
+unload is already waiting on in-flight calls to drain, immediately escalates
+it to) a more aggressive unload path, for the rare case where even
+`forceunload` still leaves `rmmod` reporting "try again" because something
+keeps re-acquiring the module reference:
+
+```sh
+echo force2 > /mnt/global/control
+```
+
+Unlike `forceunload`, `force2` does not wait for `module_refcount()` to drain
+on its own. Instead it directly loops calling `module_put(THIS_MODULE)` until
+the refcount reaches its unloaded floor (bounded, and every iteration is
+logged to `global/log`), then runs `rmmod -f` instead of a plain `rmmod`
+(requires the target kernel to have `CONFIG_MODULE_FORCE_UNLOAD=y` for `-f` to
+actually bypass the kernel's own refcount/version checks). Every step -- which
+hooks were quiesced, the mount/in-flight/other reference breakdown at each
+poll, and the final `rmmod`/`rmmod -f` invocation -- is logged verbosely to
+`global/log` (see `global/references` for the same breakdown on demand).
+
+## Hot reload
+
+`./mnt/global/hotreload/` lets a new build of `lkm4ctr.ko` replace the
+currently-loaded one without an external `rmmod`/`insmod` sequence run by
+hand:
+
+```sh
+echo /path/to/new/lkm4ctr.ko > /mnt/global/hotreload/do-hot-reload
+cat /mnt/global/hotreload/status   # progress / first-load vs hot-reloaded
+cat /mnt/global/hotreload/log      # this subsystem's own log
+```
+
+The target path must be absolute, end in `.ko`, stay within a restricted
+`[A-Za-z0-9/._-]` charset, and exist and be readable at the time it is
+written. Once accepted, a worker thread quiesces every hook (same as a
+graceful unload), waits for in-flight calls to drain, unmounts the diagfs,
+then hands off to a detached shell that retries `rmmod lkm4ctr` until it
+succeeds and then runs `insmod <path> hotreload=1`, before finally calling
+`module_put_and_kthread_exit()` on the old module. The reloaded module's
+`lkm4ctr_hotreload_init()` reads its own `hotreload` module parameter to tell
+whether it is a first load or a hot-reloaded restart, and reports that in
+`global/hotreload/status` and the log.
+
+## `helper.sh`
+
+`./mnt/helper.sh` is a read-only (mode `0555`) POSIX-sh script, served
+directly from the diagfs mount root, wrapping the commands above into shell
+functions:
+
+```sh
+export lkm4ctr_diagfs=/mnt
+. "$lkm4ctr_diagfs/helper.sh"
+
+lkm4ctr status                       # summarise global + every submodule
+lkm4ctr control ns unload            # write "unload" to ns/control
+lkm4ctr load                         # alias for: control global load
+lkm4ctr forceunload hijack           # alias for: control hijack forceunload
+lkm4ctr force2                       # alias for: control global force2
+lkm4ctr logcat sysvipc               # cat sysvipc/log
+lkm4ctr references global            # cat global/references
+lkm4ctr hot-upgrade /path/to/new/lkm4ctr.ko
+lkm4ctr help                         # full command list
+```
+
+Its contents are generated into `lkm4ctr/helper.sh.c` as a plain C string
+constant (`lkm4ctr_helper_sh_data`) and served verbatim by the diagfs; edit
+the canonical script and regenerate that file rather than hand-editing the
+C string.
 
 ## Build
 
