@@ -94,6 +94,55 @@ static DEFINE_MUTEX(lkm4ctr_unload_lock);
 static bool lkm4ctr_unload_in_progress;
 
 /*
+ * module_refcount() and call_usermodehelper() are ordinary EXPORT_SYMBOL()
+ * functions, not GPL-only, but that alone doesn't save them from
+ * CONFIG_TRIM_UNUSED_KSYMS on production GKI kernels: like
+ * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure() elsewhere in
+ * this module, they get stripped whenever nothing built into vmlinux
+ * itself calls them, which is common for both on a stock GKI build (no
+ * in-tree caller needs module_refcount() outside of sysfs's own
+ * kernel/module/sysfs.c, and call_usermodehelper() has no in-tree callers
+ * at all -- every core in-tree usermode-helper caller goes through
+ * call_usermodehelper_setup()+_exec() instead). Calling either directly
+ * previously caused insmod to fail with "Unknown symbol module_refcount"/
+ * "Unknown symbol call_usermodehelper". Resolved lazily via
+ * shadow_hook_resolve() instead, same as those other trimmed symbols.
+ */
+typedef int (*lkm4ctr_module_refcount_t)(struct module *mod);
+typedef int (*lkm4ctr_call_usermodehelper_t)(const char *path, char **argv,
+					      char **envp, int wait);
+
+static lkm4ctr_module_refcount_t lkm4ctr_module_refcount_fn;
+static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
+
+/*
+ * lkm4ctr_safe_unload_resolve() - resolve the above on first use and cache
+ * the results; idempotent. Concurrent callers (e.g. two racing writes to
+ * the sysfs attribute) could redundantly re-resolve and store the same
+ * pointer value, but that race is benign since shadow_hook_resolve() for a
+ * given name always returns the same address -- the same assumption
+ * shadow_hook_ftrace_api_ready() relies on for its own lazy resolution, so
+ * no extra locking is needed here either.
+ */
+static bool lkm4ctr_safe_unload_resolve(void)
+{
+	if (!lkm4ctr_module_refcount_fn) {
+		lkm4ctr_module_refcount_fn = (lkm4ctr_module_refcount_t)
+			shadow_hook_resolve("module_refcount");
+		if (!lkm4ctr_module_refcount_fn)
+			pr_warn("lkm4ctr: safe_unload: could not resolve module_refcount; safe_unload unavailable\n");
+	}
+	if (!lkm4ctr_call_usermodehelper_fn) {
+		lkm4ctr_call_usermodehelper_fn = (lkm4ctr_call_usermodehelper_t)
+			shadow_hook_resolve("call_usermodehelper");
+		if (!lkm4ctr_call_usermodehelper_fn)
+			pr_warn("lkm4ctr: safe_unload: could not resolve call_usermodehelper; safe_unload unavailable\n");
+	}
+
+	return lkm4ctr_module_refcount_fn && lkm4ctr_call_usermodehelper_fn;
+}
+
+/*
  * lkm4ctr_run_rmmod() - exec a real userspace rmmod/modprobe -r process.
  *
  * Tries each candidate path in turn with call_usermodehelper(UMH_WAIT_EXEC),
@@ -115,7 +164,7 @@ static int lkm4ctr_run_rmmod(void)
 	for (path = lkm4ctr_rmmod_candidates; *path; path++) {
 		char *argv[] = { (char *)*path, "lkm4ctr", NULL };
 
-		ret = call_usermodehelper(*path, argv, envp, UMH_WAIT_EXEC);
+		ret = lkm4ctr_call_usermodehelper_fn(*path, argv, envp, UMH_WAIT_EXEC);
 		if (ret == 0) {
 			pr_info("lkm4ctr: safe_unload: launched \"%s lkm4ctr\"\n", *path);
 			return 0;
@@ -157,10 +206,10 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 	 * it to drop back to exactly that (i.e. every in-flight hooked call
 	 * has released its reference) before proceeding.
 	 */
-	while (module_refcount(THIS_MODULE) > 1) {
+	while (lkm4ctr_module_refcount_fn(THIS_MODULE) > 1) {
 		if (waited_ms >= LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS) {
 			pr_err("lkm4ctr: safe_unload: timed out waiting for %d in-flight call(s) to drain; aborting, module remains loaded\n",
-			       module_refcount(THIS_MODULE) - 1);
+			       lkm4ctr_module_refcount_fn(THIS_MODULE) - 1);
 			shadow_hook_quiesce(false);
 			goto abort;
 		}
@@ -218,6 +267,9 @@ static ssize_t safe_unload_store(struct kobject *kobj, struct kobj_attribute *at
 
 	if (!sysfs_streq(buf, "1") && !sysfs_streq(buf, "unload") && !sysfs_streq(buf, "remove"))
 		return -EINVAL;
+
+	if (!lkm4ctr_safe_unload_resolve())
+		return -EOPNOTSUPP;
 
 	mutex_lock(&lkm4ctr_unload_lock);
 	if (lkm4ctr_unload_in_progress) {
