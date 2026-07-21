@@ -229,6 +229,39 @@ static void shadow_hook_retprobe_remove(struct shadow_hook *hook)
 	hook->retprobe_installed = false;
 }
 
+/*
+ * shadow_hook_quiescing - module-wide "stop redirecting new calls" flag.
+ *
+ * Set by the safe-unload orchestration (lkm4ctr_safe_unload.c) before it
+ * starts waiting for module_refcount() to drain to zero. Once set, both
+ * redirect points (shadow_hook_thunk(), shadow_hook_pre_handler()) fall
+ * through to genuine kernel behaviour instead of redirecting into
+ * hook->function, so no *new* redirected call can start (and therefore no
+ * new module reference can be acquired) while a safe-unload is in
+ * progress. This is deliberately a plain bool rather than something
+ * requiring hook-specific state: it is checked once per redirect attempt,
+ * ahead of the (per-hook) try_module_get() call, and reset back to false if
+ * a safe-unload attempt aborts (e.g. on timeout) so hooks keep working
+ * normally.
+ */
+static bool shadow_hook_quiescing;
+
+void shadow_hook_quiesce(bool quiesce)
+{
+	/* Ordinary store: this is a best-effort, eventually-consistent
+	 * request flag, not a synchronisation primitive in its own right --
+	 * module_refcount() is what safe-unload actually waits on.
+	 */
+	WRITE_ONCE(shadow_hook_quiescing, quiesce);
+}
+EXPORT_SYMBOL_GPL(shadow_hook_quiesce);
+
+bool shadow_hook_is_quiescing(void)
+{
+	return READ_ONCE(shadow_hook_quiescing);
+}
+EXPORT_SYMBOL_GPL(shadow_hook_is_quiescing);
+
 #if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 
 /*
@@ -266,6 +299,8 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (within_module(parent_ip, hook->owner))
 		return;
+	if (shadow_hook_is_quiescing())
+		return;
 	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return;
 	shadow_hook_redirect(regs, hook->function);
@@ -277,6 +312,8 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 	struct shadow_hook *hook = container_of(ops, struct shadow_hook, ops);
 
 	if (within_module(parent_ip, hook->owner))
+		return;
+	if (shadow_hook_is_quiescing())
 		return;
 	if (hook->retprobe_installed && !try_module_get(hook->owner))
 		return;
@@ -413,6 +450,9 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	 * redirecting.
 	 */
 	if (within_module(shadow_hook_caller_pc(regs), hook->owner))
+		return 0;
+
+	if (shadow_hook_is_quiescing())
 		return 0;
 
 	if (hook->retprobe_installed && !try_module_get(hook->owner))

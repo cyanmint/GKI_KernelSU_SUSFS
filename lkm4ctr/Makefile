@@ -15,6 +15,7 @@ endif
 
 lkm4ctr-objs := \
 	lkm4ctr_main.o \
+	lkm4ctr_safe_unload.o \
 	shadow_hijack/shadow_hijack.o \
 	shadow_ns/shadow_ns_base.o \
 	shadow_ns/shadow_ns_task.o \

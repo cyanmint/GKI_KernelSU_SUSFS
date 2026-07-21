@@ -187,11 +187,20 @@ struct shadow_hook {
  *                              skipping (-ENOENT) ones whose symbol is absent;
  *                              returns the count installed, or negative errno.
  * shadow_hook_remove_all()   - remove a NULL-terminated array of hooks.
+ * shadow_hook_quiesce()      - set/clear the module-wide "stop redirecting
+ *                              new calls" flag checked by every hook's
+ *                              redirect point. Used by the sysfs safe-unload
+ *                              orchestration (lkm4ctr_safe_unload.c) to stop
+ *                              new in-flight calls from starting while it
+ *                              waits for module_refcount() to drain to zero.
+ * shadow_hook_is_quiescing() - current state of that flag.
  */
 unsigned long shadow_hook_resolve(const char *name);
 int shadow_hook_install(struct shadow_hook *hook);
 void shadow_hook_remove(struct shadow_hook *hook);
 int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag);
 void shadow_hook_remove_all(struct shadow_hook **hooks);
+void shadow_hook_quiesce(bool quiesce);
+bool shadow_hook_is_quiescing(void);
 
 #endif /* _SHADOW_HOOK_H */
