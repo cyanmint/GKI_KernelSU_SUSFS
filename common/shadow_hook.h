@@ -42,7 +42,7 @@
  * `static inline` so each caller TU got its own private copy. That is no
  * longer the case: now that more than one subsystem needs the hook logic, the
  * single source of truth lives in
- * shadow_ctr/shadow_hijack/shadow_hijack.c inside the merged shadow_ctr.ko
+ * lkm4ctr/shadow_hijack/shadow_hijack.c inside the merged lkm4ctr.ko
  * module, which still EXPORT_SYMBOL_GPL()s the five entry points declared at
  * the bottom of this file for any future external consumers. This header is
  * now purely declarative: it defines the ABI (struct shadow_hook, the
@@ -100,13 +100,42 @@
  *            @owner) to distinguish that pass-through call (which must fall
  *            through to the genuine function) from a fresh external call
  *            (which must be redirected). In the merged build this is the
- *            unified shadow_ctr.ko module for every subsystem; the
+ *            unified lkm4ctr.ko module for every subsystem; the
  *            SHADOW_HOOK() macro plumbs it through automatically from each
  *            caller's TU.
  * @address:  resolved address of the hooked symbol.
  * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
  * @kp:       kprobe instance driving the hook (kprobe backend only).
  * @installed: whether the hook is currently active.
+ * @retprobe: kretprobe placed on @function itself (regardless of which
+ *            forward-hook backend is active), used purely to make module
+ *            unload safe -- see the "rmmod safety" note below.
+ * @retprobe_installed: whether @retprobe is currently registered.
+ *
+ * rmmod safety
+ * ------------
+ * A redirected call spends real time executing inside @function (part of
+ * this module's .text), on a CPU that may be entirely unrelated to whoever
+ * calls shadow_hook_remove()/rmmod. Unregistering the forward hook (ftrace
+ * or kprobe) only stops *new* calls from being redirected; it does not wait
+ * for calls already in flight to finish, so a concurrent rmmod could free
+ * the module's memory while another CPU is still executing inside
+ * @function, corrupting the kernel (typically observed as a panic seconds
+ * after rmmod, once something happens to run into the freed pages).
+ *
+ * @retprobe closes that window using the same mechanism relied upon
+ * everywhere else in the kernel to keep a module alive while it is in use:
+ * module reference counting. shadow_hook_install() places @retprobe on
+ * @function and its return handler calls module_put(@owner); the forward
+ * hook's redirect point (shadow_hook_thunk()/shadow_hook_pre_handler())
+ * calls try_module_get(@owner) immediately before redirecting into
+ * @function, and skips the redirect (falling back to genuine kernel
+ * behaviour) if that fails, which only happens once the module is already
+ * on its way out. With this in place, module_refcount() is non-zero for as
+ * long as any redirected call is in flight, so the kernel's own
+ * sys_delete_module() refuses rmmod (-EBUSY, "Module ... is in use")
+ * instead of racing with it -- exactly the same protection a misc/char
+ * device gets from struct file_operations::owner while a file is open.
  */
 struct shadow_hook {
 	const char * const	*names;
@@ -121,6 +150,8 @@ struct shadow_hook {
 	struct kprobe		kp;
 #endif
 	bool			installed;
+	struct kretprobe	retprobe;
+	bool			retprobe_installed;
 };
 
 /*
@@ -128,7 +159,7 @@ struct shadow_hook {
  *
  * @owner is deliberately not a macro parameter: it is hard-wired to
  * THIS_MODULE so that each expansion picks up the *calling* translation
- * unit's own module. In the merged build that is always shadow_ctr.ko, which
+ * unit's own module. In the merged build that is always lkm4ctr.ko, which
  * is sufficient for the recursion guard's "call originated from inside the
  * unified module" check.
  */
@@ -141,7 +172,7 @@ struct shadow_hook {
 	}
 
 /*
- * The hook implementation lives in shadow_ctr/shadow_hijack/shadow_hijack.c
+ * The hook implementation lives in lkm4ctr/shadow_hijack/shadow_hijack.c
  * and is reached through these entry points. See that file for their full
  * contracts.
  *
@@ -156,11 +187,20 @@ struct shadow_hook {
  *                              skipping (-ENOENT) ones whose symbol is absent;
  *                              returns the count installed, or negative errno.
  * shadow_hook_remove_all()   - remove a NULL-terminated array of hooks.
+ * shadow_hook_quiesce()      - set/clear the module-wide "stop redirecting
+ *                              new calls" flag checked by every hook's
+ *                              redirect point. Used by the sysfs safe-unload
+ *                              orchestration (lkm4ctr_safe_unload.c) to stop
+ *                              new in-flight calls from starting while it
+ *                              waits for module_refcount() to drain to zero.
+ * shadow_hook_is_quiescing() - current state of that flag.
  */
 unsigned long shadow_hook_resolve(const char *name);
 int shadow_hook_install(struct shadow_hook *hook);
 void shadow_hook_remove(struct shadow_hook *hook);
 int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag);
 void shadow_hook_remove_all(struct shadow_hook **hooks);
+void shadow_hook_quiesce(bool quiesce);
+bool shadow_hook_is_quiescing(void);
 
 #endif /* _SHADOW_HOOK_H */

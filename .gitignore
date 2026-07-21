@@ -16,11 +16,11 @@
 .*.cmd
 .tmp_versions/
 
-# shadow_ctr_checker userspace binary build output
-shadow_ctr_checker/shadow_ctr_checker
+# lkm4ctr_checker userspace binary build output
+lkm4ctr_checker/lkm4ctr_checker
 modules.order
 
-# Local scratch dirs used for shadow_ctr QEMU boot-test iteration
+# Local scratch dirs used for lkm4ctr QEMU boot-test iteration
 # (staged built .ko output + an extracted/repacked test ramdisk root).
 # Never commit these; they are large, throwaway, and regenerated on demand.
 /modules-out/

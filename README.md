@@ -1,12 +1,12 @@
-# shadow_ctr — container-support kernel modules for GKI
+# lkm4ctr — container-support kernel modules for GKI
 
-`shadow_ctr/` now builds a single out-of-tree kernel module,
-**`shadow_ctr.ko`**, that makes a stock, unpatched
+`lkm4ctr/` now builds a single out-of-tree kernel module,
+**`lkm4ctr.ko`**, that makes a stock, unpatched
 `containerd`/`runc`/`dockerd` run on Android GKI kernels that were built
 without the usual container prerequisites (`CONFIG_*_NS`, `CONFIG_SYSVIPC`,
 `CONFIG_POSIX_MQUEUE`, cgroup-v1 device control, …).
 
-The source remains split by subsystem under `shadow_ctr/shadow_ctr/` for
+The source remains split by subsystem under `lkm4ctr/lkm4ctr/` for
 maintainability, but build/load/deploy is unified again: one Makefile, one
 module entry point, one `.ko`.
 
@@ -14,13 +14,13 @@ module entry point, one `.ko`.
 
 | Component             | Directory                         | `/dev` node | Summary |
 |----------------------|-----------------------------------|-------------|---------|
-| `shadow_ctr.ko`      | `shadow_ctr/`                     | —           | Unified module containing the shared hook engine plus the namespace, SysV IPC, POSIX mqueue and cgroup-device compatibility subsystems. |
-| `shadow_hijack`      | `shadow_ctr/shadow_hijack/`       | —           | Internal shared ftrace/kprobe hook implementation used by the other subsystems inside `shadow_ctr.ko`. |
-| `shadow_ns`          | `shadow_ctr/shadow_ns/`           | —           | `unshare/setns/clone/clone3/fork/vfork` hooks. Real per-namespace isolation for UTS, PID and USER; bookkeeping only for IPC/NET/CGROUP/MNT when genuinely absent. |
-| `shadow_sysvipc`     | `shadow_ctr/shadow_sysvipc/`      | —           | System V IPC (msg/sem/shm) hooks and shadow registry. |
-| `shadow_mqueue`      | `shadow_ctr/shadow_mqueue/`       | —           | POSIX mqueue hooks plus real shadow message transfer. |
-| `shadow_cgdevices`   | `shadow_ctr/shadow_cgdevices/`    | —           | Transparent device-open hook shim for the cgroup-device compatibility slot. |
-| `shadow_ctr_checker` | `shadow_ctr_checker/`             | n/a         | **Userspace** diagnostic binary (not a kernel module): performs real syscalls and reports PASS/STUB/FAIL per feature. |
+| `lkm4ctr.ko`      | `lkm4ctr/`                     | —           | Unified module containing the shared hook engine plus the namespace, SysV IPC, POSIX mqueue and cgroup-device compatibility subsystems. |
+| `shadow_hijack`      | `lkm4ctr/shadow_hijack/`       | —           | Internal shared ftrace/kprobe hook implementation used by the other subsystems inside `lkm4ctr.ko`. |
+| `shadow_ns`          | `lkm4ctr/shadow_ns/`           | —           | `unshare/setns/clone/clone3/fork/vfork` hooks. Real per-namespace isolation for UTS, PID and USER; bookkeeping only for IPC/NET/CGROUP/MNT when genuinely absent. |
+| `shadow_sysvipc`     | `lkm4ctr/shadow_sysvipc/`      | —           | System V IPC (msg/sem/shm) hooks and shadow registry. |
+| `shadow_mqueue`      | `lkm4ctr/shadow_mqueue/`       | —           | POSIX mqueue hooks plus real shadow message transfer. |
+| `shadow_cgdevices`   | `lkm4ctr/shadow_cgdevices/`    | —           | Transparent device-open hook shim for the cgroup-device compatibility slot. |
+| `lkm4ctr_checker` | `lkm4ctr_checker/`             | n/a         | **Userspace** diagnostic binary (not a kernel module): performs real syscalls and reports PASS/STUB/FAIL per feature. |
 
 ### Real vs. bookkeeping vs. stub — a quick reference
 
@@ -47,14 +47,14 @@ change anything). See each module's own README for the full rationale.
 | `shadow_mqueue` (POSIX mqueue)        | **Real**        | Real message transfer: priority-ordered queue, blocking send/receive with timeout semantics, real anon-inode-backed fds. |
 | `shadow_cgdevices` (`chrdev_open`)     | **Stub**        | Hook installed but currently only preserves native behaviour; no rule enforcement yet. |
 | `shadow_cgdevices` (`blkdev_open`)     | **Stub, best-effort** | Same as above, and only installed if the symbol exists with the expected prototype on that KMI. |
-| `shadow_ctr_checker`                  | n/a (diagnostics) | **Userspace binary**, not a kernel module: actually attempts the relevant syscalls and reports PASS/STUB/FAIL based on the observed effect, rather than reporting compile-time config alone. |
+| `lkm4ctr_checker`                  | n/a (diagnostics) | **Userspace binary**, not a kernel module: actually attempts the relevant syscalls and reports PASS/STUB/FAIL based on the observed effect, rather than reporting compile-time config alone. |
 
 Shared, header-only helpers live in `common/`:
 
 | File                          | Purpose |
 |-------------------------------|---------|
 | `common/shadow_hook.h`        | ftrace/kprobe syscall-hijack helper used by every hooking subsystem. |
-| `common/shadow_ctr_compat.h`  | `fd_file()`/`fd_empty()` compat shims for kernels < 6.8 (used by `shadow_mqueue`). |
+| `common/lkm4ctr_compat.h`  | `fd_file()`/`fd_empty()` compat shims for kernels < 6.8 (used by `shadow_mqueue`). |
 | `common/shadow_hook.README.md`| Documentation for the hook helper. |
 
 ## Load order
@@ -62,48 +62,47 @@ Shared, header-only helpers live in `common/`:
 There is now exactly one kernel module to load:
 
 ```sh
-insmod shadow_ctr/shadow_ctr/shadow_ctr.ko
+insmod lkm4ctr/lkm4ctr/lkm4ctr.ko
 
 # diagnostics: a plain userspace binary, run any time, no insmod needed:
-./shadow_ctr_checker/shadow_ctr_checker
+./lkm4ctr_checker/lkm4ctr_checker
 ```
 
-`shadow_ctr_checker` is a **userspace** diagnostic program, not a kernel
-module: it has no build-time or load-time dependency on `shadow_ctr.ko`, and
+`lkm4ctr_checker` is a **userspace** diagnostic program, not a kernel
+module: it has no build-time or load-time dependency on `lkm4ctr.ko`, and
 instead of reporting
 compile-time `IS_ENABLED(CONFIG_*)` facts, it directly performs the relevant
 syscalls (`unshare`/`fork`/`setns`, `mq_*`, `msg*`, `mount`) and reports
 PASS/STUB/FAIL based on their actual observed effect. See
-`shadow_ctr_checker/README.md` for the full methodology and why this
+`lkm4ctr_checker/README.md` for the full methodology and why this
 replaced the earlier kernel-module version.
 
 ## Building
 
-The merged kernel module lives in `shadow_ctr/shadow_ctr/` as a dual-purpose
+The merged kernel module lives in `lkm4ctr/lkm4ctr/` as a dual-purpose
 kbuild module (works both out-of-tree via `make KDIR=...` and embedded in an
 in-tree `obj-$(CONFIG_...)` build). Out-of-tree, against a prepared kernel
 build tree:
 
 ```sh
-make -C /path/to/kernel/build M="$PWD/shadow_ctr/shadow_ctr" modules
+make -C /path/to/kernel/build M="$PWD/lkm4ctr/lkm4ctr" modules
 ```
 
-`shadow_ctr_checker` is a plain userspace program and builds with a normal C
+`lkm4ctr_checker` is a plain userspace program and builds with a normal C
 compiler — no `KDIR`/kernel build tree involved:
 
 ```sh
-make -C shadow_ctr_checker                          # host toolchain
-make -C shadow_ctr_checker CC="clang --target=aarch64-linux-gnu"  # cross build
+make -C lkm4ctr_checker                          # host toolchain
+make -C lkm4ctr_checker CC="clang --target=aarch64-linux-gnu"  # cross build
 ```
 
 Out-of-tree modules for GKI **must** be built inside the matching
 `ghcr.io/ylarod/ddk-min:<kmi>-<release>` DDK image against its real
 `vmlinux`/`Module.symvers`, not a bare `gki_defconfig` tree, or `insmod` will
 panic on the real kernel. See
-[`../.github/workflows/build-shadow-ctr.yml`](../.github/workflows/build-shadow-ctr.yml)
-(merged-module build matrix) and
-[`../.github/workflows/test-shadow-ctr-qemu.yml`](../.github/workflows/test-shadow-ctr-qemu.yml)
-(QEMU boot/load test).
+[`../.github/workflows/build-lkm4ctr.yml`](../.github/workflows/build-lkm4ctr.yml)
+(merged-module build matrix, plus a QEMU boot/load test of the android14-6.1
+build).
 
 ## Kernel compatibility
 
@@ -113,7 +112,7 @@ kprobe-`pre_handler` fallback otherwise — the latter is what runs on stock
 Android GKI kernels, which ship with `CONFIG_FUNCTION_TRACER` disabled.
 
 `shadow_mqueue`'s `fd_file()`/`fd_empty()` use targets a kernel API that only
-exists from Linux v6.8 onward; `common/shadow_ctr_compat.h` provides shims so
+exists from Linux v6.8 onward; `common/lkm4ctr_compat.h` provides shims so
 the same source builds unmodified against older GKI branches (e.g. 6.1).
 
 See each subsystem's own README for its honest scope/limitations. In
@@ -123,6 +122,6 @@ kernel build (`IS_ENABLED(CONFIG_*_NS)`, which collapses correctly even when
 `CONFIG_NAMESPACES` is disabled entirely) — when it does simulate, UTS/PID/USER
 get real functional isolation; IPC/NET simulation (when needed) remains
 reference-counted bookkeeping only. See
-[`shadow_ctr/shadow_ns/README.md`](shadow_ctr/shadow_ns/README.md) for the full
+[`lkm4ctr/shadow_ns/README.md`](lkm4ctr/shadow_ns/README.md) for the full
 design rationale, and the "Real vs. bookkeeping vs. stub" table above for the
 full picture across every subsystem in this family.
