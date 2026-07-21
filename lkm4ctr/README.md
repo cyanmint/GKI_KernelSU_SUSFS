@@ -29,11 +29,11 @@ from under them.
 
 ## Safe unload via sysfs
 
-Writing `1` (or `unload`/`remove`) to `/sys/kernel/lkm4ctr/safe_unload`
+Writing `1` (or `unload`/`remove`) to `/sys/module/lkm4ctr/safe_unload`
 triggers the module to unload itself with no further operator action:
 
 ```sh
-echo 1 > /sys/kernel/lkm4ctr/safe_unload
+echo 1 > /sys/module/lkm4ctr/safe_unload
 ```
 
 This spawns a worker thread that quiesces every hook (stopping new

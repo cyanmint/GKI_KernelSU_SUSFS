@@ -11,7 +11,7 @@
  * simply returns -EBUSY ("Module lkm4ctr is in use") until they drain.
  *
  * That still leaves the operator to retry rmmod by hand until it succeeds.
- * This file adds a sysfs control, /sys/kernel/lkm4ctr/safe_unload, that
+ * This file adds a sysfs control, /sys/module/lkm4ctr/safe_unload, that
  * automates the whole sequence: writing "1" (or "unload"/"remove") to it
  * quiesces every hook (stopping new in-flight calls from starting), waits
  * for module_refcount() to drain to zero, and then triggers a genuine
@@ -89,7 +89,6 @@ static const char * const lkm4ctr_rmmod_candidates[] = {
 	NULL,
 };
 
-static struct kobject *lkm4ctr_kobj;
 static struct task_struct *lkm4ctr_unload_thread;
 static DEFINE_MUTEX(lkm4ctr_unload_lock);
 static bool lkm4ctr_unload_in_progress;
@@ -250,27 +249,26 @@ ATTRIBUTE_GROUPS(lkm4ctr_sysfs);
 
 int lkm4ctr_safe_unload_init(void)
 {
-	int err;
-
-	lkm4ctr_kobj = kobject_create_and_add("lkm4ctr", kernel_kobj);
-	if (!lkm4ctr_kobj)
-		return -ENOMEM;
-
-	err = sysfs_create_groups(lkm4ctr_kobj, lkm4ctr_sysfs_groups);
-	if (err) {
-		kobject_put(lkm4ctr_kobj);
-		lkm4ctr_kobj = NULL;
-		return err;
-	}
-
-	return 0;
+	/*
+	 * Hang safe_unload off THIS_MODULE's own kobject
+	 * (/sys/module/lkm4ctr/) rather than creating a new one under
+	 * kernel_kobj. kernel_kobj is EXPORT_SYMBOL_GPL()'d but, like
+	 * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure()
+	 * elsewhere in this module, it is a data symbol with no built-in
+	 * (non-modular) callers on some production GKI kernels and so gets
+	 * stripped by CONFIG_TRIM_UNUSED_KSYMS -- causing insmod to fail
+	 * with "Unknown symbol kernel_kobj". Unlike those function symbols,
+	 * a data symbol can't be recovered via shadow_hook_resolve()'s
+	 * register_kprobe() trick (kprobes only accept text addresses), so
+	 * the fix here is to avoid needing kernel_kobj at all:
+	 * THIS_MODULE->mkobj.kobj is set up by the module loader itself
+	 * (mod_sysfs_setup(), before our module_init runs) and requires no
+	 * export whatsoever.
+	 */
+	return sysfs_create_groups(&THIS_MODULE->mkobj.kobj, lkm4ctr_sysfs_groups);
 }
 
 void lkm4ctr_safe_unload_exit(void)
 {
-	if (!lkm4ctr_kobj)
-		return;
-	sysfs_remove_groups(lkm4ctr_kobj, lkm4ctr_sysfs_groups);
-	kobject_put(lkm4ctr_kobj);
-	lkm4ctr_kobj = NULL;
+	sysfs_remove_groups(&THIS_MODULE->mkobj.kobj, lkm4ctr_sysfs_groups);
 }
