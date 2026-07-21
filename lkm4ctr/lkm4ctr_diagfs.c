@@ -736,9 +736,7 @@ static size_t lkm4ctr_diagfs_references_snprintf(const struct lkm4ctr_diagfs_inf
 				 "module_refcount() unavailable (module_refcount symbol not yet resolved; write to global/control at least once to trigger resolution)\n");
 	} else {
 		accounted = mounts + inflight;
-		other = refcount - 1 - accounted;
-		if (other < 0)
-			other = 0;
+		other = max(0, refcount - 1 - accounted);
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
 				 "module_refcount()=%d\n", refcount);
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
@@ -1607,6 +1605,8 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 
 	mutex_lock(&lkm4ctr_unload_lock);
 	lkm4ctr_unload_in_progress = false;
+	lkm4ctr_unload_force = false;
+	lkm4ctr_unload_force2 = false;
 	mutex_unlock(&lkm4ctr_unload_lock);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)

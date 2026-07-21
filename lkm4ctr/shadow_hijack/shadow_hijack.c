@@ -646,10 +646,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (shadow_hook_is_quiescing())
 		return;
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return;
-	if (hook->retprobe_installed)
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return;
 		atomic_inc(&shadow_hook_inflight);
+	}
 	shadow_hook_redirect(regs, hook->function);
 }
 #else
@@ -662,10 +663,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (shadow_hook_is_quiescing())
 		return;
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return;
-	if (hook->retprobe_installed)
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return;
 		atomic_inc(&shadow_hook_inflight);
+	}
 	shadow_hook_redirect(regs, hook->function);
 }
 #endif
@@ -817,11 +819,11 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	if (shadow_hook_is_quiescing())
 		return 0;
 
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return 0;
-
-	if (hook->retprobe_installed)
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return 0;
 		atomic_inc(&shadow_hook_inflight);
+	}
 
 	shadow_hook_redirect(regs, hook->function);
 	return 1;

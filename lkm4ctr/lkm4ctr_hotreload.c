@@ -221,7 +221,7 @@ static bool lkm4ctr_hotreload_path_is_safe(const char *path)
 		return false;
 	if (path[0] != '/')
 		return false;
-	if (len < 3 || strcmp(path + len - 3, ".ko"))
+	if (len < 4 || strcmp(path + len - 3, ".ko"))
 		return false;
 
 	for (i = 0; i < len; i++) {
