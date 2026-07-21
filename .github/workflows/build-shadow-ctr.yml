@@ -317,20 +317,9 @@ jobs:
       - name: Boot all three kernels under QEMU
         run: |
           set +e
-          mkdir -p qemu-logs
+          chmod 755 qemu_test/qemu_test.sh
           for variant in stock sukisu sukisu-ctrpatches; do
-            echo "=== booting kernel variant: $variant ==="
-            timeout --signal=KILL 300 \
-              qemu-system-aarch64 \
-                -M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
-                -kernel "testsuite/kernel-$variant" \
-                -initrd injected-ramdisk.cpio \
-                -drive file=testsuite/image1.ext4,if=none,id=image1,format=raw \
-                -device nvme,serial=11451401,drive=image1 \
-                -append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
-              > "qemu-logs/qemu-console-$variant.log" 2>&1
-            echo "QEMU ($variant) exited with status $?"
-            tail -n 100 "qemu-logs/qemu-console-$variant.log"
+            qemu_test/qemu_test.sh testsuite/image1.ext4 "testsuite/kernel-$variant" "$variant"
           done
           ls -la qemu-logs
 
