@@ -42,7 +42,7 @@
  * `static inline` so each caller TU got its own private copy. That is no
  * longer the case: now that more than one subsystem needs the hook logic, the
  * single source of truth lives in
- * shadow_ctr/shadow_hijack/shadow_hijack.c inside the merged shadow_ctr.ko
+ * lkm4ctr/shadow_hijack/shadow_hijack.c inside the merged lkm4ctr.ko
  * module, which still EXPORT_SYMBOL_GPL()s the five entry points declared at
  * the bottom of this file for any future external consumers. This header is
  * now purely declarative: it defines the ABI (struct shadow_hook, the
@@ -100,7 +100,7 @@
  *            @owner) to distinguish that pass-through call (which must fall
  *            through to the genuine function) from a fresh external call
  *            (which must be redirected). In the merged build this is the
- *            unified shadow_ctr.ko module for every subsystem; the
+ *            unified lkm4ctr.ko module for every subsystem; the
  *            SHADOW_HOOK() macro plumbs it through automatically from each
  *            caller's TU.
  * @address:  resolved address of the hooked symbol.
@@ -159,7 +159,7 @@ struct shadow_hook {
  *
  * @owner is deliberately not a macro parameter: it is hard-wired to
  * THIS_MODULE so that each expansion picks up the *calling* translation
- * unit's own module. In the merged build that is always shadow_ctr.ko, which
+ * unit's own module. In the merged build that is always lkm4ctr.ko, which
  * is sufficient for the recursion guard's "call originated from inside the
  * unified module" check.
  */
@@ -172,7 +172,7 @@ struct shadow_hook {
 	}
 
 /*
- * The hook implementation lives in shadow_ctr/shadow_hijack/shadow_hijack.c
+ * The hook implementation lives in lkm4ctr/shadow_hijack/shadow_hijack.c
  * and is reached through these entry points. See that file for their full
  * contracts.
  *

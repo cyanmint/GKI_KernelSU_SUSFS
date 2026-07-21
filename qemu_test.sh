@@ -7,7 +7,7 @@
 #      shell's own PID) is not 1 -- i.e. whenever this script is not acting
 #      as some kernel's PID 1. Boots a single kernel under QEMU against a
 #      given image1.ext4 (and, optionally, an injected ramdisk), for use in
-#      both build-shadow-ctr.yml and ad-hoc manual debugging:
+#      both build-lkm4ctr.yml and ad-hoc manual debugging:
 #
 #        bash qemu_test.sh <image1.ext4 path> <kernel path> <init path> [ramdisk path]
 #
@@ -34,9 +34,9 @@
 #           sysfs, then `mdev -s` coldplugs every device node (console,
 #           kmsg, nvme...) from /sys.
 #        b. mounts image1.ext4 (/dev/nvme0n1, the prebuilt testsuite root
-#           filesystem downloaded verbatim in build-shadow-ctr.yml) at
+#           filesystem downloaded verbatim in build-lkm4ctr.yml) at
 #           /newroot.
-#        c. copies /shadow_ctr.ko + /shadow_ctr_checker, baked into this
+#        c. copies /lkm4ctr.ko + /lkm4ctr_checker, baked into this
 #           same ramdisk, onto the new root.
 #        d. copies this very script onto the new root as /second_init
 #           (`cat /init` works because /init is this script's own path in
@@ -50,8 +50,8 @@
 #      image1.ext4 with no ramdisk at all via "init=/second_init" on the
 #      kernel command line, straight away). Populates /dev again (same
 #      reasoning as stage 1 -- switch_root does not preserve the
-#      initramfs's un-mounted /dev contents), runs shadow_ctr_checker,
-#      insmods shadow_ctr.ko, runs shadow_ctr_checker again, starts a real
+#      initramfs's un-mounted /dev contents), runs lkm4ctr_checker,
+#      insmods lkm4ctr.ko, runs lkm4ctr_checker again, starts a real
 #      dockerd, imports+runs the alpine tarball already baked into
 #      image1.ext4, then powers off via sysrq.
 
@@ -112,17 +112,17 @@ if [ "$(/busybox basename "$0")" = "init" ]; then
 	busybox mkdir -p /sys /dev /newroot
 	busybox mount -t sysfs sysfs /sys
 	busybox mdev -s
-	busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
+	busybox echo "=== LKM4CTR_QEMU_TEST: stage1 (initramfs) ==="
 
 	busybox mount -t ext4 /dev/nvme0n1 /newroot
 	busybox echo "mount image1.ext4 -> $?"
 
-	busybox cp /shadow_ctr_checker /newroot/
-	busybox cp /shadow_ctr.ko /newroot/
+	busybox cp /lkm4ctr_checker /newroot/
+	busybox cp /lkm4ctr.ko /newroot/
 	busybox cat /init > /newroot/second_init
 	busybox chmod 755 /newroot/second_init
 
-	busybox echo "=== SHADOW_CTR_QEMU_TEST: exec second init ==="
+	busybox echo "=== LKM4CTR_QEMU_TEST: exec second init ==="
 	# switch_root replaces PID 1 with the given command, run under the new
 	# root; /busybox (copied onto image1.ext4 above) provides "env" here
 	# since image1.ext4's own /system/bin/env may not exist yet at this
@@ -161,31 +161,31 @@ PATH=/:$PATH
 busybox mdev -s
 ifconfig lo up
 
-echo "=== SHADOW_CTR_QEMU_TEST: /ctr (module + checker) copied onto the new root by stage1 ==="
-chmod 755 /shadow_ctr_checker
+echo "=== LKM4CTR_QEMU_TEST: /ctr (module + checker) copied onto the new root by stage1 ==="
+chmod 755 /lkm4ctr_checker
 
-echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
-shadow_ctr_checker
+echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (pre-insmod) ==="
+lkm4ctr_checker
 
-echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
-insmod /shadow_ctr.ko
+echo "=== LKM4CTR_QEMU_TEST: inserting merged module ==="
+insmod /lkm4ctr.ko
 dmesg
 
-echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
-shadow_ctr_checker
+echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (post-insmod) ==="
+lkm4ctr_checker
 
-echo "=== SHADOW_CTR_QEMU_TEST: starting dockerd (daemon) ==="
+echo "=== LKM4CTR_QEMU_TEST: starting dockerd (daemon) ==="
 dockerd &
 for i in $(seq 1 30); do
   [ -S /var/run/docker.sock ] && break
   sleep 1
 done
 
-echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
+echo "=== LKM4CTR_QEMU_TEST: docker run (test container sanity) ==="
 docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest ps -e
 docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
 
-echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+echo "=== LKM4CTR_QEMU_TEST: DONE ==="
 # unmounts whatever /do-mounts.sh mounted above, so the following
 # remount,ro is clean.
 source /do-umounts.sh

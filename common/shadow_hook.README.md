@@ -1,7 +1,7 @@
 # shadow_hook — shared syscall hijacking ABI
 
 `shadow_hook.h` is a small, purely declarative header that defines the ABI
-shared by every syscall-hooking module in the `shadow_ctr` family
+shared by every syscall-hooking module in the `lkm4ctr` family
 (`shadow_ns`, `shadow_sysvipc`, `shadow_mqueue`,
 `shadow_cgdevices`; see `../README.md` for the umbrella overview). It is what
 turns those modules from an ioctl API that a *patched* container runtime must
@@ -18,11 +18,11 @@ This header used to be intentionally include-only, with every helper marked
 That is no longer the case: the single source of truth for
 `shadow_hook_resolve()`, `shadow_hook_install()`, `shadow_hook_remove()`,
 `shadow_hook_install_all()` and `shadow_hook_remove_all()` now lives in the
-`shadow_hijack` subsystem source inside the merged **`shadow_ctr.ko`** module
-(`../shadow_ctr/shadow_hijack/`). This header is now purely declarative: it
+`shadow_hijack` subsystem source inside the merged **`lkm4ctr.ko`** module
+(`../lkm4ctr/shadow_hijack/`). This header is now purely declarative: it
 defines the ABI (`struct shadow_hook`, the `SHADOW_HOOK()` initialiser macro,
 and the `extern` function prototypes) that the unified module's subsystems
-share. See [`../shadow_ctr/shadow_hijack/README.md`](../shadow_ctr/shadow_hijack/README.md)
+share. See [`../lkm4ctr/shadow_hijack/README.md`](../lkm4ctr/shadow_hijack/README.md)
 for the full rationale, including the compile-time ftrace-vs-kprobe backend
 selection and the recursion guard.
 
@@ -48,7 +48,7 @@ and the owning module). `shadow_hook_install()`:
    the subsystem is natively present, or to chain into it after doing shadow
    bookkeeping). An owner-based recursion guard distinguishes that
    pass-through call from a fresh external call — see
-   [`../shadow_ctr/shadow_hijack/README.md`](../shadow_ctr/shadow_hijack/README.md) for details.
+   [`../lkm4ctr/shadow_hijack/README.md`](../lkm4ctr/shadow_hijack/README.md) for details.
 
 Both the pre- and post-`CONFIG_DYNAMIC_FTRACE_WITH_ARGS` ftrace callback
 signatures are supported so the exact same source builds unmodified across
