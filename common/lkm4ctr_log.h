@@ -62,10 +62,15 @@ void lkm4ctr_log(const char *tag, enum lkm4ctr_log_level level,
 /*
  * lkm4ctr_log_snprintf() - render every currently retained entry whose tag
  * matches @tag (or every entry, if @tag is NULL) as newline-terminated text
- * "[level] message\n" lines, oldest first, into @buf (size @buflen).
- * Returns the number of bytes that would have been written (glibc
- * snprintf() semantics), for the diagfs read() callers' simple_read_from_buffer()
- * plumbing.
+ * "[level] message\n" lines into @buf (size @buflen). If every matching
+ * entry doesn't fit, the OLDEST matching entries are discarded first so the
+ * most recent (tail) entries are always what gets rendered; whatever
+ * survives is still oldest-first among itself. Returns the true total size
+ * of every matching entry (glibc snprintf() semantics: the number of bytes
+ * that would have been written given unlimited space), *not* merely the
+ * number of bytes actually written into @buf -- callers such as
+ * lkm4ctr_diagfs_show() rely on this to detect truncation and grow @buf
+ * before retrying.
  */
 size_t lkm4ctr_log_snprintf(const char *tag, char *buf, size_t buflen);
 

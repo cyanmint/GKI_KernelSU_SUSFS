@@ -27,14 +27,20 @@
  *
  *   ./mnt/hijack/{control,status,log,functions}
  *                                  - diagnostics for the shared hook engine.
- *                                    control exists for layout symmetry but
- *                                    only reports help: shadow_hijack is
- *                                    always active for as long as lkm4ctr.ko
- *                                    itself is loaded, so unload/forceunload
- *                                    are intentionally unsupported there.
- *                                    functions is a live listing of every
- *                                    currently registered hook across all
- *                                    submodules.
+ *                                    load/unload/forceunload behave like any
+ *                                    other submodule, with one ordering rule:
+ *                                    since every other submodule's hooks are
+ *                                    installed through this shared engine, a
+ *                                    graceful unload is refused (-EBUSY)
+ *                                    while any other submodule is still
+ *                                    active; forceunload instead gracefully
+ *                                    unloads every other active submodule
+ *                                    first, waits briefly, then
+ *                                    force-unloads whatever remains active,
+ *                                    before finally tearing shadow_hijack
+ *                                    itself down. functions is a live
+ *                                    listing of every currently registered
+ *                                    hook across all submodules.
  *
  *   ./mnt/ns/{control,status,hooks,log,namespaces}
  *                                  - aggregate shadow_ns lifecycle, hooks,
@@ -113,6 +119,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/atomic.h>
+#include <linux/kprobes.h>
 
 #include "shadow_hook.h"
 #include "shadow_ns/shadow_ns_internal.h"
@@ -123,10 +130,45 @@
 #define LKM4CTR_DIAGFS_TAG	"diagfs"
 
 /*
+ * lkm4ctr_diagfs_resolve() - resolve a kernel symbol's runtime address (0 if
+ * not found), via the same register_kprobe()/unregister_kprobe() trick used
+ * by shadow_hijack.c's shadow_hook_resolve() -- but implemented as its own,
+ * private copy rather than a call into shadow_hijack.c.
+ *
+ * diagfs is the controller filesystem: it must keep mounting, rendering
+ * status/log files and driving the final rmmod regardless of whatever
+ * runtime load/unload state the shadow_hijack subsystem itself is in (see
+ * lkm4ctr_diagfs_hijack_unload() below -- shadow_hijack is now an ordinary,
+ * unloadable submodule like any other). A controller fs that could only
+ * mount itself by calling into the hook engine's own exported resolver
+ * would make diagfs *functionally* depend on shadow_hijack, defeating that
+ * independence. The handful of plain kernel symbols diagfs itself needs
+ * (mount_nodev/generic_delete_inode/module_refcount/call_usermodehelper)
+ * are therefore resolved right here instead.
+ */
+static unsigned long lkm4ctr_diagfs_resolve(const char *name)
+{
+	struct kprobe kp;
+	unsigned long addr;
+	int ret;
+
+	memset(&kp, 0, sizeof(kp));
+	kp.symbol_name = name;
+
+	ret = register_kprobe(&kp);
+	if (ret < 0)
+		return 0;
+
+	addr = (unsigned long)kp.addr;
+	unregister_kprobe(&kp);
+	return addr;
+}
+
+/*
  * mount_nodev() and generic_delete_inode() are ordinary EXPORT_SYMBOL()
  * functions, not GPL-only, but unlike simple_dir_inode_operations/
  * simple_dir_operations above they are plain code, not data -- so they
- * *can* be recovered via shadow_hook_resolve()'s register_kprobe() trick
+ * *can* be recovered via lkm4ctr_diagfs_resolve()'s register_kprobe() trick
  * if CONFIG_TRIM_UNUSED_KSYMS strips them (confirmed: "Unknown symbol
  * mount_nodev"/"Unknown symbol generic_delete_inode" on insmod against a
  * production GKI kernel), same class of issue as module_refcount()/
@@ -155,6 +197,8 @@ extern int shadow_mqueue_init(void);
 extern void shadow_mqueue_exit(void);
 extern int shadow_cgdevices_init(void);
 extern void shadow_cgdevices_exit(void);
+extern int shadow_hijack_init(void);
+extern void shadow_hijack_exit(void);
 
 enum lkm4ctr_diagfs_kind {
 	LKM4CTR_DIAG_CONTROL,
@@ -199,7 +243,7 @@ struct lkm4ctr_diagfs_ns_type {
 };
 
 static struct lkm4ctr_diagfs_module lkm4ctr_diagfs_modules[] = {
-	{ "hijack", 		"shadow_hijack", 	false, false, NULL,			NULL,			LKM4CTR_STATE_ACTIVE },
+	{ "hijack", 		"shadow_hijack", 	false, false, shadow_hijack_init,	shadow_hijack_exit,	LKM4CTR_STATE_ACTIVE },
 	{ "ns", 		"shadow_ns", 		true,  true,  shadow_ns_init,		shadow_ns_exit,		LKM4CTR_STATE_UNLOADED },
 	{ "sysvipc", 		"shadow_sysvipc", 	true,  false, shadow_sysvipc_init,	shadow_sysvipc_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "mqueue", 		"shadow_mqueue", 	true,  false, shadow_mqueue_init,	shadow_mqueue_exit,	LKM4CTR_STATE_UNLOADED },
@@ -223,6 +267,18 @@ static DEFINE_MUTEX(lkm4ctr_unload_lock);
 static bool lkm4ctr_unload_in_progress;
 static bool lkm4ctr_unload_force;
 static atomic_t lkm4ctr_diagfs_mount_count = ATOMIC_INIT(0);
+
+/*
+ * shadow_hijack is now an ordinary submodule like the others (see the
+ * lkm4ctr_diagfs_modules[] entry above), but it has no shadow_hook_install()
+ * hooks of its own to query via shadow_hook_registry_tag_active() -- it
+ * *is* the shared hook engine every other submodule's hooks are tracked
+ * through. Its own active/unloaded state is therefore tracked directly
+ * here instead, updated by lkm4ctr_diagfs_hijack_unload() below and read
+ * back by lkm4ctr_diagfs_module_stable_state(). Protected by
+ * lkm4ctr_unload_lock, same as every other piece of lifecycle state above.
+ */
+static bool lkm4ctr_hijack_active = true;
 
 static struct lkm4ctr_diagfs_module *lkm4ctr_diagfs_find_module(const char *tag)
 {
@@ -265,7 +321,7 @@ static enum lkm4ctr_diagfs_lifecycle_state
 lkm4ctr_diagfs_module_stable_state(struct lkm4ctr_diagfs_module *mod)
 {
 	if (!strcmp(mod->tag, "shadow_hijack"))
-		return LKM4CTR_STATE_ACTIVE;
+		return lkm4ctr_hijack_active ? LKM4CTR_STATE_ACTIVE : LKM4CTR_STATE_UNLOADED;
 	return shadow_hook_registry_tag_active(mod->tag) ?
 		LKM4CTR_STATE_ACTIVE : LKM4CTR_STATE_UNLOADED;
 }
@@ -427,12 +483,17 @@ static size_t lkm4ctr_diagfs_control_snprintf(const struct lkm4ctr_diagfs_info *
 		return pos;
 	}
 
-	if (mod && !mod->mod_init && !mod->mod_exit) {
+	if (mod && !strcmp(mod->tag, "shadow_hijack")) {
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
-				 "shadow_hijack is the shared hook engine backing every other subsystem.\n"
-				 "It is always active while lkm4ctr.ko is loaded.\n"
-				 "load is a no-op here; unload/forceunload are unsupported.\n"
-				 "aliases accepted for forceunload elsewhere: force, force_unload\n");
+				 "commands:\n"
+				 "  load         - load this subsystem\n"
+				 "  unload       - graceful unload (aliases: remove, graceful)\n"
+				 "  forceunload  - force unload (aliases: force, force_unload)\n"
+				 "shadow_hijack is the shared hook engine backing every other subsystem:\n"
+				 "graceful unload is refused (-EBUSY) while any other submodule is still\n"
+				 "active; forceunload instead gracefully unloads every other active\n"
+				 "submodule first, waits briefly, then force-unloads whatever remains\n"
+				 "active, before finally tearing down shadow_hijack itself.\n");
 		return pos;
 	}
 
@@ -565,12 +626,40 @@ static lkm4ctr_diagfs_render_fn lkm4ctr_diagfs_render_for(enum lkm4ctr_diagfs_ki
 	}
 }
 
+/*
+ * lkm4ctr_diagfs_show()'s grow-and-retry loop
+ * -------------------------------------------
+ * Every render function below is built out of repeated
+ * scnprintf(buf + pos, buflen - pos, ...) accumulation, same as the ring
+ * log's own renderer used to be. scnprintf() clamps its return value to
+ * "bytes actually written" (glibc snprintf() semantics do NOT apply): once
+ * @buf saturates mid-scan, every later call in the same accumulation gets a
+ * remaining size of 0 or 1 and contributes nothing more, so the final
+ * reported "need" deterministically comes out to exactly cap - 1 --
+ * regardless of how much real content was actually left over. Trusting
+ * that value at face value (the previous "if (need < cap) break;" check)
+ * therefore silently truncated any content that didn't fit in the first
+ * 4096-byte guess, instead of ever growing the buffer.
+ *
+ * Fixed by treating that exact "need == cap - 1" signature as "didn't fit,
+ * keep growing" (need + 1 < cap is the only way to conclude the content
+ * genuinely was smaller than @cap), and by growing @cap exponentially
+ * (doubling) instead of the previous cap = need + 1 (which, given the bug
+ * above, only ever grew by a single byte per retry). Growth stops at
+ * LKM4CTR_DIAGFS_SHOW_MAX_CAP as a sanity ceiling; lkm4ctr_log_snprintf()
+ * itself separately guarantees the log's tail is always what a
+ * still-too-small @buf ends up holding (see lkm4ctr_log.c), so hitting that
+ * ceiling on the log file never loses the most recent entries.
+ */
+#define LKM4CTR_DIAGFS_SHOW_INITIAL_CAP	4096
+#define LKM4CTR_DIAGFS_SHOW_MAX_CAP		(1 * 1024 * 1024)
+
 static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 {
 	struct lkm4ctr_diagfs_info *info = m->private;
 	lkm4ctr_diagfs_render_fn fn = lkm4ctr_diagfs_render_for(info->kind);
 	char *buf;
-	size_t cap = 4096, need;
+	size_t cap = LKM4CTR_DIAGFS_SHOW_INITIAL_CAP, need;
 
 	if (!fn)
 		return -EINVAL;
@@ -580,10 +669,12 @@ static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 		if (!buf)
 			return -ENOMEM;
 		need = fn(info, buf, cap);
-		if (need < cap)
+		if (need + 1 < cap || cap >= LKM4CTR_DIAGFS_SHOW_MAX_CAP)
 			break;
 		kfree(buf);
-		cap = need + 1;
+		cap *= 2;
+		if (cap > LKM4CTR_DIAGFS_SHOW_MAX_CAP)
+			cap = LKM4CTR_DIAGFS_SHOW_MAX_CAP;
 	}
 
 	seq_write(m, buf, need);
@@ -665,6 +756,12 @@ static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
 	LKM4CTR_INFO(mod->tag, "load requested via diagfs control write");
 	ret = mod->mod_init();
 
+	if (!ret && !strcmp(mod->tag, "shadow_hijack")) {
+		mutex_lock(&lkm4ctr_unload_lock);
+		lkm4ctr_hijack_active = true;
+		mutex_unlock(&lkm4ctr_unload_lock);
+	}
+
 	mutex_lock(&lkm4ctr_unload_lock);
 	mod->state = lkm4ctr_diagfs_module_stable_state(mod);
 	mutex_unlock(&lkm4ctr_unload_lock);
@@ -673,8 +770,107 @@ static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
 }
 
 static int lkm4ctr_diagfs_module_unload(struct lkm4ctr_diagfs_module *mod,
+					bool force, bool from_global);
+
+#define LKM4CTR_HIJACK_UNLOAD_WAIT_MS	3000
+#define LKM4CTR_HIJACK_UNLOAD_POLL_MS	50
+
+static bool lkm4ctr_diagfs_other_modules_active(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
+		struct lkm4ctr_diagfs_module *other = &lkm4ctr_diagfs_modules[i];
+
+		if (!strcmp(other->tag, "shadow_hijack") || !other->mod_exit)
+			continue;
+		if (lkm4ctr_diagfs_module_stable_state(other) != LKM4CTR_STATE_UNLOADED)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * lkm4ctr_diagfs_hijack_unload() - shadow_hijack is the shared hook engine
+ * every other submodule's hooks are installed through, so it may only
+ * become "unloaded" once every other submodule already is: unlike them,
+ * unloading it while e.g. shadow_ns still has live hooks installed would
+ * pull the rug out from under code that is still redirecting real syscalls
+ * into this module.
+ *
+ * A plain graceful request (!force) is therefore simply refused with
+ * -EBUSY while any other submodule remains active. A force request instead
+ * cascades: gracefully unload every other active submodule first, wait
+ * briefly for that to settle, then force-unload whatever is still active
+ * after that wait -- mirroring exactly the same graceful-then-wait-then-
+ * force pattern the whole-module self-unload sequence
+ * (lkm4ctr_safe_unload_fn()) already uses -- before finally tearing down
+ * shadow_hijack itself.
+ */
+static int lkm4ctr_diagfs_hijack_unload(bool force, bool from_global)
+{
+	unsigned int i;
+	unsigned long waited_ms = 0;
+
+	if (lkm4ctr_diagfs_other_modules_active()) {
+		if (!force) {
+			LKM4CTR_WARN("shadow_hijack",
+				     "cannot unload: at least one other submodule is still active; unload it (or use forceunload) first");
+			return -EBUSY;
+		}
+
+		LKM4CTR_INFO("shadow_hijack",
+			     "force unload requested with other submodule(s) still active: gracefully unloading every one of them first");
+		if (!from_global)
+			shadow_hook_quiesce(true);
+
+		for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
+			struct lkm4ctr_diagfs_module *other = &lkm4ctr_diagfs_modules[i];
+
+			if (!strcmp(other->tag, "shadow_hijack") || !other->mod_exit)
+				continue;
+			if (lkm4ctr_diagfs_module_stable_state(other) != LKM4CTR_STATE_UNLOADED)
+				lkm4ctr_diagfs_module_unload(other, false, true);
+		}
+
+		while (lkm4ctr_diagfs_other_modules_active() &&
+		       waited_ms < LKM4CTR_HIJACK_UNLOAD_WAIT_MS) {
+			msleep(LKM4CTR_HIJACK_UNLOAD_POLL_MS);
+			waited_ms += LKM4CTR_HIJACK_UNLOAD_POLL_MS;
+		}
+
+		if (lkm4ctr_diagfs_other_modules_active()) {
+			LKM4CTR_WARN("shadow_hijack",
+				     "force-unloading any submodule(s) still active after %lums of graceful waiting",
+				     waited_ms);
+			for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
+				struct lkm4ctr_diagfs_module *other = &lkm4ctr_diagfs_modules[i];
+
+				if (!strcmp(other->tag, "shadow_hijack") || !other->mod_exit)
+					continue;
+				if (lkm4ctr_diagfs_module_stable_state(other) != LKM4CTR_STATE_UNLOADED)
+					lkm4ctr_diagfs_module_unload(other, true, true);
+			}
+		}
+
+		if (!from_global)
+			shadow_hook_quiesce(false);
+	}
+
+	shadow_hijack_exit();
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	lkm4ctr_hijack_active = false;
+	mutex_unlock(&lkm4ctr_unload_lock);
+
+	return 0;
+}
+
+static int lkm4ctr_diagfs_module_unload(struct lkm4ctr_diagfs_module *mod,
 					bool force, bool from_global)
 {
+	bool is_hijack = !strcmp(mod->tag, "shadow_hijack");
+
 	if (!mod->mod_exit)
 		return -EOPNOTSUPP;
 
@@ -698,11 +894,23 @@ static int lkm4ctr_diagfs_module_unload(struct lkm4ctr_diagfs_module *mod,
 
 	LKM4CTR_INFO(mod->tag, "%s unload requested via diagfs control write",
 		     force ? "force" : "graceful");
-	if (force && !from_global)
-		shadow_hook_quiesce(true);
-	mod->mod_exit();
-	if (force && !from_global)
-		shadow_hook_quiesce(false);
+
+	if (is_hijack) {
+		int ret = lkm4ctr_diagfs_hijack_unload(force, from_global);
+
+		if (ret) {
+			mutex_lock(&lkm4ctr_unload_lock);
+			mod->state = lkm4ctr_diagfs_module_stable_state(mod);
+			mutex_unlock(&lkm4ctr_unload_lock);
+			return ret;
+		}
+	} else {
+		if (force && !from_global)
+			shadow_hook_quiesce(true);
+		mod->mod_exit();
+		if (force && !from_global)
+			shadow_hook_quiesce(false);
+	}
 
 	mutex_lock(&lkm4ctr_unload_lock);
 	mod->state = lkm4ctr_diagfs_module_stable_state(mod);
@@ -756,6 +964,7 @@ static int lkm4ctr_diagfs_load_all(void)
 static void lkm4ctr_diagfs_unload_all_now(const char *label, bool force)
 {
 	unsigned int i;
+	struct lkm4ctr_diagfs_module *hijack = NULL;
 
 	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "%s-unloading every submodule", label);
 	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
@@ -763,8 +972,18 @@ static void lkm4ctr_diagfs_unload_all_now(const char *label, bool force)
 
 		if (!mod->mod_exit)
 			continue;
+		if (!strcmp(mod->tag, "shadow_hijack")) {
+			/* Unload last: it may only settle to "unloaded"
+			 * once every other submodule already has (see
+			 * lkm4ctr_diagfs_hijack_unload()).
+			 */
+			hijack = mod;
+			continue;
+		}
 		lkm4ctr_diagfs_module_unload(mod, force, true);
 	}
+	if (hijack)
+		lkm4ctr_diagfs_module_unload(hijack, force, true);
 	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG,
 		     "%s-unload of every submodule complete; all of their resources are now free",
 		     label);
@@ -798,8 +1017,11 @@ static const char * const lkm4ctr_umount_candidates[] = {
  * CONFIG_TRIM_UNUSED_KSYMS on production GKI kernels: like
  * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure() elsewhere in
  * this module, they get stripped whenever nothing built into vmlinux
- * itself calls them. Resolved lazily via shadow_hook_resolve() instead,
- * same as those other trimmed symbols.
+ * itself calls them. Resolved lazily via lkm4ctr_diagfs_resolve() instead
+ * of shadow_hijack.c's shadow_hook_resolve() -- self-unload/rmmod is core
+ * diagfs functionality that must keep working independently of
+ * shadow_hijack's own load/unload state, same rationale as
+ * lkm4ctr_diagfs_resolve() itself above.
  */
 typedef int (*lkm4ctr_module_refcount_t)(struct module *mod);
 typedef int (*lkm4ctr_call_usermodehelper_t)(const char *path, char **argv,
@@ -811,7 +1033,7 @@ static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
 #define LKM4CTR_RESOLVE_ONE(fn, name)						\
 	do {									\
 		if (!(fn)) {							\
-			(fn) = (typeof(fn))shadow_hook_resolve(name);		\
+			(fn) = (typeof(fn))lkm4ctr_diagfs_resolve(name);	\
 			if (!(fn))						\
 				LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,		\
 					     "could not resolve %s; global unload unavailable", \
@@ -944,7 +1166,11 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 	unsigned long waited_ms = 0;
 	int ret;
 	int refcount;
-	bool force = lkm4ctr_unload_force;
+	bool force;
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	force = lkm4ctr_unload_force;
+	mutex_unlock(&lkm4ctr_unload_lock);
 
 	__module_get(THIS_MODULE);
 
@@ -960,15 +1186,31 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 
 	refcount = lkm4ctr_module_refcount_fn(THIS_MODULE);
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "module_refcount()=%d after quiesce (must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums)",
+		     "module_refcount()=%d after quiesce (must drop to 1, i.e. only this worker's own reference, before rmmod can succeed; timeout is %ums, ignored once escalated to force)",
 		     refcount, LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS);
 
 	while ((refcount = lkm4ctr_module_refcount_fn(THIS_MODULE)) > 1) {
+		bool escalated = false;
+
+		if (!force) {
+			mutex_lock(&lkm4ctr_unload_lock);
+			if (lkm4ctr_unload_force) {
+				force = true;
+				escalated = true;
+			}
+			mutex_unlock(&lkm4ctr_unload_lock);
+		}
+		if (escalated) {
+			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
+				     "unload escalated to force mid-wait via diagfs control write: force-unloading every submodule immediately instead of continuing to wait for the graceful drain");
+			lkm4ctr_diagfs_unload_all_now("force", true);
+		}
+
 		if (waited_ms >= LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS) {
 			int mounts = atomic_read(&lkm4ctr_diagfs_mount_count);
 
 			LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-				    "timed out after %lums waiting for %d extra reference(s) to drain (module_refcount()=%d); aborting, module remains loaded",
+				    "timed out after %lums waiting for %d extra reference(s) to drain (module_refcount()=%d)",
 				    waited_ms, refcount - 1, refcount);
 			if (mounts > 0) {
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
@@ -988,6 +1230,28 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 					    "resolution: this is a real in-flight kernel call still executing somewhere -- it cannot be forced to finish sooner without risking a crash, so simply wait and retry; if the count never drops on retry this may be a reference leak worth reporting");
 			}
+
+			if (force) {
+				/*
+				 * A force unload must always ultimately reach rmmod:
+				 * an administrator who wrote "forceunload" must
+				 * always be able to unload this module manually, so
+				 * our own internal wait/timeout bookkeeping is never
+				 * allowed to keep blocking that indefinitely. Proceed
+				 * to rmmod below instead of aborting -- the kernel's
+				 * own module_refcount() check inside
+				 * sys_delete_module() remains the real,
+				 * un-bypassable safety net beyond this point: if
+				 * still genuinely unsafe, rmmod will simply fail
+				 * with its own -EBUSY rather than crashing.
+				 */
+				LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
+					     "force unload: proceeding to rmmod despite %d outstanding reference(s) instead of aborting -- administrator override always takes priority; retry manually (or via forceunload again) if the kernel itself still refuses",
+					     refcount - 1);
+				break;
+			}
+
+			LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG, "aborting, module remains loaded");
 			shadow_hook_quiesce(false);
 			goto abort;
 		}
@@ -1073,8 +1337,31 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 			return -EOPNOTSUPP;
 
 		mutex_lock(&lkm4ctr_unload_lock);
-		if (lkm4ctr_unload_in_progress ||
-		    lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
+		if (lkm4ctr_unload_in_progress) {
+			/*
+			 * An unload is already running (graceful or force). Never
+			 * answer a repeated write here with -EBUSY: that would be
+			 * exactly the kind of self-imposed block an administrator
+			 * writing "forceunload" must always be able to get past.
+			 * If it's not already in force mode, escalate it in place
+			 * -- lkm4ctr_safe_unload_fn()'s wait loop polls this same
+			 * flag and switches to the force path (skip further
+			 * waiting, force-unload every submodule, then drive
+			 * rmmod) on its very next check. A repeated write in the
+			 * same mode is simply a no-op success.
+			 */
+			if (force && !lkm4ctr_unload_force) {
+				lkm4ctr_unload_force = true;
+				lkm4ctr_diagfs_global_state = LKM4CTR_STATE_FORCE_UNLOADING;
+				mutex_unlock(&lkm4ctr_unload_lock);
+				LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG,
+					     "escalating already in-progress unload to force via diagfs control write");
+				return count;
+			}
+			mutex_unlock(&lkm4ctr_unload_lock);
+			return count;
+		}
+		if (lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
 		    lkm4ctr_diagfs_any_module_transition_locked()) {
 			mutex_unlock(&lkm4ctr_unload_lock);
 			return -EBUSY;
@@ -1101,17 +1388,6 @@ static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
 	mod = lkm4ctr_diagfs_find_module(info->tag);
 	if (!mod)
 		return -ENOSYS;
-
-	if (!mod->mod_init && !mod->mod_exit) {
-		if (action == LKM4CTR_CONTROL_LOAD) {
-			LKM4CTR_INFO(mod->tag,
-				     "load requested via diagfs control write, but shadow_hijack is always active; nothing to do");
-			return count;
-		}
-		LKM4CTR_WARN(mod->tag,
-			     "shadow_hijack is the shared hook engine; unload/forceunload are intentionally unsupported here");
-		return -EOPNOTSUPP;
-	}
 
 	switch (action) {
 	case LKM4CTR_CONTROL_LOAD: {
@@ -1383,9 +1659,9 @@ int lkm4ctr_diagfs_init(void)
 	int ret;
 
 	lkm4ctr_mount_nodev_fn =
-		(lkm4ctr_mount_nodev_t)shadow_hook_resolve("mount_nodev");
+		(lkm4ctr_mount_nodev_t)lkm4ctr_diagfs_resolve("mount_nodev");
 	lkm4ctr_generic_delete_inode_fn =
-		(lkm4ctr_generic_delete_inode_t)shadow_hook_resolve("generic_delete_inode");
+		(lkm4ctr_generic_delete_inode_t)lkm4ctr_diagfs_resolve("generic_delete_inode");
 
 	if (!lkm4ctr_mount_nodev_fn || !lkm4ctr_generic_delete_inode_fn) {
 		LKM4CTR_ERR(LKM4CTR_DIAGFS_TAG,
