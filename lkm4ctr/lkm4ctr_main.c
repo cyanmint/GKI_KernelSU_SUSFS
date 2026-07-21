@@ -20,6 +20,16 @@ void lkm4ctr_diagfs_exit(void);
 #define LKM4CTR_VERSION "4.0"
 #define LKM4CTR_TAG	"lkm4ctr"
 
+/*
+ * No submodule (shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices) is
+ * auto-loaded at insmod time any more: shadow_hijack_init() is a no-op
+ * (shared hook-engine bookkeeping only, no hooks of its own) and
+ * lkm4ctr_diagfs_init() only registers the "lkm4ctr" filesystem type, so
+ * lkm4ctr.ko now comes up completely passive -- every submodule starts
+ * "not loaded" until deliberately started via
+ * ./mnt/modules/<name>/status ("echo load"), or all at once via
+ * ./mnt/safe_unload ("echo load"). See lkm4ctr_diagfs.c for both.
+ */
 static int __init lkm4ctr_init(void)
 {
 	int ret;
@@ -28,43 +38,28 @@ static int __init lkm4ctr_init(void)
 	if (ret)
 		return ret;
 
-	ret = shadow_ns_init();
-	if (ret)
-		goto err_ns;
-
-	ret = shadow_sysvipc_init();
-	if (ret)
-		goto err_sysvipc;
-
-	ret = shadow_mqueue_init();
-	if (ret)
-		goto err_mqueue;
-
-	ret = shadow_cgdevices_init();
-	if (ret)
-		goto err_cgdevices;
-
 	ret = lkm4ctr_diagfs_init();
 	if (ret) {
 		LKM4CTR_WARN(LKM4CTR_TAG,
-			     "diagfs registration failed: %d (mount -t lkm4ctr, including safe_unload, will be unavailable)",
+			     "diagfs registration failed: %d (mount -t lkm4ctr, including safe_unload and every submodule's load/unload control, will be unavailable)",
 			     ret);
 	}
 
-	LKM4CTR_INFO(LKM4CTR_TAG, "loaded unified module");
+	LKM4CTR_INFO(LKM4CTR_TAG,
+		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mnt> then \"echo load\" to ./mnt/safe_unload or a specific ./mnt/modules/<name>/status)");
 	return 0;
-
-err_cgdevices:
-	shadow_mqueue_exit();
-err_mqueue:
-	shadow_sysvipc_exit();
-err_sysvipc:
-	shadow_ns_exit();
-err_ns:
-	shadow_hijack_exit();
-	return ret;
 }
 
+/*
+ * lkm4ctr_exit() unconditionally calls every submodule's own _exit(), which
+ * is idempotent-safe and force-frees all of that submodule's resources even
+ * if it was never loaded (shadow_hook_remove_all() on hooks that were never
+ * installed is a no-op; every submodule's own resource-registry teardown is
+ * likewise a no-op on an already-empty registry) or was already manually
+ * unloaded via diagfs. This is what guarantees rmmod is never blocked by a
+ * submodule's own state: whatever the diagfs left active is force-cleaned
+ * up right here, unconditionally, on the way out.
+ */
 static void __exit lkm4ctr_exit(void)
 {
 	lkm4ctr_diagfs_exit();
