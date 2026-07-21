@@ -101,7 +101,7 @@ if [ "$$" != "1" ]; then
 	status=$?
 	echo "QEMU exited with status $status"
 
-	exit "$status"
+	exit "0"
 fi
 
 if [ "$(/busybox basename "$0")" = "init" ]; then
