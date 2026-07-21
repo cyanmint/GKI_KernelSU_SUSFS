@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# lkm4ctr - unified container-compat kernel module.
+#
+# This tree is built exclusively as a standalone out-of-tree module (see
+# Makefile: `obj-m += lkm4ctr.o` always applies, since nothing in this
+# repository sources this file from a real kernel-tree top-level Kconfig),
+# so CONFIG_LKM4CTR and CONFIG_LKM4CTR_LOG_DMESG below are never actually
+# evaluated by a real Kconfig/oldconfig flow today. This file exists as
+# documentation of the module's configuration surface, and so that a future
+# in-tree integration (dropping this directory under a kernel source tree
+# and `source`-ing this file from drivers/misc/Kconfig or similar) picks up
+# working option definitions with no source changes required. For the
+# out-of-tree build this repository actually uses, the equivalent switch is
+# the LKM4CTR_LOG_DMESG make variable documented in Makefile.
+
+config LKM4CTR
+	tristate "lkm4ctr unified container-compatibility module"
+	default n
+	help
+	  Unified out-of-tree module providing transparent syscall-hook
+	  compatibility shims (namespaces, SysV IPC, POSIX message queues,
+	  cgroup devices) for containerd/runc/dockerd on kernels missing the
+	  corresponding native support, plus a mountable "lkm4ctr" diagfs
+	  (mount -t lkm4ctr diag <mountpoint>) exposing per-submodule
+	  status/hooks/namespaces/log diagnostics and a safe self-unload
+	  control file.
+
+config LKM4CTR_LOG_DMESG
+	bool "lkm4ctr: also log to the kernel log (dmesg)"
+	depends on LKM4CTR
+	default y
+	help
+	  Every lkm4ctr log line is always recorded in an in-memory ring
+	  buffer, readable via the lkm4ctr diagfs's per-submodule and
+	  top-level `log` files regardless of this option.
+
+	  Say Y (the default) to additionally mirror every log line to the
+	  kernel log (dmesg) at the matching level, as lkm4ctr has always
+	  done historically.
+
+	  Say N to make lkm4ctr.ko completely silent in dmesg: it will never
+	  call printk at all, and every message is reachable only by
+	  mounting the lkm4ctr diagfs.

@@ -80,10 +80,275 @@
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/string.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#include <linux/list.h>
 
 #include "shadow_hook.h"
+#include "lkm4ctr_log.h"
 
 #define SHADOW_HIJACK_VERSION	"1.0"
+
+/*
+ * shadow_hook_registry - a global, tag-keyed record of every hook group a
+ * subsystem has handed to shadow_hook_install_all(), kept purely so the
+ * lkm4ctr diagfs (lkm4ctr_diagfs.c) can render "what hooks are currently
+ * loaded, in which submodule" without each subsystem needing its own
+ * bespoke introspection API, and so the diagfs's per-module "status" files
+ * can force a submodule's hooks to load/unload at runtime
+ * (shadow_hook_registry_set_active()) without needing a dedicated
+ * force-load/unload entry point in every subsystem.
+ *
+ * Unlike the registry's first revision, nodes are never freed once created:
+ * a subsystem's hook array is a static file-scope array for the entire
+ * life of the module, so the pointer (and the node describing it) remains
+ * a valid, reusable handle across repeated shadow_hook_install_all()/
+ * shadow_hook_remove_all() cycles -- exactly what runtime force-load/unload
+ * needs. @active tracks whether the group's hooks are currently installed.
+ */
+struct shadow_hook_registry_group {
+	const char		*tag;
+	struct shadow_hook	**hooks;
+	bool			active;
+	struct list_head	list;
+};
+
+static LIST_HEAD(shadow_hook_registry_groups);
+static DEFINE_MUTEX(shadow_hook_registry_lock);
+
+/* Caller must hold shadow_hook_registry_lock. */
+static struct shadow_hook_registry_group *
+shadow_hook_registry_find_locked(struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (g->hooks == hooks)
+			return g;
+	}
+	return NULL;
+}
+
+static void shadow_hook_registry_add(const char *tag, struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g) {
+		g->active = true;
+		mutex_unlock(&shadow_hook_registry_lock);
+		return;
+	}
+
+	mutex_unlock(&shadow_hook_registry_lock);
+	g = kzalloc(sizeof(*g), GFP_KERNEL);
+	if (!g)
+		return;
+	g->tag = tag;
+	g->hooks = hooks;
+	g->active = true;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	/* Re-check: another caller may have raced us in while unlocked. */
+	if (shadow_hook_registry_find_locked(hooks)) {
+		kfree(g);
+	} else {
+		list_add_tail(&g->list, &shadow_hook_registry_groups);
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+}
+
+static void shadow_hook_registry_remove(struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g)
+		g->active = false;
+	mutex_unlock(&shadow_hook_registry_lock);
+}
+
+/*
+ * shadow_hook_registry_tag_matches() - whether @group_tag (e.g.
+ * "shadow_ns_procfs") belongs to the @filter subsystem (e.g. "shadow_ns"):
+ * either an exact match, or @filter followed by '_' as a prefix. shadow_ns
+ * registers several hook groups under related-but-distinct tags (its own
+ * "shadow_ns" core plus "shadow_ns_uts"/"_pid"/"_user"/"_procfs"), so the
+ * diagfs's single per-module "hooks" file needs every one of them when
+ * asked for "shadow_ns", not just an exact-string match.
+ */
+static bool shadow_hook_registry_tag_matches(const char *filter, const char *group_tag)
+{
+	size_t len = strlen(filter);
+
+	if (strncmp(filter, group_tag, len))
+		return false;
+	return group_tag[len] == '\0' || group_tag[len] == '_';
+}
+
+/*
+ * shadow_hook_registry_snprintf() - render every hook belonging to @tag (or
+ * every hook in every group, if @tag is NULL) as one "resolved_name
+ * installed=yes/no address=0x...\n" line per hook into @buf (size @buflen).
+ * Returns the number of bytes that would have been written (snprintf()
+ * semantics), for lkm4ctr_diagfs.c's per-module "hooks" files.
+ */
+size_t shadow_hook_registry_snprintf(const char *tag, char *buf, size_t buflen)
+{
+	struct shadow_hook_registry_group *g;
+	size_t pos = 0;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		int i;
+
+		if (tag && !shadow_hook_registry_tag_matches(tag, g->tag))
+			continue;
+
+		for (i = 0; g->hooks[i]; i++) {
+			struct shadow_hook *h = g->hooks[i];
+			const char *name = h->resolved_name ? h->resolved_name :
+				(h->names && h->names[0] ? h->names[0] : "?");
+
+			pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+					  "%s: %-32s installed=%s address=0x%lx\n",
+					  g->tag, name, h->installed ? "yes" : "no",
+					  h->address);
+		}
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	return pos;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_snprintf);
+
+/*
+ * shadow_hook_registry_tag_active() - whether a subsystem tagged @tag has a
+ * currently-registered hook group, i.e. whether that submodule successfully
+ * made it through shadow_hook_install_all() and has not since called
+ * shadow_hook_remove_all() (nor been force-unloaded via
+ * shadow_hook_registry_set_active()). Used by lkm4ctr_diagfs.c's per-module
+ * "status" files as the "activated" flag requested for the diagnostics
+ * tree.
+ */
+bool shadow_hook_registry_tag_active(const char *tag)
+{
+	struct shadow_hook_registry_group *g;
+	bool found = false;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (!strcmp(g->tag, tag)) {
+			found = g->active;
+			break;
+		}
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	return found;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_tag_active);
+
+/*
+ * shadow_hook_registry_set_active() - force every hook group whose tag
+ * matches @tag (see shadow_hook_registry_tag_matches()) to be installed
+ * (@enable true) or removed (@enable false), if it is not already in that
+ * state. This is what the lkm4ctr diagfs's per-module "status" files use
+ * for `echo load`/`echo unload`.
+ *
+ * Matching groups are first snapshotted (tag + hooks pointer) under
+ * shadow_hook_registry_lock, then acted on with the lock released: both
+ * shadow_hook_install_all() and shadow_hook_remove_all() call back into
+ * shadow_hook_registry_add()/_remove() above, which take the same mutex
+ * themselves, so calling them while already holding it would deadlock.
+ * A fixed-size on-stack snapshot array is enough here -- no subsystem
+ * currently registers more than a handful of hook groups.
+ *
+ * Every step is logged verbosely via LKM4CTR_LOG (tagged with @tag) so
+ * that a "why didn't this take effect?" question is always answerable
+ * from ./mnt/modules/<tag>/log alone: which groups matched, which were
+ * already in the requested state, and -- on failure -- exactly which
+ * group and underlying shadow_hook_install_all() error blocked it, plus a
+ * concrete next step.
+ *
+ * Returns 0 on success (including the case where @tag matches nothing, or
+ * every matching group is already in the requested state -- both are
+ * treated as a no-op, matching a status file for a submodule with no
+ * runtime-hookable syscalls on this kernel), or the first non-ENOENT
+ * error shadow_hook_install_all() reports for any matching group.
+ */
+#define SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX 16
+
+static int shadow_hook_group_count(struct shadow_hook **hooks)
+{
+	int n = 0;
+
+	while (hooks[n])
+		n++;
+	return n;
+}
+
+int shadow_hook_registry_set_active(const char *tag, bool enable)
+{
+	struct shadow_hook_registry_group *g;
+	struct shadow_hook_registry_group *snapshot[SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX];
+	int i, n = 0, ret = 0;
+	bool any_group_for_tag = false;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (!shadow_hook_registry_tag_matches(tag, g->tag))
+			continue;
+		any_group_for_tag = true;
+		if (g->active == enable) {
+			LKM4CTR_INFO(tag, "hook group \"%s\" is already %s, nothing to do",
+				     g->tag, enable ? "active" : "inactive");
+			continue;
+		}
+		if (n < SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX)
+			snapshot[n++] = g;
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	if (!any_group_for_tag) {
+		LKM4CTR_WARN(tag,
+			     "no hook group is registered under \"%s\"; this submodule either was never initialised on this kernel (e.g. it detected genuine native kernel support and never needed to hook anything) or the tag is unknown -- %s request is a no-op",
+			     tag, enable ? "load" : "unload");
+		return 0;
+	}
+
+	for (i = 0; i < n; i++) {
+		int count = shadow_hook_group_count(snapshot[i]->hooks);
+
+		if (enable) {
+			int installed;
+
+			LKM4CTR_INFO(tag, "loading hook group \"%s\" (%d hook(s) to attempt)",
+				     snapshot[i]->tag, count);
+			installed = shadow_hook_install_all(snapshot[i]->hooks, snapshot[i]->tag);
+			if (installed < 0) {
+				LKM4CTR_ERR(tag,
+					    "failed to load hook group \"%s\": %d -- see the \"failed to install hook[N]\" line just above this one in this same log for the exact hook and the underlying error; common causes are the resolved symbol no longer matching the expected prototype on this kernel build, or the ftrace/kprobe backend rejecting an already-hooked address (only one shadow_hook may own a given symbol at a time)",
+					    snapshot[i]->tag, installed);
+				if (!ret)
+					ret = installed;
+				continue;
+			}
+			LKM4CTR_INFO(tag, "hook group \"%s\" loaded: %d/%d hook(s) installed (the rest, if any, had no matching symbol on this kernel and were skipped -- see \"symbol for hook[N] not found\" lines above)",
+				     snapshot[i]->tag, installed, count);
+		} else {
+			LKM4CTR_INFO(tag, "unloading hook group \"%s\" (%d hook(s))",
+				     snapshot[i]->tag, count);
+			shadow_hook_remove_all(snapshot[i]->hooks);
+			LKM4CTR_INFO(tag, "hook group \"%s\" unloaded", snapshot[i]->tag);
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_set_active);
 
 /*
  * shadow_hook_resolve - find the runtime address of a kernel symbol.
@@ -396,6 +661,9 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	if (hook->installed)
+		return 0;
+
 	if (!shadow_hook_ftrace_api_ready())
 		return -ENOENT;
 
@@ -528,6 +796,9 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	if (hook->installed)
+		return 0;
+
 	for (name = hook->names; *name; name++) {
 		hook->address = shadow_hook_resolve(*name);
 		if (hook->address) {
@@ -585,19 +856,21 @@ int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag)
 {
 	int i, err, installed = 0;
 
+	shadow_hook_registry_add(tag, hooks);
+
 	for (i = 0; hooks[i]; i++) {
 		pr_debug("%s: attempting to install hook[%d]\n", tag, i);
 		err = shadow_hook_install(hooks[i]);
 		if (err == -ENOENT) {
-			pr_info("%s: symbol for hook[%d] not found, skipping\n", tag, i);
+			LKM4CTR_INFO(tag, "symbol for hook[%d] not found, skipping", i);
 			continue;
 		}
 		if (err) {
-			pr_err("%s: failed to install hook[%d]: %d\n", tag, i, err);
+			LKM4CTR_ERR(tag, "failed to install hook[%d]: %d", i, err);
 			return err;
 		}
-		pr_info("%s: hooked %s at %px\n", tag, hooks[i]->resolved_name,
-			(void *)hooks[i]->address);
+		LKM4CTR_INFO(tag, "hooked %s at %px", hooks[i]->resolved_name,
+			     (void *)hooks[i]->address);
 		installed++;
 	}
 
@@ -608,10 +881,28 @@ EXPORT_SYMBOL_GPL(shadow_hook_install_all);
 
 void shadow_hook_remove_all(struct shadow_hook **hooks)
 {
-	int i;
+	struct shadow_hook_registry_group *g;
+	const char *tag = "shadow_hook";
+	int i, removed = 0;
 
-	for (i = 0; hooks[i]; i++)
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g)
+		tag = g->tag;
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	for (i = 0; hooks[i]; i++) {
+		if (!hooks[i]->installed)
+			continue;
+		LKM4CTR_INFO(tag, "removing hook %s (was installed at 0x%lx)",
+			     hooks[i]->resolved_name ? hooks[i]->resolved_name : "?",
+			     hooks[i]->address);
 		shadow_hook_remove(hooks[i]);
+		removed++;
+	}
+	LKM4CTR_INFO(tag, "hook remove pass complete, %d hook(s) removed", removed);
+
+	shadow_hook_registry_remove(hooks);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove_all);
 
@@ -622,11 +913,11 @@ int shadow_hijack_init(void)
 	 * exported shadow_hook_* implementation. Loading it makes those
 	 * symbols available to the hooking modules that depend on it.
 	 */
-	pr_info("shadow_hijack: loaded (shared shadow_hook implementation)\n");
+	LKM4CTR_INFO("shadow_hijack", "loaded (shared shadow_hook implementation)");
 	return 0;
 }
 
 void shadow_hijack_exit(void)
 {
-	pr_info("shadow_hijack: unloaded\n");
+	LKM4CTR_INFO("shadow_hijack", "unloaded");
 }

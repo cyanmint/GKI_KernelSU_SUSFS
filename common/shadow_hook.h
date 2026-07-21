@@ -203,4 +203,17 @@ void shadow_hook_remove_all(struct shadow_hook **hooks);
 void shadow_hook_quiesce(bool quiesce);
 bool shadow_hook_is_quiescing(void);
 
+/*
+ * shadow_hook_registry_snprintf()/shadow_hook_registry_tag_active() -
+ * introspection over every hook group currently registered via
+ * shadow_hook_install_all()/shadow_hook_remove_all(), keyed by the same
+ * @tag string each subsystem already passes to those two calls. Used by
+ * lkm4ctr_diagfs.c to render each submodule's "status" and "hooks"
+ * diagnostics files without any subsystem needing bespoke introspection
+ * plumbing of its own. See shadow_hijack.c for the implementation.
+ */
+size_t shadow_hook_registry_snprintf(const char *tag, char *buf, size_t buflen);
+bool shadow_hook_registry_tag_active(const char *tag);
+int shadow_hook_registry_set_active(const char *tag, bool enable);
+
 #endif /* _SHADOW_HOOK_H */

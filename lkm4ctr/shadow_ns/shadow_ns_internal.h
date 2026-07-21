@@ -371,4 +371,10 @@ struct shadow_ns *shadow_ns_generic_for_tgid(u32 type, pid_t rpid);
  */
 u32 shadow_ns_current_ipc_ns_id(void);
 
+/*
+ * shadow_ns_diag_snprintf() - see shadow_ns_diag.c. Renders the current
+ * namespace registry and per-task-group membership for the lkm4ctr diagfs.
+ */
+size_t shadow_ns_diag_snprintf(char *buf, size_t buflen);
+
 #endif

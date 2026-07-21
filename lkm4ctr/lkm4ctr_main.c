@@ -2,6 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
+#include "lkm4ctr_log.h"
+
 int shadow_hijack_init(void);
 void shadow_hijack_exit(void);
 int shadow_ns_init(void);
@@ -12,10 +14,11 @@ int shadow_mqueue_init(void);
 void shadow_mqueue_exit(void);
 int shadow_cgdevices_init(void);
 void shadow_cgdevices_exit(void);
-int lkm4ctr_safe_unload_init(void);
-void lkm4ctr_safe_unload_exit(void);
+int lkm4ctr_diagfs_init(void);
+void lkm4ctr_diagfs_exit(void);
 
 #define LKM4CTR_VERSION "4.0"
+#define LKM4CTR_TAG	"lkm4ctr"
 
 static int __init lkm4ctr_init(void)
 {
@@ -41,13 +44,14 @@ static int __init lkm4ctr_init(void)
 	if (ret)
 		goto err_cgdevices;
 
-	ret = lkm4ctr_safe_unload_init();
+	ret = lkm4ctr_diagfs_init();
 	if (ret) {
-		pr_warn("lkm4ctr: safe_unload sysfs registration failed: %d (safe_unload will be unavailable)\n",
-			ret);
+		LKM4CTR_WARN(LKM4CTR_TAG,
+			     "diagfs registration failed: %d (mount -t lkm4ctr, including safe_unload, will be unavailable)",
+			     ret);
 	}
 
-	pr_info("lkm4ctr: loaded unified module\n");
+	LKM4CTR_INFO(LKM4CTR_TAG, "loaded unified module");
 	return 0;
 
 err_cgdevices:
@@ -63,13 +67,13 @@ err_ns:
 
 static void __exit lkm4ctr_exit(void)
 {
-	lkm4ctr_safe_unload_exit();
+	lkm4ctr_diagfs_exit();
 	shadow_cgdevices_exit();
 	shadow_mqueue_exit();
 	shadow_sysvipc_exit();
 	shadow_ns_exit();
 	shadow_hijack_exit();
-	pr_info("lkm4ctr: unloaded unified module\n");
+	LKM4CTR_INFO(LKM4CTR_TAG, "unloaded unified module");
 }
 
 module_init(lkm4ctr_init);
