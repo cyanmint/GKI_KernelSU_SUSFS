@@ -27,8 +27,8 @@ void lkm4ctr_diagfs_exit(void);
  * lkm4ctr_diagfs_init() only registers the "lkm4ctr" filesystem type, so
  * lkm4ctr.ko now comes up completely passive -- every submodule starts
  * "not loaded" until deliberately started via
- * ./mnt/modules/<name>/status ("echo load"), or all at once via
- * ./mnt/safe_unload ("echo load"). See lkm4ctr_diagfs.c for both.
+ * ./mnt/<name>/control ("echo load"), or all at once via
+ * ./mnt/global/control ("echo load"). See lkm4ctr_diagfs.c for both.
  */
 static int __init lkm4ctr_init(void)
 {
@@ -41,12 +41,12 @@ static int __init lkm4ctr_init(void)
 	ret = lkm4ctr_diagfs_init();
 	if (ret) {
 		LKM4CTR_WARN(LKM4CTR_TAG,
-			     "diagfs registration failed: %d (mount -t lkm4ctr, including safe_unload and every submodule's load/unload control, will be unavailable)",
+			     "diagfs registration failed: %d (mount -t lkm4ctr, including global/control and every submodule's load/unload control, will be unavailable)",
 			     ret);
 	}
 
 	LKM4CTR_INFO(LKM4CTR_TAG,
-		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mountpoint> then \"echo load\" to <mountpoint>/safe_unload or a specific <mountpoint>/modules/<name>/status)");
+		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mountpoint> then \"echo load\" to <mountpoint>/global/control or a specific <mountpoint>/<name>/control)");
 	return 0;
 }
 

@@ -172,3 +172,10 @@ dmesg | grep shadow_mqueue
 Expected log theme: the `mq_*` hook set is installed if those syscall
 wrappers are present, and `/dev/mqueue` is created/mounted (or a reason is
 logged for why it wasn't).
+
+## Diagfs paths
+
+With `mount -t lkm4ctr diag <mnt>`, shadow_mqueue is exposed at
+`/<mnt>/mqueue/`. Use `control` for `load`/`unload`/`forceunload`, `status`
+for the exact lifecycle state, `hooks`/`log` for diagnostics, and `msg` for a
+live dump of the current in-memory queues and queued message metadata.

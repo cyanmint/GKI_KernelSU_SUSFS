@@ -186,3 +186,13 @@ insmod lkm4ctr/lkm4ctr/lkm4ctr.ko
 
 The module logs which syscall wrapper symbols were hooked through the shared
 `shadow_hook` helper.
+
+## Diagfs paths
+
+With `mount -t lkm4ctr diag <mnt>`, shadow_sysvipc is exposed at
+`/<mnt>/sysvipc/{control,status,hooks,resources,log}`. `control` accepts
+`load`/`unload`/`forceunload`; `status` prints the exact lifecycle state.
+`resources` lists every live msgq/sem/shm object currently held (id, type,
+namespace, key, refcount, mode, and type-specific fields). The same live SysV
+IPC resource inventory is also included, aggregated with every other
+subsystem's, in `/<mnt>/global/resources`.

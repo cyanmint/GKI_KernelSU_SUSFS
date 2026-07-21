@@ -70,3 +70,9 @@ dmesg | grep shadow_cgdevices
 
 Expect a log line showing how many transparent hooks were installed on this
 kernel.
+
+## Diagfs paths
+
+With `mount -t lkm4ctr diag <mnt>`, shadow_cgdevices is exposed at
+`/<mnt>/cgroupdevices/{control,status,hooks,log}`. `control` accepts
+`load`/`unload`/`forceunload`; `status` prints the exact lifecycle state.

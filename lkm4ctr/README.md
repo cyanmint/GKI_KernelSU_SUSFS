@@ -12,10 +12,8 @@ The unified module links these internal subsystem source trees together:
 * `shadow_sysvipc/` — SysV IPC hooks and registry
 * `shadow_mqueue/` — POSIX mqueue hooks and queue engine
 * `shadow_cgdevices/` — device-open compatibility hooks
-* `lkm4ctr_diagfs.c` — the `lkm4ctr` diagnostics pseudo-filesystem: per-
-  submodule load/unload control plus status/hooks/namespaces/log
-  introspection, and the global `safe_unload` self-unload control (see
-  below)
+* `lkm4ctr_diagfs.c` — the `lkm4ctr` diagnostics pseudo-filesystem: runtime
+  control/status plus hooks/namespaces/log/resource introspection
 
 Their sources stay split by subsystem for maintainability, but they now build
 and load only as one module with the single entry point in
@@ -23,60 +21,72 @@ and load only as one module with the single entry point in
 
 ## No submodule is auto-loaded
 
-`insmod lkm4ctr.ko` only brings up the shared hook engine
-(`shadow_hijack`) and registers the `lkm4ctr` diagfs filesystem type --
-none of `shadow_ns`/`shadow_sysvipc`/`shadow_mqueue`/`shadow_cgdevices` are
-started automatically. Mount the diagfs and start what you need:
+`insmod lkm4ctr.ko` only brings up the shared hook engine (`shadow_hijack`)
+and registers the `lkm4ctr` diagfs filesystem type — none of
+`shadow_ns`/`shadow_sysvipc`/`shadow_mqueue`/`shadow_cgdevices` are started
+automatically. Mount the diagfs and start what you need:
 
 ```sh
 mount -t lkm4ctr diag /mnt
-echo load > /mnt/modules/shadow_ns/status   # start just shadow_ns, or:
-echo load > /mnt/safe_unload                # start every submodule at once
-cat /mnt/modules/shadow_ns/status           # "active" / "not loaded"
+echo load > /mnt/ns/control          # start just shadow_ns, or:
+echo load > /mnt/global/control      # start every submodule at once
+cat /mnt/ns/status                   # unloaded / loading / active / ...
+cat /mnt/ns/pid/namespaces           # pid-only namespace membership listing
 ```
 
-Each submodule's `status` file also accepts `unload` (graceful) and
-`force`/`force_unload`: every submodule's own `_exit()` already
-unconditionally frees all of its resources and removes its hooks, so both
-commands behave identically for that submodule today -- `force` additionally
-brackets the call with a brief module-wide hook quiesce as an extra safety
-net. `rmmod lkm4ctr` (and `safe_unload`, below) always force-clean up
-whatever submodules are still active on the way out, regardless of whether
-they were ever started via diagfs, so a submodule's own state can never
-block module removal.
+Each runtime-loadable submodule exposes `control`, `status`, `log`, and (where
+relevant) `hooks` or a live-state listing file directly under the mount root:
+
+* `/mnt/global/{control,status,log,resources}`
+* `/mnt/hijack/{control,status,log,functions}`
+* `/mnt/ns/{control,status,hooks,log,namespaces}` plus
+  `/mnt/ns/{pid,ipc,mnt,net,user,uts,cgroup}/...`
+* `/mnt/sysvipc/{control,status,hooks,resources,log}`
+* `/mnt/mqueue/{control,status,hooks,log,msg}`
+* `/mnt/cgroupdevices/{control,status,hooks,log}`
+
+Per-submodule `control` accepts `load`, `unload` (`remove`/`graceful` aliases),
+and `forceunload` (`force`/`force_unload` aliases). `status` is read-only and
+prints exactly one lifecycle state: `unloaded`, `loading`, `active`,
+`graceful unloading`, or `force unloading`. `shadow_hijack` keeps the same
+layout for symmetry, but its control file only reports help because the shared
+hook engine itself is always active while `lkm4ctr.ko` is loaded.
+
+`rmmod lkm4ctr` (and `global/control`, below) always force-clean up whatever
+submodules are still active on the way out, so a submodule's own state can
+never block module removal.
 
 ## rmmod safety
 
-Every hooked call executed while a redirected call is in flight holds a
-module reference for its duration (see `common/shadow_hook.h` and
+Every hooked call executed while a redirected call is in flight holds a module
+reference for its duration (see `common/shadow_hook.h` and
 `shadow_hijack/README.md`), so an ordinary `rmmod lkm4ctr` refuses to race
-with in-flight calls: the kernel returns `-EBUSY` ("Module lkm4ctr is in
-use") until they finish, instead of panicking once their code is freed out
-from under them.
+with in-flight calls: the kernel returns `-EBUSY` ("Module lkm4ctr is in use")
+until they finish, instead of panicking once their code is freed out from under
+them.
 
-## Safe unload via the diagfs
+## Global unload via the diagfs
 
-Writing `1` (or `unload`/`remove`/`graceful`) to `./mnt/safe_unload`
+Writing `unload` (or `1`/`remove`/`graceful`) to `./mnt/global/control`
 triggers the module to unload itself with no further operator action:
 
 ```sh
-echo 1 > /mnt/safe_unload
+echo unload > /mnt/global/control
 ```
 
-This spawns a worker thread that quiesces every hook (stopping new
-redirected calls from starting), waits for any already in-flight calls to
-finish, then explicitly frees every submodule's resources, and finally
-launches a real userspace `rmmod lkm4ctr` on its own. If in-flight calls
-don't drain within 30 seconds, the attempt is aborted, hooks resume normal
-operation, and the module stays loaded. Writing `force`/`force_unload`
-instead runs the same sequence, except every submodule's resources are
-freed immediately after quiescing rather than waiting until the very end.
-Reading `./mnt/safe_unload` reports `idle` or `in-progress` plus its own
-log tail.
+This spawns a worker thread that quiesces every hook (stopping new redirected
+calls from starting), waits for any already in-flight calls to finish, then
+explicitly frees every submodule's resources, and finally launches a real
+userspace `rmmod lkm4ctr` on its own. If in-flight calls don't drain within 30
+seconds, the attempt is aborted, hooks resume normal operation, and the module
+stays loaded. Writing `forceunload`/`force`/`force_unload` instead runs the
+same sequence, except every submodule's resources are freed immediately after
+quiescing rather than waiting until the very end.
 
-This control lives on the `lkm4ctr` diagfs (`mount -t lkm4ctr diag <mnt>`)
-rather than a sysfs attribute or misc device: see `lkm4ctr_diagfs.c`'s file
-header for the full rationale and the complete list of files it exposes.
+Reading `./mnt/global/control` prints the accepted commands; reading
+`./mnt/global/status` prints the current lifecycle state. `./mnt/global/log`
+contains the combined log stream and `./mnt/global/resources` aggregates the
+live resources still tracked across the linked subsystems.
 
 ## Build
 

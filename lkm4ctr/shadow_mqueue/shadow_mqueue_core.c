@@ -399,3 +399,42 @@ void mq_release_all(void)
 	}
 	mutex_unlock(&mq_name_lock);
 }
+
+size_t shadow_mqueue_diag_snprintf(char *buf, size_t buflen)
+{
+	struct shadow_mq *mq;
+	size_t pos = 0;
+	int bkt;
+	unsigned int queues = 0;
+
+	mutex_lock(&mq_name_lock);
+	hash_for_each(mq_name_hash, bkt, mq, name_node)
+		queues++;
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			  "queues: %u\n", queues);
+	hash_for_each(mq_name_hash, bkt, mq, name_node) {
+		struct mq_msg *msg;
+		unsigned int idx = 0;
+		unsigned long flags;
+
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				  "  queue name=%s curmsgs=%d maxmsg=%lld msgsize=%lld unlinked=%s refcount=%d\n",
+				  mq->name, atomic_read(&mq->curmsgs),
+				  (long long)mq->mq_maxmsg,
+				  (long long)mq->mq_msgsize,
+				  READ_ONCE(mq->unlinked) ? "yes" : "no",
+				  refcount_read(&mq->refcount));
+
+		spin_lock_irqsave(&mq->msgs_lock, flags);
+		list_for_each_entry(msg, &mq->msgs, node) {
+			pos += scnprintf(buf + pos,
+					  pos < buflen ? buflen - pos : 0,
+					  "    msg[%u] prio=%u len=%u\n",
+					  idx++, msg->prio, msg->len);
+		}
+		spin_unlock_irqrestore(&mq->msgs_lock, flags);
+	}
+	mutex_unlock(&mq_name_lock);
+
+	return pos;
+}

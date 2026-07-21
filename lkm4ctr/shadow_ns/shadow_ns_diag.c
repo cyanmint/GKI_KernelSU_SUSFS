@@ -33,6 +33,63 @@ static const char *shadow_ns_diag_type_name(u32 type)
 }
 
 /*
+ * shadow_ns_diag_snprintf_type() - render only namespace objects of one
+ * specific @type plus the task groups currently joined to each of them. Used
+ * by lkm4ctr_diagfs.c's /ns/<type>/namespaces listing files so the diagfs can
+ * expose one directory per namespace type without pretending shadow_ns has a
+ * separate load/unload lifecycle per type.
+ */
+size_t shadow_ns_diag_snprintf_type(u32 type, char *buf, size_t buflen)
+{
+	size_t pos = 0;
+	unsigned long index;
+	struct shadow_ns *ns;
+	struct shadow_task_group *tg;
+	const char *type_name = shadow_ns_diag_type_name(type);
+
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			  "type=%s\n", type_name);
+
+	mutex_lock(&shadow_ns_map_lock);
+	xa_for_each(&shadow_ns_map, index, ns) {
+		if (ns->type != type)
+			continue;
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				  "  ns id=%u parent_id=%u refcount=%d\n",
+				  ns->id, ns->parent_id, refcount_read(&ns->refcount));
+	}
+	mutex_unlock(&shadow_ns_map_lock);
+
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			  "members:\n");
+
+	mutex_lock(&shadow_ns_tgid_lock);
+	xa_for_each(&shadow_ns_tgid_map, index, tg) {
+		struct shadow_ns *cur;
+
+		mutex_lock(&tg->lock);
+		cur = tg->cur[type];
+		if (cur) {
+			pos += scnprintf(buf + pos,
+					  pos < buflen ? buflen - pos : 0,
+					  "  ns=%u tgid=%d\n",
+					  cur->id, tg->tgid);
+		}
+		if (type == SHADOW_NS_TYPE_PID && tg->pending_pidns) {
+			pos += scnprintf(buf + pos,
+					  pos < buflen ? buflen - pos : 0,
+					  "  ns=%u pending_tgid=%d\n",
+					  tg->pending_pidns->id, tg->tgid);
+		}
+		mutex_unlock(&tg->lock);
+	}
+	mutex_unlock(&shadow_ns_tgid_lock);
+
+	return pos;
+}
+EXPORT_SYMBOL_GPL(shadow_ns_diag_snprintf_type);
+
+/*
  * shadow_ns_diag_snprintf() - render the full namespace registry plus which
  * task group (tgid) currently sits in which namespace of each type, into
  * @buf (size @buflen). Returns the number of bytes that would have been

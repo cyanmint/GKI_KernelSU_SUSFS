@@ -3,119 +3,85 @@
  * lkm4ctr_diagfs - the "lkm4ctr" pseudo-filesystem: `mount -t lkm4ctr diag
  * ./mnt` exposes a read/write diagnostics tree replacing the earlier
  * /dev/lkm4ctr_safe_unload misc device entirely (see lkm4ctr_safe_unload.c's
- * removal), plus the "which modules are activated, what hooks/namespaces
- * are currently in use" introspection that misc device never offered:
+ * removal), plus runtime control/introspection over every linked subsystem.
  *
- *   ./mnt/modules/<subsystem>/status      - "active"/"not loaded"; echo
- *                                            "load" calls that submodule's
- *                                            own init function (installing
- *                                            its hooks) at runtime; echo
- *                                            "unload" ("graceful") or
- *                                            "force" calls its own exit
- *                                            function (uninstalling its
- *                                            hooks and freeing all of its
- *                                            resources) -- see
- *                                            lkm4ctr_diagfs_module_load()/
- *                                            _unload() for the (small) way
- *                                            the two unload variants
- *                                            differ. No submodule is
- *                                            auto-loaded at insmod time any
- *                                            more: every one of them starts
- *                                            "not loaded" until explicitly
- *                                            started this way, or all at
- *                                            once via ./mnt/safe_unload's
- *                                            "load" shortcut below.
- *   ./mnt/modules/<subsystem>/hooks       - one line per currently
- *                                            registered hook: resolved
- *                                            symbol name, installed state,
- *                                            address.
- *   ./mnt/modules/shadow_ns/namespaces    - the full shadow_ns namespace
- *                                            registry and which task group
- *                                            (tgid) currently sits in which
- *                                            namespace of each type.
- *   ./mnt/modules/<subsystem>/log         - that submodule's log lines.
- *   ./mnt/log                             - every log line, unfiltered.
- *   ./mnt/safe_unload                     - read: current safe-unload
- *                                            progress plus its own log
- *                                            tail. write:
- *                                              "load"/"load_all"  - the
- *                                                load-all shortcut: calls
- *                                                every submodule's own
- *                                                init function that is not
- *                                                already active.
- *                                              "1"/"unload"/"remove"/
- *                                              "graceful" - start the
- *                                                graceful self-unload
- *                                                sequence (see
- *                                                lkm4ctr_safe_unload_fn()
- *                                                below for the full
- *                                                rationale, carried over
- *                                                unchanged from the removed
- *                                                misc device): quiesce
- *                                                hooks, wait for in-flight
- *                                                calls to drain, then
- *                                                explicitly free every
- *                                                submodule's resources and
- *                                                finally rmmod itself.
- *                                              "force"/"force_unload" -
- *                                                the same self-unload
- *                                                sequence, except every
- *                                                submodule's resources are
- *                                                freed immediately (right
- *                                                after quiescing, before
- *                                                even waiting for in-flight
- *                                                calls to drain) instead of
- *                                                waiting until the very
- *                                                end -- see
- *                                                lkm4ctr_diagfs_unload_all_now().
- *                                            NOTE: like any filesystem
- *                                            module, lkm4ctr.ko cannot
- *                                            actually unload while any
- *                                            "lkm4ctr" mount is still
- *                                            active (file_system_type's
- *                                            .owner keeps module_refcount()
- *                                            non-zero for as long as it is
- *                                            mounted anywhere, the same way
- *                                            it would refuse rmmod on any
- *                                            other in-use filesystem
- *                                            module) -- the worker
- *                                            auto-unmounts every active
- *                                            "lkm4ctr" mount itself (see
- *                                            lkm4ctr_auto_umount_diagfs())
- *                                            after quiescing hooks and
- *                                            before waiting for
- *                                            module_refcount() to drain, so
- *                                            no manual umount is normally
- *                                            required; if a mount still
- *                                            cannot be cleared (no umount
- *                                            binary present, or something
- *                                            keeps re-mounting it), the
- *                                            worker will time out and log
- *                                            exactly what is still blocking
- *                                            it plus how to resolve it.
- *                                            Only a genuine in-flight
- *                                            shadow_hook-redirected call
- *                                            can still hold module_refcount()
- *                                            elevated by this point (a hard
- *                                            kernel safety requirement that
- *                                            neither "graceful" nor "force"
- *                                            can or should bypass) -- every
- *                                            submodule's own resources
- *                                            never block rmmod either way,
- *                                            since both paths always free
- *                                            them unconditionally before
- *                                            rmmod is launched.
+ * Root layout
+ * -----------
+ *   ./mnt/global/control          - read: command help. write: "load"
+ *                                    (alias "load_all") loads every
+ *                                    submodule; "unload" (aliases "1",
+ *                                    "remove", "graceful") starts the
+ *                                    graceful self-unload sequence; "forceunload"
+ *                                    (aliases "force", "force_unload") starts
+ *                                    the force self-unload sequence.
+ *   ./mnt/global/status           - one of exactly: "active", "loading",
+ *                                    "graceful unloading", "force unloading".
+ *                                    "unloaded" is reserved for completeness
+ *                                    but is not observable once this mounted
+ *                                    filesystem is reachable, because the
+ *                                    module itself would already be gone.
+ *   ./mnt/global/log              - every log line, unfiltered.
+ *   ./mnt/global/resources        - best-effort aggregate of live resources
+ *                                    already tracked by the namespace, POSIX
+ *                                    mqueue, SysV IPC and hook registries.
+ *
+ *   ./mnt/hijack/{control,status,log,functions}
+ *                                  - diagnostics for the shared hook engine.
+ *                                    control exists for layout symmetry but
+ *                                    only reports help: shadow_hijack is
+ *                                    always active for as long as lkm4ctr.ko
+ *                                    itself is loaded, so unload/forceunload
+ *                                    are intentionally unsupported there.
+ *                                    functions is a live listing of every
+ *                                    currently registered hook across all
+ *                                    submodules.
+ *
+ *   ./mnt/ns/{control,status,hooks,log,namespaces}
+ *                                  - aggregate shadow_ns lifecycle, hooks,
+ *                                    full namespace registry and task-group
+ *                                    membership dump.
+ *   ./mnt/ns/<type>/{control,status,log,namespaces}
+ *                                  - one directory per shadow_ns namespace
+ *                                    type (pid/ipc/mnt/net/user/uts/cgroup).
+ *                                    shadow_ns still has one shared init()/
+ *                                    exit() for the whole subsystem, so each
+ *                                    per-type control/status file intentionally
+ *                                    reflects that shared backing lifecycle
+ *                                    rather than pretending individual types
+ *                                    can be independently loaded without a much
+ *                                    larger refactor. Each per-type namespaces
+ *                                    file is still filtered to only that type's
+ *                                    live namespace objects and member tgids.
+ *
+ *   ./mnt/sysvipc/{control,status,hooks,resources,log}
+ *   ./mnt/mqueue/{control,status,hooks,log,msg}
+ *   ./mnt/cgroupdevices/{control,status,hooks,log}
+ *                                  - the other runtime-loadable subsystems.
+ *                                    mqueue/msg is a live listing file of the
+ *                                    current in-memory queue/message state.
+ *
+ * The earlier ./mnt/modules/<subsystem>/status tree and the root-level
+ * ./mnt/safe_unload / ./mnt/log files are intentionally gone. control/status
+ * are split everywhere: control is the command surface, status is a strict
+ * lifecycle-state readout.
  *
  * Implementation
  * --------------
  * This is a small, fully in-memory pseudo-filesystem in the same spirit as
  * ramfs/securityfs: every dentry/inode in the tree is created once, up
- * front, at mount time (mount_nodev() + fill_super()); nothing is created
- * or destroyed lazily afterwards (status/log/hooks/namespaces content is
- * regenerated fresh on every open() via a seq_file single_open(), not
- * stored). Directory traversal reuses the kernel's own
- * simple_dir_inode_operations/simple_dir_operations (fs/libfs.c) rather
- * than hand-rolling dcache walking: unlike function symbols such as
+ * front, at mount time (mount_nodev() + fill_super()); nothing is created or
+ * destroyed lazily afterwards. File contents are regenerated fresh on every
+ * open() via seq_file single_open(). That static-tree design is preserved for
+ * the new layout too, so categories whose underlying live-object ids are not
+ * naturally knowable before mount time (e.g. currently queued mqueue messages
+ * or live SysV IPC/shadow_ns objects that may come and go after mount) are
+ * exposed as readable listing files rather than on-demand per-object dentries.
+ * This keeps the filesystem simple and race-resistant while still surfacing
+ * the underlying registries' current state.
+ *
+ * Directory traversal reuses the kernel's own
+ * simple_dir_inode_operations/simple_dir_operations (fs/libfs.c) rather than
+ * hand-rolling dcache walking: unlike function symbols such as
  * ftrace_set_filter_ip()/vm_mmap()/module_refcount() elsewhere in this
  * module, these two are plain data (struct) symbols, so they cannot be
  * recovered via shadow_hook_resolve()'s register_kprobe() trick if
@@ -149,6 +115,7 @@
 #include <linux/atomic.h>
 
 #include "shadow_hook.h"
+#include "shadow_ns/shadow_ns_internal.h"
 #include "lkm4ctr_log.h"
 #include "lkm4ctr_compat.h"
 
@@ -169,32 +136,17 @@
 typedef struct dentry *(*lkm4ctr_mount_nodev_t)(struct file_system_type *fs_type,
 						 int flags, void *data,
 						 int (*fill_super)(struct super_block *,
-								    void *, int));
+								   void *, int));
 typedef int (*lkm4ctr_generic_delete_inode_t)(struct inode *inode);
 
 static lkm4ctr_mount_nodev_t lkm4ctr_mount_nodev_fn;
 static lkm4ctr_generic_delete_inode_t lkm4ctr_generic_delete_inode_fn;
 
-/* shadow_ns_diag.c; deliberately forward-declared rather than pulling in
- * shadow_ns_internal.h, matching how lkm4ctr_main.c forward-declares every
- * other subsystem's init/exit entry points instead of including private
- * per-subsystem headers.
- */
 extern size_t shadow_ns_diag_snprintf(char *buf, size_t buflen);
+extern size_t shadow_ns_diag_snprintf_type(u32 type, char *buf, size_t buflen);
+extern size_t shadow_mqueue_diag_snprintf(char *buf, size_t buflen);
+extern size_t shadow_sysvipc_diag_snprintf(char *buf, size_t buflen);
 
-/*
- * Every submodule's own init()/exit() entry points, forward-declared the
- * same way lkm4ctr_main.c does (see its own file header). No submodule is
- * auto-started at insmod time any more (lkm4ctr_main.c only calls
- * shadow_hijack_init()/lkm4ctr_diagfs_init()), so "echo load" against a
- * ./mnt/modules/<name>/status file below -- or the ./mnt/safe_unload
- * "load" shortcut -- is what actually calls a submodule's _init() for the
- * first time; "echo unload"/"echo force" call its _exit(), which every
- * submodule already implements as an unconditional, idempotent-safe
- * force-free of its own resources (see lkm4ctr_main.c's lkm4ctr_exit()
- * comment), so both commands are safe to issue whether or not the
- * submodule is currently active.
- */
 extern int shadow_ns_init(void);
 extern void shadow_ns_exit(void);
 extern int shadow_sysvipc_init(void);
@@ -205,16 +157,30 @@ extern int shadow_cgdevices_init(void);
 extern void shadow_cgdevices_exit(void);
 
 enum lkm4ctr_diagfs_kind {
+	LKM4CTR_DIAG_CONTROL,
 	LKM4CTR_DIAG_STATUS,
 	LKM4CTR_DIAG_HOOKS,
 	LKM4CTR_DIAG_NAMESPACES,
 	LKM4CTR_DIAG_LOG,
-	LKM4CTR_DIAG_SAFE_UNLOAD,
+	LKM4CTR_DIAG_GLOBAL_RESOURCES,
+	LKM4CTR_DIAG_MQUEUE_MSG,
+	LKM4CTR_DIAG_SYSVIPC_RESOURCES,
+};
+
+enum lkm4ctr_diagfs_lifecycle_state {
+	LKM4CTR_STATE_UNLOADED,
+	LKM4CTR_STATE_LOADING,
+	LKM4CTR_STATE_ACTIVE,
+	LKM4CTR_STATE_GRACEFUL_UNLOADING,
+	LKM4CTR_STATE_FORCE_UNLOADING,
 };
 
 struct lkm4ctr_diagfs_info {
 	enum lkm4ctr_diagfs_kind	kind;
 	char				tag[LKM4CTR_LOG_TAG_MAX];
+	u32					ns_type;
+	bool					has_ns_type;
+	bool					is_global;
 };
 
 struct lkm4ctr_diagfs_module {
@@ -222,35 +188,43 @@ struct lkm4ctr_diagfs_module {
 	const char	*tag;
 	bool		has_hooks;
 	bool		has_namespaces;
-	/*
-	 * NULL for shadow_hijack (the shared hook engine, which has no
-	 * separate load/unload lifecycle of its own -- it is always active
-	 * for as long as lkm4ctr.ko itself is loaded). Every other entry's
-	 * mod_init/mod_exit are that submodule's own real _init()/_exit(),
-	 * called directly by ./mnt/modules/<name>/status's "load"/"unload"/
-	 * "force" writes below and by the ./mnt/safe_unload "load"/"force"
-	 * shortcuts.
-	 */
 	int		(*mod_init)(void);
 	void		(*mod_exit)(void);
+	enum lkm4ctr_diagfs_lifecycle_state state;
 };
 
-/*
- * The submodules the diagnostics tree enumerates. "shadow_hijack" is the
- * shared hook engine every other entry depends on: it owns no hooks or
- * namespaces of its own and is always active for as long as lkm4ctr.ko
- * itself is loaded, so it gets a status/log pair only.
- */
-static const struct lkm4ctr_diagfs_module lkm4ctr_diagfs_modules[] = {
-	{ "shadow_hijack",	"shadow_hijack",	false,	false,	NULL,			NULL },
-	{ "shadow_ns",		"shadow_ns",		true,	true,	shadow_ns_init,		shadow_ns_exit },
-	{ "shadow_sysvipc",	"shadow_sysvipc",	true,	false,	shadow_sysvipc_init,	shadow_sysvipc_exit },
-	{ "shadow_mqueue",	"shadow_mqueue",	true,	false,	shadow_mqueue_init,	shadow_mqueue_exit },
-	{ "shadow_cgdevices",	"shadow_cgdevices",	true,	false,	shadow_cgdevices_init,	shadow_cgdevices_exit },
+struct lkm4ctr_diagfs_ns_type {
+	u32		type;
+	const char	*name;
 };
 
-/* Find a module's dispatch entry by its diagfs tag, or NULL if unknown. */
-static const struct lkm4ctr_diagfs_module *lkm4ctr_diagfs_find_module(const char *tag)
+static struct lkm4ctr_diagfs_module lkm4ctr_diagfs_modules[] = {
+	{ "hijack", 		"shadow_hijack", 	false, false, NULL,			NULL,			LKM4CTR_STATE_ACTIVE },
+	{ "ns", 		"shadow_ns", 		true,  true,  shadow_ns_init,		shadow_ns_exit,		LKM4CTR_STATE_UNLOADED },
+	{ "sysvipc", 		"shadow_sysvipc", 	true,  false, shadow_sysvipc_init,	shadow_sysvipc_exit,	LKM4CTR_STATE_UNLOADED },
+	{ "mqueue", 		"shadow_mqueue", 	true,  false, shadow_mqueue_init,	shadow_mqueue_exit,	LKM4CTR_STATE_UNLOADED },
+	{ "cgroupdevices", 	"shadow_cgdevices", 	true,  false, shadow_cgdevices_init,	shadow_cgdevices_exit,	LKM4CTR_STATE_UNLOADED },
+};
+
+static const struct lkm4ctr_diagfs_ns_type lkm4ctr_diagfs_ns_types[] = {
+	{ SHADOW_NS_TYPE_PID, 	  "pid" },
+	{ SHADOW_NS_TYPE_IPC, 	  "ipc" },
+	{ SHADOW_NS_TYPE_MNT, 	  "mnt" },
+	{ SHADOW_NS_TYPE_NET, 	  "net" },
+	{ SHADOW_NS_TYPE_USER, 	  "user" },
+	{ SHADOW_NS_TYPE_UTS, 	  "uts" },
+	{ SHADOW_NS_TYPE_CGROUP, "cgroup" },
+};
+
+static enum lkm4ctr_diagfs_lifecycle_state lkm4ctr_diagfs_global_state =
+	LKM4CTR_STATE_ACTIVE;
+static struct task_struct *lkm4ctr_unload_thread;
+static DEFINE_MUTEX(lkm4ctr_unload_lock);
+static bool lkm4ctr_unload_in_progress;
+static bool lkm4ctr_unload_force;
+static atomic_t lkm4ctr_diagfs_mount_count = ATOMIC_INIT(0);
+
+static struct lkm4ctr_diagfs_module *lkm4ctr_diagfs_find_module(const char *tag)
 {
 	unsigned int i;
 
@@ -258,7 +232,53 @@ static const struct lkm4ctr_diagfs_module *lkm4ctr_diagfs_find_module(const char
 		if (!strcmp(lkm4ctr_diagfs_modules[i].tag, tag))
 			return &lkm4ctr_diagfs_modules[i];
 	}
+
 	return NULL;
+}
+
+static const char *lkm4ctr_diagfs_state_name(enum lkm4ctr_diagfs_lifecycle_state state)
+{
+	switch (state) {
+	case LKM4CTR_STATE_UNLOADED:
+		return "unloaded";
+	case LKM4CTR_STATE_LOADING:
+		return "loading";
+	case LKM4CTR_STATE_ACTIVE:
+		return "active";
+	case LKM4CTR_STATE_GRACEFUL_UNLOADING:
+		return "graceful unloading";
+	case LKM4CTR_STATE_FORCE_UNLOADING:
+		return "force unloading";
+	default:
+		return "unloaded";
+	}
+}
+
+static bool lkm4ctr_diagfs_state_busy(enum lkm4ctr_diagfs_lifecycle_state state)
+{
+	return state == LKM4CTR_STATE_LOADING ||
+	       state == LKM4CTR_STATE_GRACEFUL_UNLOADING ||
+	       state == LKM4CTR_STATE_FORCE_UNLOADING;
+}
+
+static enum lkm4ctr_diagfs_lifecycle_state
+lkm4ctr_diagfs_module_stable_state(struct lkm4ctr_diagfs_module *mod)
+{
+	if (!strcmp(mod->tag, "shadow_hijack"))
+		return LKM4CTR_STATE_ACTIVE;
+	return shadow_hook_registry_tag_active(mod->tag) ?
+		LKM4CTR_STATE_ACTIVE : LKM4CTR_STATE_UNLOADED;
+}
+
+static bool lkm4ctr_diagfs_any_module_transition_locked(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
+		if (lkm4ctr_diagfs_state_busy(lkm4ctr_diagfs_modules[i].state))
+			return true;
+	}
+	return false;
 }
 
 /* ------------------------------------------------------------------- */
@@ -266,8 +286,7 @@ static const struct lkm4ctr_diagfs_module *lkm4ctr_diagfs_find_module(const char
 /* ------------------------------------------------------------------- */
 
 static const struct file_operations lkm4ctr_diagfs_ro_fops;
-static const struct file_operations lkm4ctr_diagfs_status_fops;
-static const struct file_operations lkm4ctr_diagfs_safe_unload_fops;
+static const struct file_operations lkm4ctr_diagfs_control_fops;
 
 static struct inode *lkm4ctr_diagfs_make_inode(struct super_block *sb, umode_t mode)
 {
@@ -314,10 +333,13 @@ static struct dentry *lkm4ctr_diagfs_mkdir(struct super_block *sb,
 }
 
 static struct dentry *lkm4ctr_diagfs_create_file(struct super_block *sb,
-						  struct dentry *parent,
-						  const char *name, umode_t mode,
-						  enum lkm4ctr_diagfs_kind kind,
-						  const char *tag)
+					  struct dentry *parent,
+					  const char *name, umode_t mode,
+					  enum lkm4ctr_diagfs_kind kind,
+					  const char *tag,
+					  bool is_global,
+					  bool has_ns_type,
+					  u32 ns_type)
 {
 	struct inode *inode;
 	struct dentry *dentry;
@@ -327,6 +349,9 @@ static struct dentry *lkm4ctr_diagfs_create_file(struct super_block *sb,
 	if (!info)
 		return ERR_PTR(-ENOMEM);
 	info->kind = kind;
+	info->is_global = is_global;
+	info->has_ns_type = has_ns_type;
+	info->ns_type = ns_type;
 	if (tag)
 		strscpy(info->tag, tag, sizeof(info->tag));
 
@@ -336,18 +361,8 @@ static struct dentry *lkm4ctr_diagfs_create_file(struct super_block *sb,
 		return ERR_PTR(-ENOMEM);
 	}
 	inode->i_private = info;
-
-	switch (kind) {
-	case LKM4CTR_DIAG_SAFE_UNLOAD:
-		inode->i_fop = &lkm4ctr_diagfs_safe_unload_fops;
-		break;
-	case LKM4CTR_DIAG_STATUS:
-		inode->i_fop = &lkm4ctr_diagfs_status_fops;
-		break;
-	default:
-		inode->i_fop = &lkm4ctr_diagfs_ro_fops;
-		break;
-	}
+	inode->i_fop = (kind == LKM4CTR_DIAG_CONTROL) ?
+		&lkm4ctr_diagfs_control_fops : &lkm4ctr_diagfs_ro_fops;
 
 	inode_lock(d_inode(parent));
 	dentry = d_alloc_name(parent, name);
@@ -363,58 +378,193 @@ static struct dentry *lkm4ctr_diagfs_create_file(struct super_block *sb,
 	return dentry;
 }
 
-/* ------------------------------------------------------------------- */
-/* content rendering (status/hooks/namespaces/log)                     */
-/* ------------------------------------------------------------------- */
-
-static size_t lkm4ctr_diagfs_status_snprintf(const char *tag, char *buf, size_t buflen)
+static int lkm4ctr_diagfs_create_checked(struct super_block *sb,
+					 struct dentry *parent,
+					 const char *name, umode_t mode,
+					 enum lkm4ctr_diagfs_kind kind,
+					 const char *tag,
+					 bool is_global,
+					 bool has_ns_type,
+					 u32 ns_type)
 {
-	bool active;
+	struct dentry *dentry;
 
-	/*
-	 * shadow_hijack is the shared hook engine linked into every other
-	 * submodule; it registers no hooks of its own, so the generic
-	 * registry has nothing to report for it. It is active for exactly
-	 * as long as lkm4ctr.ko is loaded, which is always true by the time
-	 * anything can read this file.
-	 */
-	if (!strcmp(tag, "shadow_hijack"))
-		active = true;
-	else
-		active = shadow_hook_registry_tag_active(tag);
-
-	return scnprintf(buf, buflen, "%s\n", active ? "active" : "not loaded");
+	dentry = lkm4ctr_diagfs_create_file(sb, parent, name, mode, kind, tag,
+					    is_global, has_ns_type, ns_type);
+	return IS_ERR(dentry) ? PTR_ERR(dentry) : 0;
 }
 
-static size_t lkm4ctr_diagfs_namespaces_snprintf(const char *tag, char *buf, size_t buflen)
+/* ------------------------------------------------------------------- */
+/* content rendering                                                    */
+/* ------------------------------------------------------------------- */
+
+static const struct lkm4ctr_diagfs_ns_type *lkm4ctr_diagfs_find_ns_type(u32 type)
 {
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_ns_types); i++) {
+		if (lkm4ctr_diagfs_ns_types[i].type == type)
+			return &lkm4ctr_diagfs_ns_types[i];
+	}
+	return NULL;
+}
+
+static size_t lkm4ctr_diagfs_control_snprintf(const struct lkm4ctr_diagfs_info *info,
+					      char *buf, size_t buflen)
+{
+	size_t pos = 0;
+	struct lkm4ctr_diagfs_module *mod = NULL;
+
+	if (!info->is_global)
+		mod = lkm4ctr_diagfs_find_module(info->tag);
+
+	if (info->is_global) {
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "commands:\n"
+				 "  load         - load every submodule (alias: load_all)\n"
+				 "  unload       - graceful self-unload (aliases: 1, remove, graceful)\n"
+				 "  forceunload  - force self-unload (aliases: force, force_unload)\n");
+		return pos;
+	}
+
+	if (mod && !mod->mod_init && !mod->mod_exit) {
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "shadow_hijack is the shared hook engine backing every other subsystem.\n"
+				 "It is always active while lkm4ctr.ko is loaded.\n"
+				 "load is a no-op here; unload/forceunload are unsupported.\n"
+				 "aliases accepted for forceunload elsewhere: force, force_unload\n");
+		return pos;
+	}
+
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "commands:\n"
+			 "  load         - load this subsystem\n"
+			 "  unload       - graceful unload (aliases: remove, graceful)\n"
+			 "  forceunload  - force unload (aliases: force, force_unload)\n");
+	if (info->has_ns_type) {
+		const struct lkm4ctr_diagfs_ns_type *ns_type =
+			lkm4ctr_diagfs_find_ns_type(info->ns_type);
+
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				 "note: /ns/%s shares the one real shadow_ns lifecycle with every other namespace type; this path only filters the namespace listing.\n",
+				 ns_type ? ns_type->name : "?");
+	}
+	return pos;
+}
+
+static size_t lkm4ctr_diagfs_status_snprintf(const struct lkm4ctr_diagfs_info *info,
+					     char *buf, size_t buflen)
+{
+	enum lkm4ctr_diagfs_lifecycle_state state;
+	struct lkm4ctr_diagfs_module *mod;
+
+	if (info->is_global) {
+		mutex_lock(&lkm4ctr_unload_lock);
+		state = lkm4ctr_diagfs_global_state;
+		mutex_unlock(&lkm4ctr_unload_lock);
+		return scnprintf(buf, buflen, "%s\n",
+				 lkm4ctr_diagfs_state_name(state));
+	}
+
+	mod = lkm4ctr_diagfs_find_module(info->tag);
+	if (!mod)
+		return scnprintf(buf, buflen, "unloaded\n");
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	state = mod->state;
+	mutex_unlock(&lkm4ctr_unload_lock);
+
+	return scnprintf(buf, buflen, "%s\n", lkm4ctr_diagfs_state_name(state));
+}
+
+static size_t lkm4ctr_diagfs_hooks_snprintf(const struct lkm4ctr_diagfs_info *info,
+					    char *buf, size_t buflen)
+{
+	return shadow_hook_registry_snprintf(info->tag[0] ? info->tag : NULL,
+					     buf, buflen);
+}
+
+static size_t lkm4ctr_diagfs_namespaces_snprintf(const struct lkm4ctr_diagfs_info *info,
+						 char *buf, size_t buflen)
+{
+	if (info->has_ns_type)
+		return shadow_ns_diag_snprintf_type(info->ns_type, buf, buflen);
 	return shadow_ns_diag_snprintf(buf, buflen);
 }
 
-typedef size_t (*lkm4ctr_diagfs_render_fn)(const char *tag, char *buf, size_t buflen);
+static size_t lkm4ctr_diagfs_log_snprintf(const struct lkm4ctr_diagfs_info *info,
+					  char *buf, size_t buflen)
+{
+	return lkm4ctr_log_snprintf(info->tag[0] ? info->tag : NULL, buf, buflen);
+}
+
+static size_t lkm4ctr_diagfs_global_resources_snprintf(const struct lkm4ctr_diagfs_info *info,
+					       char *buf, size_t buflen)
+{
+	size_t pos = 0;
+
+	(void)info;
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "hooks:\n");
+	pos += shadow_hook_registry_snprintf(NULL,
+					 buf + pos,
+					 pos < buflen ? buflen - pos : 0);
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "POSIX mqueue:\n");
+	pos += shadow_mqueue_diag_snprintf(buf + pos,
+					 pos < buflen ? buflen - pos : 0);
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "SysV IPC:\n");
+	pos += shadow_sysvipc_diag_snprintf(buf + pos,
+					 pos < buflen ? buflen - pos : 0);
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "shadow_ns:\n");
+	pos += shadow_ns_diag_snprintf(buf + pos,
+				      pos < buflen ? buflen - pos : 0);
+	return pos;
+}
+
+static size_t lkm4ctr_diagfs_mqueue_msg_snprintf(const struct lkm4ctr_diagfs_info *info,
+						 char *buf, size_t buflen)
+{
+	(void)info;
+	return shadow_mqueue_diag_snprintf(buf, buflen);
+}
+
+static size_t lkm4ctr_diagfs_sysvipc_resources_snprintf(const struct lkm4ctr_diagfs_info *info,
+							char *buf, size_t buflen)
+{
+	(void)info;
+	return shadow_sysvipc_diag_snprintf(buf, buflen);
+}
+
+typedef size_t (*lkm4ctr_diagfs_render_fn)(const struct lkm4ctr_diagfs_info *info,
+						   char *buf, size_t buflen);
 
 static lkm4ctr_diagfs_render_fn lkm4ctr_diagfs_render_for(enum lkm4ctr_diagfs_kind kind)
 {
 	switch (kind) {
+	case LKM4CTR_DIAG_CONTROL:
+		return lkm4ctr_diagfs_control_snprintf;
 	case LKM4CTR_DIAG_STATUS:
 		return lkm4ctr_diagfs_status_snprintf;
 	case LKM4CTR_DIAG_HOOKS:
-		return shadow_hook_registry_snprintf;
+		return lkm4ctr_diagfs_hooks_snprintf;
 	case LKM4CTR_DIAG_NAMESPACES:
 		return lkm4ctr_diagfs_namespaces_snprintf;
 	case LKM4CTR_DIAG_LOG:
-		return lkm4ctr_log_snprintf;
+		return lkm4ctr_diagfs_log_snprintf;
+	case LKM4CTR_DIAG_GLOBAL_RESOURCES:
+		return lkm4ctr_diagfs_global_resources_snprintf;
+	case LKM4CTR_DIAG_MQUEUE_MSG:
+		return lkm4ctr_diagfs_mqueue_msg_snprintf;
+	case LKM4CTR_DIAG_SYSVIPC_RESOURCES:
+		return lkm4ctr_diagfs_sysvipc_resources_snprintf;
 	default:
 		return NULL;
 	}
 }
 
-/*
- * lkm4ctr_diagfs_show() - seq_file show callback shared by every read-only
- * (and the readable half of read/write) diagfs file. Regenerates full
- * content fresh on every open(), sized to fit via the same "try, grow,
- * retry" loop every renderer's snprintf()-style contract expects.
- */
 static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 {
 	struct lkm4ctr_diagfs_info *info = m->private;
@@ -429,8 +579,7 @@ static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 		buf = kmalloc(cap, GFP_KERNEL);
 		if (!buf)
 			return -ENOMEM;
-		/* info->tag is "" for the root-level (all-modules) log/hooks files; treat as NULL ("no filter"). */
-		need = fn(info->tag[0] != '\0' ? info->tag : NULL, buf, cap);
+		need = fn(info, buf, cap);
 		if (need < cap)
 			break;
 		kfree(buf);
@@ -456,272 +605,170 @@ static const struct file_operations lkm4ctr_diagfs_ro_fops = {
 };
 
 /* ------------------------------------------------------------------- */
-/* status: echo load/unload/force > .../status                          */
+/* control write handling                                               */
 /* ------------------------------------------------------------------- */
 
-enum lkm4ctr_diagfs_status_cmd {
-	LKM4CTR_STATUS_LOAD,
-	LKM4CTR_STATUS_UNLOAD,		/* graceful */
-	LKM4CTR_STATUS_FORCE,		/* force unload */
+enum lkm4ctr_diagfs_control_cmd {
+	LKM4CTR_CONTROL_LOAD,
+	LKM4CTR_CONTROL_UNLOAD,
+	LKM4CTR_CONTROL_FORCE_UNLOAD,
 };
 
 static bool lkm4ctr_diagfs_is_unload_cmd(const char *cmd, bool is_global)
 {
 	if (!strcmp(cmd, "unload") || !strcmp(cmd, "remove") || !strcmp(cmd, "graceful"))
 		return true;
-	/*
-	 * "1" is only a global safe_unload alias, never valid for a
-	 * per-submodule status write.
-	 */
 	return is_global && !strcmp(cmd, "1");
 }
 
-/*
- * @is_global selects which aliases are accepted: "load_all" and "1" only
- * make sense on the global ./mnt/safe_unload file (bulk load-all / the
- * legacy numeric self-unload trigger) and are rejected on a single
- * submodule's ./mnt/modules/<name>/status file, where only "load" plainly
- * loads that one submodule.
- */
-static int lkm4ctr_diagfs_parse_status_cmd(const char *cmd, bool is_global,
-					    enum lkm4ctr_diagfs_status_cmd *out)
+static int lkm4ctr_diagfs_parse_control_cmd(const char *cmd, bool is_global,
+					    enum lkm4ctr_diagfs_control_cmd *out)
 {
-	if (!strcmp(cmd, "load")) {
-		*out = LKM4CTR_STATUS_LOAD;
-	} else if (is_global && !strcmp(cmd, "load_all")) {
-		*out = LKM4CTR_STATUS_LOAD;
+	if (!strcmp(cmd, "load") || (is_global && !strcmp(cmd, "load_all"))) {
+		*out = LKM4CTR_CONTROL_LOAD;
 	} else if (lkm4ctr_diagfs_is_unload_cmd(cmd, is_global)) {
-		*out = LKM4CTR_STATUS_UNLOAD;
-	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload")) {
-		*out = LKM4CTR_STATUS_FORCE;
+		*out = LKM4CTR_CONTROL_UNLOAD;
+	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload") ||
+		   !strcmp(cmd, "forceunload")) {
+		*out = LKM4CTR_CONTROL_FORCE_UNLOAD;
 	} else {
 		return -EINVAL;
 	}
 	return 0;
 }
 
-/*
- * lkm4ctr_diagfs_module_load()/_unload() - the shared per-submodule load/
- * graceful-unload/force-unload logic used by both a single submodule's
- * ./mnt/modules/<name>/status write below and the top-level
- * ./mnt/safe_unload "load"/"force" shortcuts (lkm4ctr_diagfs_load_all()/
- * lkm4ctr_diagfs_unload_all_now() further down).
- *
- * "load": calls @m->mod_init() unless the submodule's core hook group is
- * already registered active (shadow_hook_registry_tag_active()); a no-op
- * either way is logged, never an error.
- *
- * "unload" (graceful): calls @m->mod_exit() unless the submodule is
- * already inactive. Every submodule's own _exit() already unconditionally
- * force-frees its resources and removes its hooks (see lkm4ctr_main.c's
- * lkm4ctr_exit() comment), so there is nothing left for a "graceful" path
- * to wait or block on here -- it differs from "force" only in that it is a
- * no-op when the submodule was never loaded in the first place.
- *
- * "force": same as "unload", except it always calls @m->mod_exit()
- * regardless of the submodule's current active state (never a no-op), and
- * additionally brackets the call with a brief module-wide
- * shadow_hook_quiesce(true/false) so that no other submodule's in-flight
- * redirected call can race with this one's teardown. Intended for use
- * right before a global force-unload of the whole module, or whenever the
- * operator wants a submodule's state wiped unconditionally.
- */
-static int lkm4ctr_diagfs_module_load(const struct lkm4ctr_diagfs_module *m)
+static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
+					      bool from_global)
 {
-	if (!m->mod_init)
-		return -EOPNOTSUPP;
-
-	if (shadow_hook_registry_tag_active(m->tag)) {
-		LKM4CTR_INFO(m->tag, "load requested via diagfs, but already active; nothing to do");
-		return 0;
-	}
-
-	LKM4CTR_INFO(m->tag, "load requested via diagfs status write");
-	return m->mod_init();
-}
-
-static void lkm4ctr_diagfs_module_unload(const struct lkm4ctr_diagfs_module *m, bool force)
-{
-	if (!m->mod_exit)
-		return;
-
-	if (!force && !shadow_hook_registry_tag_active(m->tag)) {
-		LKM4CTR_INFO(m->tag, "unload requested via diagfs, but already inactive; nothing to do");
-		return;
-	}
-
-	LKM4CTR_INFO(m->tag, "%s unload requested via diagfs status write", force ? "force" : "graceful");
-	if (force)
-		shadow_hook_quiesce(true);
-	m->mod_exit();
-	if (force)
-		shadow_hook_quiesce(false);
-	LKM4CTR_INFO(m->tag, "%s unload complete", force ? "force" : "graceful");
-}
-
-static ssize_t lkm4ctr_diagfs_status_write(struct file *file, const char __user *ubuf,
-					    size_t count, loff_t *ppos)
-{
-	struct seq_file *m = file->private_data;
-	struct lkm4ctr_diagfs_info *info = m->private;
-	const struct lkm4ctr_diagfs_module *mod;
-	char cmd[16];
-	enum lkm4ctr_diagfs_status_cmd action;
 	int ret;
 
-	if (count == 0 || count >= sizeof(cmd))
-		return -EINVAL;
-	if (copy_from_user(cmd, ubuf, count))
-		return -EFAULT;
-	cmd[count] = '\0';
-	strim(cmd);
+	if (!mod->mod_init)
+		return 0;
 
-	if (lkm4ctr_diagfs_parse_status_cmd(cmd, false, &action))
-		return -EINVAL;
-
-	if (!strcmp(info->tag, "shadow_hijack")) {
-		LKM4CTR_WARN(info->tag,
-			     "shadow_hijack is the shared hook engine; it cannot be loaded/unloaded independently");
-		return -EOPNOTSUPP;
+	mutex_lock(&lkm4ctr_unload_lock);
+	if (!from_global &&
+	    (lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
+	     lkm4ctr_unload_in_progress ||
+	     lkm4ctr_diagfs_any_module_transition_locked())) {
+		mutex_unlock(&lkm4ctr_unload_lock);
+		return -EBUSY;
 	}
-
-	mod = lkm4ctr_diagfs_find_module(info->tag);
-	if (!mod)
-		return -ENOSYS;
-	if (!mod->mod_init && !mod->mod_exit)
-		return -ENOSYS;
-
-	switch (action) {
-	case LKM4CTR_STATUS_LOAD:
-		ret = lkm4ctr_diagfs_module_load(mod);
-		if (ret) {
-			LKM4CTR_ERR(info->tag,
-				    "load request failed (%d); see the messages just above in this same log for exactly which hook group and underlying error blocked it, and %s/log for the full log",
-				    ret, info->tag);
-			return ret;
-		}
-		break;
-	case LKM4CTR_STATUS_UNLOAD:
-		lkm4ctr_diagfs_module_unload(mod, false);
-		break;
-	case LKM4CTR_STATUS_FORCE:
-		lkm4ctr_diagfs_module_unload(mod, true);
-		break;
+	if (lkm4ctr_diagfs_module_stable_state(mod) == LKM4CTR_STATE_ACTIVE) {
+		mutex_unlock(&lkm4ctr_unload_lock);
+		LKM4CTR_INFO(mod->tag,
+			     "load requested via diagfs control write, but already active; nothing to do");
+		return 0;
 	}
+	mod->state = LKM4CTR_STATE_LOADING;
+	mutex_unlock(&lkm4ctr_unload_lock);
 
-	return count;
+	LKM4CTR_INFO(mod->tag, "load requested via diagfs control write");
+	ret = mod->mod_init();
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	mod->state = lkm4ctr_diagfs_module_stable_state(mod);
+	mutex_unlock(&lkm4ctr_unload_lock);
+
+	return ret;
 }
 
-static const struct file_operations lkm4ctr_diagfs_status_fops = {
-	.owner		= THIS_MODULE,
-	.open		= lkm4ctr_diagfs_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-	.write		= lkm4ctr_diagfs_status_write,
-};
+static int lkm4ctr_diagfs_module_unload(struct lkm4ctr_diagfs_module *mod,
+					bool force, bool from_global)
+{
+	if (!mod->mod_exit)
+		return -EOPNOTSUPP;
 
-/*
- * lkm4ctr_diagfs_load_all() - the "load all" shortcut: calls
- * lkm4ctr_diagfs_module_load() for every submodule that has one (i.e.
- * every entry except shadow_hijack), skipping ones already active.
- * Best-effort: one submodule failing to load does not stop the rest from
- * being attempted; the first error (if any) is returned so the caller can
- * report it, but every submodule's own load result is always logged.
- * Used by both ./mnt/safe_unload's "load" write and (indirectly, via the
- * same helper) any future per-tag bulk load need.
- */
+	mutex_lock(&lkm4ctr_unload_lock);
+	if (!from_global &&
+	    (lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
+	     lkm4ctr_unload_in_progress ||
+	     lkm4ctr_diagfs_any_module_transition_locked())) {
+		mutex_unlock(&lkm4ctr_unload_lock);
+		return -EBUSY;
+	}
+	if (!force && lkm4ctr_diagfs_module_stable_state(mod) == LKM4CTR_STATE_UNLOADED) {
+		mutex_unlock(&lkm4ctr_unload_lock);
+		LKM4CTR_INFO(mod->tag,
+			     "unload requested via diagfs control write, but already inactive; nothing to do");
+		return 0;
+	}
+	mod->state = force ? LKM4CTR_STATE_FORCE_UNLOADING :
+		LKM4CTR_STATE_GRACEFUL_UNLOADING;
+	mutex_unlock(&lkm4ctr_unload_lock);
+
+	LKM4CTR_INFO(mod->tag, "%s unload requested via diagfs control write",
+		     force ? "force" : "graceful");
+	if (force && !from_global)
+		shadow_hook_quiesce(true);
+	mod->mod_exit();
+	if (force && !from_global)
+		shadow_hook_quiesce(false);
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	mod->state = lkm4ctr_diagfs_module_stable_state(mod);
+	mutex_unlock(&lkm4ctr_unload_lock);
+
+	LKM4CTR_INFO(mod->tag, "%s unload complete", force ? "force" : "graceful");
+	return 0;
+}
+
 static int lkm4ctr_diagfs_load_all(void)
 {
 	unsigned int i;
-	int ret = 0, err;
+	int ret = 0;
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	if (lkm4ctr_unload_in_progress ||
+	    lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
+	    lkm4ctr_diagfs_any_module_transition_locked()) {
+		mutex_unlock(&lkm4ctr_unload_lock);
+		return -EBUSY;
+	}
+	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_LOADING;
+	mutex_unlock(&lkm4ctr_unload_lock);
 
 	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "load-all requested via diagfs");
 	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
-		const struct lkm4ctr_diagfs_module *m = &lkm4ctr_diagfs_modules[i];
+		struct lkm4ctr_diagfs_module *mod = &lkm4ctr_diagfs_modules[i];
+		int err;
 
-		if (!m->mod_init)
+		if (!mod->mod_init)
 			continue;
 
-		err = lkm4ctr_diagfs_module_load(m);
+		err = lkm4ctr_diagfs_module_load(mod, true);
 		if (err && !ret)
 			ret = err;
 	}
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
+	mutex_unlock(&lkm4ctr_unload_lock);
+
 	if (ret)
 		LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG,
 			     "load-all complete with at least one failure; see the per-submodule log lines above");
 	else
 		LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "load-all complete");
+
 	return ret;
 }
 
-/*
- * lkm4ctr_diagfs_unload_all_now() - unloads every submodule (calls its
- * _exit(), which is always an unconditional, idempotent-safe force-free of
- * that submodule's own resources) right now, without going through
- * lkm4ctr_diagfs_module_unload()'s own active-check/quiesce-toggle -- the
- * caller (lkm4ctr_safe_unload_fn(), for both its "force" and "graceful"
- * paths) has already set the module-wide quiesce flag itself around its
- * whole sequence, so re-toggling it per submodule here would be redundant.
- * @label is purely for logging ("force" vs "graceful"), matching which of
- * the two safe_unload paths called this.
- */
-static void lkm4ctr_diagfs_unload_all_now(const char *label)
+static void lkm4ctr_diagfs_unload_all_now(const char *label, bool force)
 {
 	unsigned int i;
 
 	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "%s-unloading every submodule", label);
 	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
-		const struct lkm4ctr_diagfs_module *m = &lkm4ctr_diagfs_modules[i];
+		struct lkm4ctr_diagfs_module *mod = &lkm4ctr_diagfs_modules[i];
 
-		if (!m->mod_exit)
+		if (!mod->mod_exit)
 			continue;
-
-		LKM4CTR_INFO(m->tag, "%s unload requested via diagfs safe_unload", label);
-		m->mod_exit();
-		LKM4CTR_INFO(m->tag, "%s unload complete", label);
+		lkm4ctr_diagfs_module_unload(mod, force, true);
 	}
-	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "%s-unload of every submodule complete; all of their resources are now free", label);
+	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG,
+		     "%s-unload of every submodule complete; all of their resources are now free",
+		     label);
 }
-
-/* ------------------------------------------------------------------- */
-/* safe_unload -- ported from the removed /dev/lkm4ctr_safe_unload misc  */
-/* device; see below for the full self-unload rationale (unchanged).    */
-/* ------------------------------------------------------------------- */
-
-/*
- * The self-unload hazard
- * -----------------------
- * A module can never *directly* free the memory its own currently
- * executing code lives in -- whatever function is doing the freeing would
- * have to keep running afterwards to return to its caller, straight into
- * pages that no longer exist. This is why every practical "self-unload"
- * design (including this one) is actually two cooperating pieces:
- *
- *   1. A worker kthread, spawned by the write() below, that does the
- *      waiting (quiesce + poll module_refcount()) and then asks a real
- *      userspace process to do the actual `rmmod`/`modprobe -r` -- module
- *      removal is always driven by an external process calling
- *      delete_module(2); no in-kernel API removes "the currently running
- *      module" from within itself.
- *   2. module_put_and_kthread_exit(), used instead of a normal return from
- *      the worker thread's body once its job is done. This is the one
- *      piece of core kernel code (kernel/module/main.c, *not* our module's
- *      .text) whose entire purpose is to drop the worker's own module
- *      reference and terminate the thread as a single atomic step from the
- *      kernel's point of view, so that no instruction belonging to
- *      lkm4ctr.ko executes after the reference that was keeping the module
- *      alive for the worker's own sake is gone. On kernels old enough to
- *      predate that helper (introduced upstream alongside kthread_exit()
- *      around v5.17), the equivalent classic module_put_and_exit()/
- *      do_exit() pairing is used instead.
- *
- * With both pieces in place, module_refcount() only ever reaches zero
- * after every hooked call *and* the worker thread itself has stopped
- * touching the module's code, so the external `rmmod` this file spawns is
- * operating on a module that is genuinely idle, not one that merely
- * *looks* idle from a racing kthread's perspective.
- */
 
 #define LKM4CTR_SAFE_UNLOAD_TIMEOUT_MS	30000
 #define LKM4CTR_SAFE_UNLOAD_POLL_MS	50
@@ -745,31 +792,6 @@ static const char * const lkm4ctr_umount_candidates[] = {
 	NULL,
 };
 
-static struct task_struct *lkm4ctr_unload_thread;
-static DEFINE_MUTEX(lkm4ctr_unload_lock);
-static bool lkm4ctr_unload_in_progress;
-/*
- * Set by lkm4ctr_diagfs_safe_unload_write() right before spawning the
- * worker thread below, and read only by that same worker
- * (lkm4ctr_safe_unload_fn()) once it starts: true for a "force" unload
- * request, false for the default "graceful" one ("1"/"unload"/"remove"/
- * "graceful"). Safe without its own lock: lkm4ctr_unload_in_progress
- * already guarantees only one unload sequence -- and therefore only one
- * writer/one reader of this flag -- is ever in flight at a time.
- */
-static bool lkm4ctr_unload_force;
-
-/*
- * Number of currently active "lkm4ctr" mounts (incremented in
- * lkm4ctr_diagfs_fill_super(), decremented in lkm4ctr_diagfs_kill_sb()
- * below). Read by the safe_unload worker's timeout path so a stuck
- * self-unload can be diagnosed precisely instead of just reporting a bare
- * refcount number: a mounted diagfs is by far the most common reason
- * module_refcount() never drains, since file_system_type->owner pins it
- * for as long as any instance is mounted anywhere.
- */
-static atomic_t lkm4ctr_diagfs_mount_count = ATOMIC_INIT(0);
-
 /*
  * module_refcount() and call_usermodehelper() are ordinary EXPORT_SYMBOL()
  * functions, not GPL-only, but that alone doesn't save them from
@@ -792,7 +814,7 @@ static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
 			(fn) = (typeof(fn))shadow_hook_resolve(name);		\
 			if (!(fn))						\
 				LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,		\
-					     "could not resolve %s; safe_unload unavailable", \
+					     "could not resolve %s; global unload unavailable", \
 					     name);				\
 		}								\
 	} while (0)
@@ -805,31 +827,44 @@ static bool lkm4ctr_safe_unload_resolve(void)
 	return lkm4ctr_module_refcount_fn && lkm4ctr_call_usermodehelper_fn;
 }
 
+/* ------------------------------------------------------------------- */
+/* global self-unload rationale (unchanged from the removed misc device) */
+/* ------------------------------------------------------------------- */
+
 /*
- * lkm4ctr_auto_umount_diagfs() - best-effort automatic unmount of every
- * active "lkm4ctr" diagfs mount, run by the safe_unload worker after hooks
- * have been quiesced and before it starts waiting for module_refcount() to
- * drain / launches rmmod. A mounted diagfs pins module_refcount() via
- * file_system_type->owner (see lkm4ctr_diagfs_kill_sb()'s comment), so
- * without this the operator would always have to remember to `umount` it
- * by hand first.
+ * The self-unload hazard
+ * -----------------------
+ * A module can never *directly* free the memory its own currently
+ * executing code lives in -- whatever function is doing the freeing would
+ * have to keep running afterwards to return to its caller, straight into
+ * pages that no longer exist. This is why every practical "self-unload"
+ * design (including this one) is actually two cooperating pieces:
  *
- * There is no safe, exported, general "force unmount this fstype from
- * every mount namespace" kernel API -- the mount tree (struct mount,
- * lock_mount_hash(), umount_tree(), ...) is private to fs/namespace.c and
- * not exported for out-of-tree use, and iterate_supers_type() only reaches
- * the shared superblock, not the per-namespace mountpoint path needed to
- * actually detach it. So, like the rmmod launch itself, this shells out to
- * a real "umount" userspace helper via call_usermodehelper() with "-a -t
- * lkm4ctr -l": "-a -t lkm4ctr" finds every active lkm4ctr mountpoint from
- * /proc/mounts without the kernel needing to know its path, and "-l"
- * (lazy/MNT_DETACH) still detaches it from the mount tree immediately even
- * if a process's cwd or an open fd is still inside it (e.g. the very shell
- * that just did `echo 1 > .../safe_unload`) -- the underlying superblock
- * (and this module's pinned reference to it) is then released as soon as
- * that last reference itself goes away, rather than requiring the operator
- * to have already cd'ed out first.
+ *   1. A worker kthread, spawned by the control-file write() below, that
+ *      does the waiting (quiesce + poll module_refcount()) and then asks a
+ *      real userspace process to do the actual `rmmod`/`modprobe -r` --
+ *      module removal is always driven by an external process calling
+ *      delete_module(2); no in-kernel API removes "the currently running
+ *      module" from within itself.
+ *   2. module_put_and_kthread_exit(), used instead of a normal return from
+ *      the worker thread's body once its job is done. This is the one
+ *      piece of core kernel code (kernel/module/main.c, *not* our module's
+ *      .text) whose entire purpose is to drop the worker's own module
+ *      reference and terminate the thread as a single atomic step from the
+ *      kernel's point of view, so that no instruction belonging to
+ *      lkm4ctr.ko executes after the reference that was keeping the module
+ *      alive for the worker's own sake is gone. On kernels old enough to
+ *      predate that helper (introduced upstream alongside kthread_exit()
+ *      around v5.17), the equivalent classic module_put_and_exit()/
+ *      do_exit() pairing is used instead.
+ *
+ * With both pieces in place, module_refcount() only ever reaches zero
+ * after every hooked call *and* the worker thread itself has stopped
+ * touching the module's code, so the external `rmmod` this file spawns is
+ * operating on a module that is genuinely idle, not one that merely
+ * *looks* idle from a racing kthread's perspective.
  */
+
 static int lkm4ctr_auto_umount_diagfs(void)
 {
 	char *envp[] = { "HOME=/", "PATH=/sbin:/usr/sbin:/bin:/usr/bin:/system/bin", NULL };
@@ -844,18 +879,21 @@ static int lkm4ctr_auto_umount_diagfs(void)
 	}
 
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "auto-unmounting %d active lkm4ctr diagfs mount(s) before self-unload", mounts);
+		     "auto-unmounting %d active lkm4ctr diagfs mount(s) before self-unload",
+		     mounts);
 
 	for (path = lkm4ctr_umount_candidates; *path; path++) {
 		char *argv[] = { (char *)*path, "-l", "-a", "-t", "lkm4ctr", NULL };
 
 		ret = lkm4ctr_call_usermodehelper_fn(*path, argv, envp, UMH_WAIT_PROC);
 		if (ret == 0) {
-			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG, "ran \"%s -l -a -t lkm4ctr\"", *path);
+			LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
+				     "ran \"%s -l -a -t lkm4ctr\"", *path);
 			break;
 		}
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
-			     "\"%s -l -a -t lkm4ctr\" failed or exited non-zero: %d", *path, ret);
+			     "\"%s -l -a -t lkm4ctr\" failed or exited non-zero: %d",
+			     *path, ret);
 	}
 
 	mounts = atomic_read(&lkm4ctr_diagfs_mount_count);
@@ -868,7 +906,8 @@ static int lkm4ctr_auto_umount_diagfs(void)
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG,
 			     "resolution: self-unload will time out below unless these are cleared -- see the timeout guidance further down this log for exact resolution steps");
 	} else {
-		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG, "all lkm4ctr diagfs mounts successfully auto-unmounted");
+		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
+			     "all lkm4ctr diagfs mounts successfully auto-unmounted");
 	}
 
 	return ret;
@@ -891,7 +930,8 @@ static int lkm4ctr_run_rmmod(void)
 		LKM4CTR_WARN(LKM4CTR_SAFE_UNLOAD_TAG, "\"%s\" failed to exec: %d", *path, ret);
 	}
 
-	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG, "no rmmod candidate could be exec'd (last error %d)", ret);
+	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+		    "no rmmod candidate could be exec'd (last error %d)", ret);
 	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 		    "cause: module was successfully quiesced and drained, so the module itself is not the problem -- likely no rmmod (or busybox applet providing it) is installed/executable on this system");
 	LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
@@ -913,14 +953,8 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 		     force ? "force" : "safe");
 	shadow_hook_quiesce(true);
 
-	if (force) {
-		/*
-		 * Force: free every submodule's resources and remove its
-		 * hooks right now, instead of leaving that to rmmod's
-		 * eventual module_exit() call.
-		 */
-		lkm4ctr_diagfs_unload_all_now("force");
-	}
+	if (force)
+		lkm4ctr_diagfs_unload_all_now("force", true);
 
 	lkm4ctr_auto_umount_diagfs();
 
@@ -941,17 +975,8 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 					    "cause: this lkm4ctr diagfs is currently mounted %d time(s); every active mount pins module_refcount() via file_system_type->owner, exactly like rmmod refuses any other in-use filesystem module, and this alone will block self-unload forever",
 					    mounts);
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again");
+					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing global/control through right now -- then write to global/control again");
 			} else {
-				/*
-				 * This error path is only reached when the
-				 * drain-wait times out, which happens before
-				 * the post-drain graceful
-				 * lkm4ctr_diagfs_unload_all_now("graceful")
-				 * call further down -- so in the !force case
-				 * here, submodule resources genuinely may
-				 * still be held.
-				 */
 				if (force)
 					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task",
@@ -976,21 +1001,15 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 	}
 
 	if (!force) {
-		/*
-		 * Graceful: explicitly free every submodule's resources and
-		 * remove its hooks now (rather than silently leaving it for
-		 * rmmod's module_exit() to do moments later), so the diagfs
-		 * log shows each submodule shutting down cleanly as part of
-		 * this same safe-unload sequence.
-		 */
 		LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
 			     "drained after %lums (module_refcount()=%d), about to gracefully unload every submodule",
 			     waited_ms, refcount);
-		lkm4ctr_diagfs_unload_all_now("graceful");
+		lkm4ctr_diagfs_unload_all_now("graceful", false);
 	}
 
 	LKM4CTR_INFO(LKM4CTR_SAFE_UNLOAD_TAG,
-		     "drained after %lums (module_refcount()=%d), launching rmmod", waited_ms, refcount);
+		     "drained after %lums (module_refcount()=%d), launching rmmod",
+		     waited_ms, refcount);
 	ret = lkm4ctr_run_rmmod();
 	if (ret) {
 		shadow_hook_quiesce(false);
@@ -1008,120 +1027,130 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 #else
 	module_put_and_exit(0);
 #endif
-	/* NOTREACHED */
 
 abort:
 	mutex_lock(&lkm4ctr_unload_lock);
 	lkm4ctr_unload_in_progress = false;
+	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
 	mutex_unlock(&lkm4ctr_unload_lock);
 	module_put(THIS_MODULE);
 	return 0;
 }
 
-static size_t lkm4ctr_safe_unload_snprintf(const char *tag, char *buf, size_t buflen)
+static ssize_t lkm4ctr_diagfs_control_write(struct file *file,
+					    const char __user *ubuf,
+					    size_t count, loff_t *ppos)
 {
-	bool in_progress;
-	size_t pos;
-
-	mutex_lock(&lkm4ctr_unload_lock);
-	in_progress = lkm4ctr_unload_in_progress;
-	mutex_unlock(&lkm4ctr_unload_lock);
-
-	pos = scnprintf(buf, buflen, "state: %s\n", in_progress ? "in-progress" : "idle");
-	pos += lkm4ctr_log_snprintf(LKM4CTR_SAFE_UNLOAD_TAG, buf + pos,
-				     pos < buflen ? buflen - pos : 0);
-	return pos;
-}
-
-static ssize_t lkm4ctr_diagfs_safe_unload_write(struct file *file, const char __user *ubuf,
-						 size_t count, loff_t *ppos)
-{
+	struct seq_file *m = file->private_data;
+	struct lkm4ctr_diagfs_info *info = m->private;
 	char cmd[16];
-	struct task_struct *thread;
-	enum lkm4ctr_diagfs_status_cmd action;
-	bool force;
+	enum lkm4ctr_diagfs_control_cmd action;
+	struct lkm4ctr_diagfs_module *mod;
 
+	(void)ppos;
 	if (count == 0 || count >= sizeof(cmd))
 		return -EINVAL;
-
 	if (copy_from_user(cmd, ubuf, count))
 		return -EFAULT;
 	cmd[count] = '\0';
 	strim(cmd);
 
-	if (lkm4ctr_diagfs_parse_status_cmd(cmd, true, &action))
+	if (lkm4ctr_diagfs_parse_control_cmd(cmd, info->is_global, &action))
 		return -EINVAL;
 
-	/*
-	 * "load"/"load_all" -- the global load-all shortcut: synchronous,
-	 * no worker thread needed (calling each submodule's _init() is
-	 * quick, unlike the self-unload sequence below).
-	 */
-	if (action == LKM4CTR_STATUS_LOAD) {
-		int ret = lkm4ctr_diagfs_load_all();
+	if (info->is_global) {
+		struct task_struct *thread;
+		bool force;
 
-		return ret ? ret : count;
-	}
+		if (action == LKM4CTR_CONTROL_LOAD) {
+			int ret = lkm4ctr_diagfs_load_all();
 
-	force = (action == LKM4CTR_STATUS_FORCE);
+			return ret ? ret : count;
+		}
 
-	if (!lkm4ctr_safe_unload_resolve())
-		return -EOPNOTSUPP;
+		force = (action == LKM4CTR_CONTROL_FORCE_UNLOAD);
+		if (!lkm4ctr_safe_unload_resolve())
+			return -EOPNOTSUPP;
 
-	mutex_lock(&lkm4ctr_unload_lock);
-	if (lkm4ctr_unload_in_progress) {
-		mutex_unlock(&lkm4ctr_unload_lock);
-		return -EBUSY;
-	}
-	lkm4ctr_unload_in_progress = true;
-	lkm4ctr_unload_force = force;
-	mutex_unlock(&lkm4ctr_unload_lock);
-
-	thread = kthread_run(lkm4ctr_safe_unload_fn, NULL, "lkm4ctr_unload");
-	if (IS_ERR(thread)) {
 		mutex_lock(&lkm4ctr_unload_lock);
-		lkm4ctr_unload_in_progress = false;
+		if (lkm4ctr_unload_in_progress ||
+		    lkm4ctr_diagfs_global_state != LKM4CTR_STATE_ACTIVE ||
+		    lkm4ctr_diagfs_any_module_transition_locked()) {
+			mutex_unlock(&lkm4ctr_unload_lock);
+			return -EBUSY;
+		}
+		lkm4ctr_unload_in_progress = true;
+		lkm4ctr_unload_force = force;
+		lkm4ctr_diagfs_global_state = force ?
+			LKM4CTR_STATE_FORCE_UNLOADING :
+			LKM4CTR_STATE_GRACEFUL_UNLOADING;
 		mutex_unlock(&lkm4ctr_unload_lock);
-		return PTR_ERR(thread);
+
+		thread = kthread_run(lkm4ctr_safe_unload_fn, NULL, "lkm4ctr_unload");
+		if (IS_ERR(thread)) {
+			mutex_lock(&lkm4ctr_unload_lock);
+			lkm4ctr_unload_in_progress = false;
+			lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
+			mutex_unlock(&lkm4ctr_unload_lock);
+			return PTR_ERR(thread);
+		}
+		lkm4ctr_unload_thread = thread;
+		return count;
 	}
-	lkm4ctr_unload_thread = thread;
+
+	mod = lkm4ctr_diagfs_find_module(info->tag);
+	if (!mod)
+		return -ENOSYS;
+
+	if (!mod->mod_init && !mod->mod_exit) {
+		if (action == LKM4CTR_CONTROL_LOAD) {
+			LKM4CTR_INFO(mod->tag,
+				     "load requested via diagfs control write, but shadow_hijack is always active; nothing to do");
+			return count;
+		}
+		LKM4CTR_WARN(mod->tag,
+			     "shadow_hijack is the shared hook engine; unload/forceunload are intentionally unsupported here");
+		return -EOPNOTSUPP;
+	}
+
+	switch (action) {
+	case LKM4CTR_CONTROL_LOAD: {
+		int ret = lkm4ctr_diagfs_module_load(mod, false);
+
+		if (ret) {
+			LKM4CTR_ERR(info->tag,
+				    "load request failed (%d); see the messages just above in this same log for exactly which hook group and underlying error blocked it, and %s/log for the full log",
+				    ret, info->tag);
+			return ret;
+		}
+		break;
+	}
+	case LKM4CTR_CONTROL_UNLOAD: {
+		int ret = lkm4ctr_diagfs_module_unload(mod, false, false);
+
+		if (ret)
+			return ret;
+		break;
+	}
+	case LKM4CTR_CONTROL_FORCE_UNLOAD: {
+		int ret = lkm4ctr_diagfs_module_unload(mod, true, false);
+
+		if (ret)
+			return ret;
+		break;
+	}
+	}
 
 	return count;
 }
 
-static int lkm4ctr_diagfs_safe_unload_show(struct seq_file *m, void *v)
-{
-	char *buf;
-	size_t cap = 4096, need;
-
-	for (;;) {
-		buf = kmalloc(cap, GFP_KERNEL);
-		if (!buf)
-			return -ENOMEM;
-		need = lkm4ctr_safe_unload_snprintf(NULL, buf, cap);
-		if (need < cap)
-			break;
-		kfree(buf);
-		cap = need + 1;
-	}
-
-	seq_write(m, buf, need);
-	kfree(buf);
-	return 0;
-}
-
-static int lkm4ctr_diagfs_safe_unload_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, lkm4ctr_diagfs_safe_unload_show, inode->i_private);
-}
-
-static const struct file_operations lkm4ctr_diagfs_safe_unload_fops = {
+static const struct file_operations lkm4ctr_diagfs_control_fops = {
 	.owner		= THIS_MODULE,
-	.open		= lkm4ctr_diagfs_safe_unload_open,
+	.open		= lkm4ctr_diagfs_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
-	.write		= lkm4ctr_diagfs_safe_unload_write,
+	.write		= lkm4ctr_diagfs_control_write,
 };
 
 /* ------------------------------------------------------------------- */
@@ -1135,15 +1164,6 @@ static void lkm4ctr_diagfs_evict_inode(struct inode *inode)
 	kfree(inode->i_private);
 }
 
-/*
- * Thin wrapper so super_ops.drop_inode can have a compile-time-known
- * address even though the real generic_delete_inode() is only resolved at
- * runtime (see lkm4ctr_generic_delete_inode_fn's comment above).
- * generic_delete_inode() unconditionally returns 1 (always delete), so
- * that is exactly what this falls back to if resolution somehow never ran
- * (lkm4ctr_diagfs_init() refuses to register the filesystem in that case,
- * so this should never actually be reached).
- */
 static int lkm4ctr_diagfs_drop_inode(struct inode *inode)
 {
 	if (lkm4ctr_generic_delete_inode_fn)
@@ -1157,20 +1177,149 @@ static const struct super_operations lkm4ctr_diagfs_super_ops = {
 	.evict_inode	= lkm4ctr_diagfs_evict_inode,
 };
 
+static int lkm4ctr_diagfs_fill_ns_type_dir(struct super_block *sb,
+					   struct dentry *ns_dir,
+					   const struct lkm4ctr_diagfs_ns_type *ns_type)
+{
+	struct dentry *dir;
+	int ret;
+
+	dir = lkm4ctr_diagfs_mkdir(sb, ns_dir, ns_type->name);
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "control", 0644,
+					    LKM4CTR_DIAG_CONTROL,
+					    "shadow_ns", false, true,
+					    ns_type->type);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "status", 0444,
+					    LKM4CTR_DIAG_STATUS,
+					    "shadow_ns", false, true,
+					    ns_type->type);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "log", 0444,
+					    LKM4CTR_DIAG_LOG,
+					    "shadow_ns", false, true,
+					    ns_type->type);
+	if (ret)
+		return ret;
+	return lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
+					    LKM4CTR_DIAG_NAMESPACES,
+					    "shadow_ns", false, true,
+					    ns_type->type);
+}
+
+static int lkm4ctr_diagfs_fill_module_dir(struct super_block *sb,
+					  struct dentry *root,
+					  struct lkm4ctr_diagfs_module *mod)
+{
+	struct dentry *dir;
+	unsigned int i;
+	int ret;
+
+	dir = lkm4ctr_diagfs_mkdir(sb, root, mod->dirname);
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "control", 0644,
+					    LKM4CTR_DIAG_CONTROL,
+					    mod->tag, false, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "status", 0444,
+					    LKM4CTR_DIAG_STATUS,
+					    mod->tag, false, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "log", 0444,
+					    LKM4CTR_DIAG_LOG,
+					    mod->tag, false, false, 0);
+	if (ret)
+		return ret;
+
+	if (!strcmp(mod->tag, "shadow_hijack")) {
+		return lkm4ctr_diagfs_create_checked(sb, dir, "functions", 0444,
+					    LKM4CTR_DIAG_HOOKS,
+					    NULL, false, false, 0);
+	}
+
+	if (mod->has_hooks) {
+		ret = lkm4ctr_diagfs_create_checked(sb, dir, "hooks", 0444,
+					    LKM4CTR_DIAG_HOOKS,
+					    mod->tag, false, false, 0);
+		if (ret)
+			return ret;
+	}
+
+	if (!strcmp(mod->tag, "shadow_ns")) {
+		ret = lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
+					    LKM4CTR_DIAG_NAMESPACES,
+					    mod->tag, false, false, 0);
+		if (ret)
+			return ret;
+		for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_ns_types); i++) {
+			ret = lkm4ctr_diagfs_fill_ns_type_dir(sb, dir,
+						      &lkm4ctr_diagfs_ns_types[i]);
+			if (ret)
+				return ret;
+		}
+		return 0;
+	}
+
+	if (!strcmp(mod->tag, "shadow_mqueue"))
+		return lkm4ctr_diagfs_create_checked(sb, dir, "msg", 0444,
+					    LKM4CTR_DIAG_MQUEUE_MSG,
+					    mod->tag, false, false, 0);
+
+	if (!strcmp(mod->tag, "shadow_sysvipc"))
+		return lkm4ctr_diagfs_create_checked(sb, dir, "resources", 0444,
+					    LKM4CTR_DIAG_SYSVIPC_RESOURCES,
+					    mod->tag, false, false, 0);
+
+	return 0;
+}
+
+static int lkm4ctr_diagfs_fill_global_dir(struct super_block *sb,
+					  struct dentry *root)
+{
+	struct dentry *dir;
+	int ret;
+
+	dir = lkm4ctr_diagfs_mkdir(sb, root, "global");
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "control", 0644,
+					    LKM4CTR_DIAG_CONTROL,
+					    NULL, true, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "status", 0444,
+					    LKM4CTR_DIAG_STATUS,
+					    NULL, true, false, 0);
+	if (ret)
+		return ret;
+	ret = lkm4ctr_diagfs_create_checked(sb, dir, "log", 0444,
+					    LKM4CTR_DIAG_LOG,
+					    NULL, false, false, 0);
+	if (ret)
+		return ret;
+	return lkm4ctr_diagfs_create_checked(sb, dir, "resources", 0444,
+					    LKM4CTR_DIAG_GLOBAL_RESOURCES,
+					    NULL, true, false, 0);
+}
+
 static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct inode *root_inode;
-	struct dentry *modules_dir;
 	unsigned int i;
+	int ret;
 
-	/*
-	 * Counted here (rather than only on success) and unconditionally
-	 * balanced by lkm4ctr_diagfs_kill_sb() below: the VFS always calls
-	 * ->kill_sb() to unwind a superblock once sb->s_type has been set by
-	 * mount_nodev(), even if this function returns an error partway
-	 * through, so incrementing exactly once per fill_super() call keeps
-	 * the two sides matched regardless of success or failure.
-	 */
+	(void)data;
+	(void)silent;
 	atomic_inc(&lkm4ctr_diagfs_mount_count);
 
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
@@ -1191,63 +1340,30 @@ static int lkm4ctr_diagfs_fill_super(struct super_block *sb, void *data, int sil
 	if (!sb->s_root)
 		return -ENOMEM;
 
-	modules_dir = lkm4ctr_diagfs_mkdir(sb, sb->s_root, "modules");
-	if (IS_ERR(modules_dir))
-		return PTR_ERR(modules_dir);
+	ret = lkm4ctr_diagfs_fill_global_dir(sb, sb->s_root);
+	if (ret)
+		return ret;
 
 	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++) {
-		const struct lkm4ctr_diagfs_module *m = &lkm4ctr_diagfs_modules[i];
-		struct dentry *dir;
-
-		dir = lkm4ctr_diagfs_mkdir(sb, modules_dir, m->dirname);
-		if (IS_ERR(dir))
-			return PTR_ERR(dir);
-
-		if (IS_ERR(lkm4ctr_diagfs_create_file(sb, dir, "status", 0644,
-						       LKM4CTR_DIAG_STATUS, m->tag)))
-			return -ENOMEM;
-
-		if (m->has_hooks &&
-		    IS_ERR(lkm4ctr_diagfs_create_file(sb, dir, "hooks", 0444,
-						       LKM4CTR_DIAG_HOOKS, m->tag)))
-			return -ENOMEM;
-
-		if (m->has_namespaces &&
-		    IS_ERR(lkm4ctr_diagfs_create_file(sb, dir, "namespaces", 0444,
-						       LKM4CTR_DIAG_NAMESPACES, m->tag)))
-			return -ENOMEM;
-
-		if (IS_ERR(lkm4ctr_diagfs_create_file(sb, dir, "log", 0444,
-						       LKM4CTR_DIAG_LOG, m->tag)))
-			return -ENOMEM;
+		ret = lkm4ctr_diagfs_fill_module_dir(sb, sb->s_root,
+						   &lkm4ctr_diagfs_modules[i]);
+		if (ret)
+			return ret;
 	}
-
-	if (IS_ERR(lkm4ctr_diagfs_create_file(sb, sb->s_root, "safe_unload", 0644,
-					       LKM4CTR_DIAG_SAFE_UNLOAD, NULL)))
-		return -ENOMEM;
-
-	if (IS_ERR(lkm4ctr_diagfs_create_file(sb, sb->s_root, "log", 0444,
-					       LKM4CTR_DIAG_LOG, NULL)))
-		return -ENOMEM;
 
 	return 0;
 }
 
 static struct dentry *lkm4ctr_diagfs_mount(struct file_system_type *fs_type,
-					    int flags, const char *dev_name, void *data)
+					    int flags, const char *dev_name,
+					    void *data)
 {
+	(void)dev_name;
 	if (!lkm4ctr_mount_nodev_fn)
 		return ERR_PTR(-ENOSYS);
 	return lkm4ctr_mount_nodev_fn(fs_type, flags, data, lkm4ctr_diagfs_fill_super);
 }
 
-/*
- * lkm4ctr_diagfs_kill_sb() - balances lkm4ctr_diagfs_fill_super()'s
- * atomic_inc(&lkm4ctr_diagfs_mount_count) above. Tracking this is what lets
- * the safe_unload worker's timeout/failure path (below) tell the operator
- * "the diagfs itself is still mounted N time(s), which is what's keeping
- * module_refcount() non-zero" instead of leaving them to guess.
- */
 static void lkm4ctr_diagfs_kill_sb(struct super_block *sb)
 {
 	atomic_dec(&lkm4ctr_diagfs_mount_count);
@@ -1263,6 +1379,7 @@ static struct file_system_type lkm4ctr_diagfs_type = {
 
 int lkm4ctr_diagfs_init(void)
 {
+	unsigned int i;
 	int ret;
 
 	lkm4ctr_mount_nodev_fn =
@@ -1275,6 +1392,15 @@ int lkm4ctr_diagfs_init(void)
 			    "could not resolve mount_nodev/generic_delete_inode; diagfs unavailable");
 		return -ENOSYS;
 	}
+
+	mutex_lock(&lkm4ctr_unload_lock);
+	lkm4ctr_diagfs_global_state = LKM4CTR_STATE_ACTIVE;
+	lkm4ctr_unload_in_progress = false;
+	lkm4ctr_unload_force = false;
+	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_modules); i++)
+		lkm4ctr_diagfs_modules[i].state =
+			lkm4ctr_diagfs_module_stable_state(&lkm4ctr_diagfs_modules[i]);
+	mutex_unlock(&lkm4ctr_unload_lock);
 
 	ret = register_filesystem(&lkm4ctr_diagfs_type);
 	if (ret)

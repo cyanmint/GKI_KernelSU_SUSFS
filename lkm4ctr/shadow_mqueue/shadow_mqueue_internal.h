@@ -170,6 +170,7 @@ struct mq_handle_entry *mq_get_shadow_handle_from_fd(int mqdes);
 int mq_create_anon_fd(const char *name, struct mq_handle_entry *he, int oflag,
 		      bool created);
 void mq_release_all(void);
+size_t shadow_mqueue_diag_snprintf(char *buf, size_t buflen);
 int shadow_mqueue_install_hooks(void);
 void shadow_mqueue_remove_hooks(void);
 

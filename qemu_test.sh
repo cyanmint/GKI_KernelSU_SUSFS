@@ -46,12 +46,12 @@
 #      both the full ("heavy", image1.ext4 + dockerd) and "light"
 #      (ramdisk-only, no nvme/docker) boot paths: lkm4ctr_checker
 #      (pre-insmod), insmod, lkm4ctr_checker (post-insmod), mount the
-#      "lkm4ctr" diagfs, read every status/hooks/namespaces/log file, a
-#      "hot upgrade" pass (force-unload then force-reload one submodule's
-#      hooks via its diagfs status file while lkm4ctr.ko stays resident),
-#      force-deactivating every submodule, triggering safe_unload via the
-#      diagfs safe_unload file, and finally falling back to a manual
-#      umount+rmmod if safe_unload itself did not fully unload the module.
+#      "lkm4ctr" diagfs, read every control/status/hooks/namespaces/log/resource file, a
+#      "hot upgrade" pass (unload then reload one submodule via its diagfs
+#      control file while lkm4ctr.ko stays resident), force-deactivating
+#      every submodule, triggering the global self-unload path via
+#      diagfs/global/control, and finally falling back to a manual
+#      umount+rmmod if the global unload path itself did not fully unload the module.
 #
 #   3. Stage-1 init (PID 1, argv[0]/$0 == "init"): this is the role played
 #      when the script is baked into the injected (busybox) ramdisk as
@@ -97,14 +97,14 @@
 
 # ==========================================================================
 # checker mode routine, shared by stage-1 (light mode) and stage-2 (heavy
-# mode): every actual lkm4ctr functional test (insmod, diagfs, safe_unload)
+# mode): every actual lkm4ctr functional test (insmod, diagfs, global unload)
 # lives here exactly once.
 # ==========================================================================
 lkm4ctr_run_checker_mode() {
 	CHECKER="$1"
 	MODULE="$2"
 	MNT=/lkm4ctr_diagfs
-	# generous enough for the safe_unload worker's own auto-umount +
+	# generous enough for the global unload worker's own auto-umount +
 	# module_refcount()-drain polling (see lkm4ctr_diagfs.c) to finish on a
 	# loaded QEMU VM, without hanging the whole boot test indefinitely if
 	# it never does.
@@ -125,58 +125,72 @@ lkm4ctr_run_checker_mode() {
 	mount -t lkm4ctr diag "$MNT"
 	echo "mount -t lkm4ctr diag $MNT -> $?"
 
-	echo "=== LKM4CTR_QEMU_TEST: diagfs status/hooks/namespaces/log ==="
-	for m in shadow_hijack shadow_ns shadow_sysvipc shadow_mqueue shadow_cgdevices; do
-		echo "--- modules/$m/status ---"
-		cat "$MNT/modules/$m/status"
-		if [ -f "$MNT/modules/$m/hooks" ]; then
-			echo "--- modules/$m/hooks ---"
-			cat "$MNT/modules/$m/hooks"
+	echo "=== LKM4CTR_QEMU_TEST: diagfs control/status/hooks/namespaces/log ==="
+	for m in hijack ns sysvipc mqueue cgroupdevices; do
+		echo "--- $m/control ---"
+		cat "$MNT/$m/control"
+		echo "--- $m/status ---"
+		cat "$MNT/$m/status"
+		if [ -f "$MNT/$m/hooks" ]; then
+			echo "--- $m/hooks ---"
+			cat "$MNT/$m/hooks"
 		fi
-		if [ -f "$MNT/modules/$m/namespaces" ]; then
-			echo "--- modules/$m/namespaces ---"
-			cat "$MNT/modules/$m/namespaces"
+		if [ -f "$MNT/$m/namespaces" ]; then
+			echo "--- $m/namespaces ---"
+			cat "$MNT/$m/namespaces"
 		fi
-		echo "--- modules/$m/log (tail) ---"
-		cat "$MNT/modules/$m/log" | tail -n 10
+		if [ -f "$MNT/$m/msg" ]; then
+			echo "--- $m/msg ---"
+			cat "$MNT/$m/msg"
+		fi
+		if [ -f "$MNT/$m/functions" ]; then
+			echo "--- $m/functions ---"
+			cat "$MNT/$m/functions"
+		fi
+		echo "--- $m/log (tail) ---"
+		cat "$MNT/$m/log" | tail -n 10
 	done
-	echo "--- top-level log (tail) ---"
-	cat "$MNT/log" | tail -n 20
+	echo "--- global/resources ---"
+	cat "$MNT/global/resources"
+	echo "--- global/log (tail) ---"
+	cat "$MNT/global/log" | tail -n 20
+	echo "--- ns/pid/namespaces ---"
+	cat "$MNT/ns/pid/namespaces"
 
 	echo "=== LKM4CTR_QEMU_TEST: diagfs hot upgrade (unload/reload shadow_ns hooks) ==="
-	echo unload > "$MNT/modules/shadow_ns/status"
-	echo "post-unload status: $(cat "$MNT/modules/shadow_ns/status")"
-	echo load > "$MNT/modules/shadow_ns/status"
-	echo "post-reload status: $(cat "$MNT/modules/shadow_ns/status")"
+	echo unload > "$MNT/ns/control"
+	echo "post-unload status: $(cat "$MNT/ns/status")"
+	echo load > "$MNT/ns/control"
+	echo "post-reload status: $(cat "$MNT/ns/status")"
 
 	echo "=== LKM4CTR_QEMU_TEST: deactivating all submodules via diagfs ==="
-	for m in shadow_ns shadow_sysvipc shadow_mqueue shadow_cgdevices; do
-		echo unload > "$MNT/modules/$m/status"
-		echo "modules/$m/status after unload: $(cat "$MNT/modules/$m/status")"
+	for m in ns sysvipc mqueue cgroupdevices; do
+		echo unload > "$MNT/$m/control"
+		echo "$m/status after unload: $(cat "$MNT/$m/status")"
 	done
 
-	echo "=== LKM4CTR_QEMU_TEST: safe_unload via diagfs ==="
-	cat "$MNT/safe_unload"
-	echo 1 > "$MNT/safe_unload"
+	echo "=== LKM4CTR_QEMU_TEST: global unload via diagfs ==="
+	cat "$MNT/global/control"
+	echo unload > "$MNT/global/control"
 	for _ in $(seq 1 "$SAFE_UNLOAD_TIMEOUT_SEC"); do
 		grep -q '^lkm4ctr ' /proc/modules || break
 		sleep 1
 	done
 	if grep -q '^lkm4ctr ' /proc/modules; then
-		echo "LKM4CTR_QEMU_TEST: safe_unload FAILED, module still loaded"
+		echo "LKM4CTR_QEMU_TEST: global unload FAILED, module still loaded"
 	else
-		echo "LKM4CTR_QEMU_TEST: safe_unload OK, module unloaded itself"
+		echo "LKM4CTR_QEMU_TEST: global unload OK, module unloaded itself"
 	fi
 	dmesg | tail -n 40
 
-	# safe_unload auto-unmounts every active diagfs mount itself before it
+	# global unload auto-unmounts every active diagfs mount itself before it
 	# starts waiting for module_refcount() to drain (see
 	# lkm4ctr_auto_umount_diagfs() in lkm4ctr_diagfs.c), so $MNT should
 	# already be gone; this is just a last-resort fallback in case
-	# safe_unload could not fully unload the module (e.g. still busy for
+	# the global unload path could not fully unload the module (e.g. still busy for
 	# some other reason), to leave the system in a clean state either way.
 	if grep -q '^lkm4ctr ' /proc/modules; then
-		echo "=== LKM4CTR_QEMU_TEST: safe_unload did not remove the module, forcing umount+rmmod ==="
+		echo "=== LKM4CTR_QEMU_TEST: global unload did not remove the module, forcing umount+rmmod ==="
 		umount "$MNT" 2>/dev/null
 		rmmod "$MODULE"
 		echo "rmmod -> $?"

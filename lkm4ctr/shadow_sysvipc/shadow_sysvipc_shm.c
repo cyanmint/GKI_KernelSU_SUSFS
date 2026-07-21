@@ -191,6 +191,19 @@ void svipc_shm_purge_locked(struct svipc_resource *res)
 	}
 }
 
+void svipc_shm_release_all_attachments(void)
+{
+	struct svipc_shm_attach *att, *tmp;
+
+	mutex_lock(&svipc_shm_attach_lock);
+	list_for_each_entry_safe(att, tmp, &svipc_shm_attach_list, node) {
+		list_del(&att->node);
+		svipc_put(att->res);
+		kfree(att);
+	}
+	mutex_unlock(&svipc_shm_attach_lock);
+}
+
 long svipc_sys_shmat(int shmid, const void __user *ushmaddr, int shmflg,
 		    unsigned long *raddr)
 {

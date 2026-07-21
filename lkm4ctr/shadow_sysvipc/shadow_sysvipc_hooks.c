@@ -426,6 +426,8 @@ void shadow_sysvipc_exit(void)
 
 	LKM4CTR_INFO("shadow_sysvipc", "exit: releasing per-tgid state");
 	svipc_tgid_release_all();
+	LKM4CTR_INFO("shadow_sysvipc", "exit: releasing shm attachment bookkeeping");
+	svipc_shm_release_all_attachments();
 	LKM4CTR_INFO("shadow_sysvipc", "exit: force-freeing remaining resources");
 	svipc_force_free_all_resources();
 

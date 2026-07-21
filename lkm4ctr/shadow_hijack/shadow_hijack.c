@@ -268,7 +268,7 @@ EXPORT_SYMBOL_GPL(shadow_hook_registry_tag_active);
  *
  * Every step is logged verbosely via LKM4CTR_LOG (tagged with @tag) so
  * that a "why didn't this take effect?" question is always answerable
- * from ./mnt/modules/<tag>/log alone: which groups matched, which were
+ * from ./mnt/<subsystem>/log alone: which groups matched, which were
  * already in the requested state, and -- on failure -- exactly which
  * group and underlying shadow_hook_install_all() error blocked it, plus a
  * concrete next step.

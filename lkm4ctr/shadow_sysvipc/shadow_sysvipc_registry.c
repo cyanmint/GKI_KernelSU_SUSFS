@@ -323,3 +323,59 @@ void svipc_force_free_all_resources(void)
 	xa_destroy(&svipc_map);
 	atomic_set(&svipc_count, 0);
 }
+
+static const char *svipc_diag_type_name(u32 type)
+{
+	switch (type) {
+	case SHADOW_SYSVIPC_TYPE_MSGQ:
+		return "msgq";
+	case SHADOW_SYSVIPC_TYPE_SEM:
+		return "sem";
+	case SHADOW_SYSVIPC_TYPE_SHM:
+		return "shm";
+	default:
+		return "?";
+	}
+}
+
+size_t shadow_sysvipc_diag_snprintf(char *buf, size_t buflen)
+{
+	size_t pos = 0;
+	unsigned long id;
+	struct svipc_resource *res;
+
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			  "resources: %d\n", atomic_read(&svipc_count));
+
+	mutex_lock(&svipc_map_lock);
+	xa_for_each(&svipc_map, id, res) {
+		u32 msg_count = 0;
+		u64 msg_qbytes = 0;
+		bool has_shm_file = false;
+
+		if (res->type == SHADOW_SYSVIPC_TYPE_MSGQ) {
+			mutex_lock(&res->msgs_lock);
+			msg_count = res->msg_count;
+			msg_qbytes = res->msg_qbytes;
+			mutex_unlock(&res->msgs_lock);
+		}
+		if (res->type == SHADOW_SYSVIPC_TYPE_SHM) {
+			mutex_lock(&res->shm_lock);
+			has_shm_file = res->shm_file != NULL;
+			mutex_unlock(&res->shm_lock);
+		}
+
+		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+				  "  id=%u type=%s ns=%u key=%d refcount=%d mode=%#o nsems=%u size=%llu msg_count=%u msg_qbytes=%llu shm_file=%s\n",
+				  res->id, svipc_diag_type_name(res->type),
+				  res->ns_id, res->key,
+				  refcount_read(&res->refcount),
+				  res->flags & 0777, res->nsems,
+				  (unsigned long long)res->size, msg_count,
+				  (unsigned long long)msg_qbytes,
+				  has_shm_file ? "yes" : "no");
+	}
+	mutex_unlock(&svipc_map_lock);
+
+	return pos;
+}
