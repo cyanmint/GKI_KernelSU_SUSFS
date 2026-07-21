@@ -35,7 +35,7 @@ mkdir -p qemu-logs
 LOG="qemu-logs/qemu-console-$VARIANT.log"
 
 echo "=== booting kernel variant: $VARIANT ==="
-timeout --signal=KILL 300 \
+timeout --signal=KILL 120 \
 	qemu-system-aarch64 \
 		-M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
 		-kernel "$KERNEL" \
@@ -46,6 +46,6 @@ timeout --signal=KILL 300 \
 	> "$LOG" 2>&1
 status=$?
 echo "QEMU ($VARIANT) exited with status $status"
-tail -n 100 "$LOG"
+cat "$LOG"
 
 exit "$status"
