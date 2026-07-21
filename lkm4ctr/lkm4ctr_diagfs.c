@@ -467,9 +467,10 @@ enum lkm4ctr_diagfs_status_cmd {
 
 static int lkm4ctr_diagfs_parse_status_cmd(const char *cmd, enum lkm4ctr_diagfs_status_cmd *out)
 {
-	if (!strcmp(cmd, "load")) {
+	if (!strcmp(cmd, "load") || !strcmp(cmd, "load_all")) {
 		*out = LKM4CTR_STATUS_LOAD;
-	} else if (!strcmp(cmd, "unload") || !strcmp(cmd, "graceful")) {
+	} else if (!strcmp(cmd, "1") || !strcmp(cmd, "unload") || !strcmp(cmd, "remove") ||
+		   !strcmp(cmd, "graceful")) {
 		*out = LKM4CTR_STATUS_UNLOAD;
 	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload")) {
 		*out = LKM4CTR_STATUS_FORCE;
@@ -624,7 +625,11 @@ static int lkm4ctr_diagfs_load_all(void)
 		if (err && !ret)
 			ret = err;
 	}
-	LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "load-all complete%s", ret ? " (with at least one failure; see the per-submodule log lines above)" : "");
+	if (ret)
+		LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG,
+			     "load-all complete with at least one failure; see the per-submodule log lines above");
+	else
+		LKM4CTR_INFO(LKM4CTR_DIAGFS_TAG, "load-all complete");
 	return ret;
 }
 
@@ -916,9 +921,14 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again");
 			} else {
-				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
-					    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task%s",
-					    refcount - 1, force ? "" : ", or a resource created via a hook (e.g. an anon-inode fd) is still held open");
+				if (force)
+					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task",
+						    refcount - 1);
+				else
+					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
+						    "cause: %d extra reference(s) remain with no lkm4ctr diagfs mounted, so a shadow_hook-redirected syscall is most likely still executing in another task, or a resource created via a hook (e.g. an anon-inode fd) is still held open",
+						    refcount - 1);
 				LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
 					    "resolution: this is a real in-flight kernel call still executing somewhere -- it cannot be forced to finish sooner without risking a crash, so simply wait and retry; if the count never drops on retry this may be a reference leak worth reporting");
 			}
@@ -997,6 +1007,7 @@ static ssize_t lkm4ctr_diagfs_safe_unload_write(struct file *file, const char __
 {
 	char cmd[16];
 	struct task_struct *thread;
+	enum lkm4ctr_diagfs_status_cmd action;
 	bool force;
 
 	if (count == 0 || count >= sizeof(cmd))
@@ -1007,23 +1018,20 @@ static ssize_t lkm4ctr_diagfs_safe_unload_write(struct file *file, const char __
 	cmd[count] = '\0';
 	strim(cmd);
 
+	if (lkm4ctr_diagfs_parse_status_cmd(cmd, &action))
+		return -EINVAL;
+
 	/* "load"/"load_all" -- the global load-all shortcut: synchronous,
 	 * no worker thread needed (calling each submodule's _init() is
 	 * quick, unlike the self-unload sequence below).
 	 */
-	if (!strcmp(cmd, "load") || !strcmp(cmd, "load_all")) {
+	if (action == LKM4CTR_STATUS_LOAD) {
 		int ret = lkm4ctr_diagfs_load_all();
 
 		return ret ? ret : count;
 	}
 
-	if (!strcmp(cmd, "1") || !strcmp(cmd, "unload") || !strcmp(cmd, "remove") ||
-	    !strcmp(cmd, "graceful"))
-		force = false;
-	else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload"))
-		force = true;
-	else
-		return -EINVAL;
+	force = (action == LKM4CTR_STATUS_FORCE);
 
 	if (!lkm4ctr_safe_unload_resolve())
 		return -EOPNOTSUPP;
