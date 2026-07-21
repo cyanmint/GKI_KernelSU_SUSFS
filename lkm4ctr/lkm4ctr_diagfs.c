@@ -677,7 +677,18 @@ static int lkm4ctr_diagfs_show(struct seq_file *m, void *v)
 			cap = LKM4CTR_DIAGFS_SHOW_MAX_CAP;
 	}
 
-	seq_write(m, buf, need);
+	/*
+	 * @need is the *true* required size as reported by the render
+	 * function (lkm4ctr_log_snprintf() in particular reports this even
+	 * when it exceeds @cap, so a grow-and-retry caller can tell it's
+	 * still truncated). If growth stopped at LKM4CTR_DIAGFS_SHOW_MAX_CAP
+	 * with @need still >= @cap, @buf itself only ever had @cap bytes
+	 * allocated and written into (scnprintf() never writes past
+	 * cap - 1 chars + a NUL) -- writing @need bytes to seq_write() in
+	 * that case would read past the end of @buf. Clamp to what is
+	 * actually present.
+	 */
+	seq_write(m, buf, need < cap ? need : cap - 1);
 	kfree(buf);
 	return 0;
 }
@@ -756,13 +767,9 @@ static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
 	LKM4CTR_INFO(mod->tag, "load requested via diagfs control write");
 	ret = mod->mod_init();
 
-	if (!ret && !strcmp(mod->tag, "shadow_hijack")) {
-		mutex_lock(&lkm4ctr_unload_lock);
-		lkm4ctr_hijack_active = true;
-		mutex_unlock(&lkm4ctr_unload_lock);
-	}
-
 	mutex_lock(&lkm4ctr_unload_lock);
+	if (!ret && !strcmp(mod->tag, "shadow_hijack"))
+		lkm4ctr_hijack_active = true;
 	mod->state = lkm4ctr_diagfs_module_stable_state(mod);
 	mutex_unlock(&lkm4ctr_unload_lock);
 

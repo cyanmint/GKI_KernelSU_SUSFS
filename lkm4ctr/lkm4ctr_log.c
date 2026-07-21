@@ -153,7 +153,7 @@ size_t lkm4ctr_log_snprintf(const char *tag, char *buf, size_t buflen)
 	 */
 	skip = matched > keep ? matched - keep : 0;
 	matched = 0;
-	for (i = 0; i < n && keep; i++) {
+	for (i = 0; i < n && matched < skip + keep; i++) {
 		unsigned int idx = (start + i) % LKM4CTR_LOG_CAPACITY;
 		struct lkm4ctr_log_entry *e = &lkm4ctr_log_ring[idx];
 
