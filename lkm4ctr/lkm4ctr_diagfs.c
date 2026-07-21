@@ -465,13 +465,31 @@ enum lkm4ctr_diagfs_status_cmd {
 	LKM4CTR_STATUS_FORCE,		/* force unload */
 };
 
+static bool lkm4ctr_diagfs_is_unload_cmd(const char *cmd, bool is_global)
+{
+	if (!strcmp(cmd, "unload") || !strcmp(cmd, "remove") || !strcmp(cmd, "graceful"))
+		return true;
+	/* "1" is only a global safe_unload alias, never valid for a
+	 * per-submodule status write.
+	 */
+	return is_global && !strcmp(cmd, "1");
+}
+
+/*
+ * @is_global selects which aliases are accepted: "load_all" and "1" only
+ * make sense on the global ./mnt/safe_unload file (bulk load-all / the
+ * legacy numeric self-unload trigger) and are rejected on a single
+ * submodule's ./mnt/modules/<name>/status file, where only "load" plainly
+ * loads that one submodule.
+ */
 static int lkm4ctr_diagfs_parse_status_cmd(const char *cmd, bool is_global,
 					    enum lkm4ctr_diagfs_status_cmd *out)
 {
-	if (!strcmp(cmd, "load") || (is_global && !strcmp(cmd, "load_all"))) {
+	if (!strcmp(cmd, "load")) {
 		*out = LKM4CTR_STATUS_LOAD;
-	} else if (!strcmp(cmd, "unload") || !strcmp(cmd, "remove") || !strcmp(cmd, "graceful") ||
-		   (is_global && !strcmp(cmd, "1"))) {
+	} else if (is_global && !strcmp(cmd, "load_all")) {
+		*out = LKM4CTR_STATUS_LOAD;
+	} else if (lkm4ctr_diagfs_is_unload_cmd(cmd, is_global)) {
 		*out = LKM4CTR_STATUS_UNLOAD;
 	} else if (!strcmp(cmd, "force") || !strcmp(cmd, "force_unload")) {
 		*out = LKM4CTR_STATUS_FORCE;
@@ -923,11 +941,13 @@ static int lkm4ctr_safe_unload_fn(void *unused)
 					    "resolution: `umount` every mountpoint of type \"lkm4ctr\" (check with `grep lkm4ctr /proc/mounts`) -- including the one you may be reading/writing safe_unload through right now -- then write to safe_unload again");
 			} else {
 				/*
-				 * Reached only from the drain-wait timeout above,
-				 * which happens before the post-drain graceful
-				 * lkm4ctr_diagfs_unload_all_now("graceful") call
-				 * further down -- so in the !force case here,
-				 * submodule resources genuinely may still be held.
+				 * This error path is only reached when the
+				 * drain-wait times out, which happens before
+				 * the post-drain graceful
+				 * lkm4ctr_diagfs_unload_all_now("graceful")
+				 * call further down -- so in the !force case
+				 * here, submodule resources genuinely may
+				 * still be held.
 				 */
 				if (force)
 					LKM4CTR_ERR(LKM4CTR_SAFE_UNLOAD_TAG,
@@ -1029,7 +1049,8 @@ static ssize_t lkm4ctr_diagfs_safe_unload_write(struct file *file, const char __
 	if (lkm4ctr_diagfs_parse_status_cmd(cmd, true, &action))
 		return -EINVAL;
 
-	/* "load"/"load_all" -- the global load-all shortcut: synchronous,
+	/*
+	 * "load"/"load_all" -- the global load-all shortcut: synchronous,
 	 * no worker thread needed (calling each submodule's _init() is
 	 * quick, unlike the self-unload sequence below).
 	 */
