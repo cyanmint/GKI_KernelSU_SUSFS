@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * lkm4ctr_safe_unload - sysfs-triggered self-unload for lkm4ctr.ko.
+ * lkm4ctr_safe_unload - misc-device-triggered self-unload for lkm4ctr.ko.
  *
  * Background
  * ----------
@@ -11,12 +11,41 @@
  * simply returns -EBUSY ("Module lkm4ctr is in use") until they drain.
  *
  * That still leaves the operator to retry rmmod by hand until it succeeds.
- * This file adds a sysfs control, /sys/module/lkm4ctr/safe_unload, that
+ * This file adds a control device, /dev/lkm4ctr_safe_unload, that
  * automates the whole sequence: writing "1" (or "unload"/"remove") to it
  * quiesces every hook (stopping new in-flight calls from starting), waits
  * for module_refcount() to drain to zero, and then triggers a genuine
  * userspace-driven module removal -- i.e. the module unloads itself, with
  * no further operator action required.
+ *
+ * Why a misc device instead of sysfs
+ * ----------------------------------
+ * An earlier version of this control lived at
+ * /sys/kernel/lkm4ctr/safe_unload, hung off a new kobject created under
+ * kernel_kobj. kernel_kobj is EXPORT_SYMBOL_GPL()'d but, like several
+ * function symbols elsewhere in this module (ftrace_set_filter_ip(),
+ * vm_mmap()/vm_munmap(), anon_inode_getfd_secure()), it turned out to have
+ * no built-in (non-modular) caller on some production GKI kernels and so
+ * gets stripped by CONFIG_TRIM_UNUSED_KSYMS, causing insmod to fail with
+ * "Unknown symbol kernel_kobj" -- and, being a data symbol rather than a
+ * function, it cannot be recovered via shadow_hook_resolve()'s
+ * register_kprobe() trick (kprobes only ever resolve text addresses). A
+ * follow-up switched to THIS_MODULE->mkobj.kobj (a kobject that always
+ * exists once a module is loaded, no export needed at all), but sysfs
+ * groups still route through file_operations installed by sysfs/kernfs
+ * core, which is a heavier and less universally exercised path across the
+ * full range of stripped-down production kernels this module targets.
+ *
+ * misc_register()/misc_deregister() (drivers/char/misc.c) are also plain
+ * EXPORT_SYMBOL() (not GPL), like module_refcount()/call_usermodehelper()
+ * below, but unlike those two, drivers/char/misc.c itself is relied upon by
+ * a very large number of essential built-in Android/GKI drivers (binder,
+ * ashmem, vfio, kvm, ...), so it is realistically never trimmed on any
+ * kernel this module is expected to load on. A plain character device,
+ * exercising nothing but the same open/read/write/release file_operations
+ * path every other device driver on the system already depends on, is the
+ * most universally "always available" control surface this module can
+ * offer -- hence the move away from sysfs entirely.
  *
  * The self-unload hazard
  * -----------------------
@@ -26,12 +55,12 @@
  * pages that no longer exist. This is why every practical "self-unload"
  * design (including this one) is actually two cooperating pieces:
  *
- *   1. A worker kthread, spawned by the sysfs write, that does the waiting
- *      (quiesce + poll module_refcount()) and then asks a real userspace
- *      process to do the actual `rmmod`/`modprobe -r` -- module removal is
- *      always driven by an external process calling delete_module(2); no
- *      in-kernel API removes "the currently running module" from within
- *      itself.
+ *   1. A worker kthread, spawned by the device write, that does the
+ *      waiting (quiesce + poll module_refcount()) and then asks a real
+ *      userspace process to do the actual `rmmod`/`modprobe -r` -- module
+ *      removal is always driven by an external process calling
+ *      delete_module(2); no in-kernel API removes "the currently running
+ *      module" from within itself.
  *   2. module_put_and_kthread_exit(), used instead of a normal return from
  *      the worker thread's body once its job is done. This is the one
  *      piece of core kernel code (kernel/module/main.c, *not* our module's
@@ -55,8 +84,10 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/version.h>
-#include <linux/kobject.h>
-#include <linux/sysfs.h>
+#include <linux/miscdevice.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/string.h>
 #include <linux/kthread.h>
 #include <linux/umh.h>
 #include <linux/mutex.h>
@@ -116,9 +147,27 @@ static lkm4ctr_module_refcount_t lkm4ctr_module_refcount_fn;
 static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
 
 /*
+ * LKM4CTR_RESOLVE_ONE() - shared body for each symbol resolved by
+ * lkm4ctr_safe_unload_resolve() below: resolve by name into `fn` if not
+ * already cached, warning once if resolution fails. A macro (rather than a
+ * helper taking a common function-pointer-sized argument) avoids casting
+ * through an intermediate pointer type, since C does not guarantee that
+ * function pointers and object pointers share a representation.
+ */
+#define LKM4CTR_RESOLVE_ONE(fn, name)					\
+	do {								\
+		if (!(fn)) {						\
+			(fn) = (typeof(fn))shadow_hook_resolve(name);	\
+			if (!(fn))					\
+				pr_warn("lkm4ctr: safe_unload: could not resolve %s; "	\
+					"safe_unload unavailable\n", name);		\
+		}							\
+	} while (0)
+
+/*
  * lkm4ctr_safe_unload_resolve() - resolve the above on first use and cache
  * the results; idempotent. Concurrent callers (e.g. two racing writes to
- * the sysfs attribute) could redundantly re-resolve and store the same
+ * the control device) could redundantly re-resolve and store the same
  * pointer value, but that race is benign since shadow_hook_resolve() for a
  * given name always returns the same address -- the same assumption
  * shadow_hook_ftrace_api_ready() relies on for its own lazy resolution, so
@@ -126,18 +175,8 @@ static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
  */
 static bool lkm4ctr_safe_unload_resolve(void)
 {
-	if (!lkm4ctr_module_refcount_fn) {
-		lkm4ctr_module_refcount_fn = (lkm4ctr_module_refcount_t)
-			shadow_hook_resolve("module_refcount");
-		if (!lkm4ctr_module_refcount_fn)
-			pr_warn("lkm4ctr: safe_unload: could not resolve module_refcount; safe_unload unavailable\n");
-	}
-	if (!lkm4ctr_call_usermodehelper_fn) {
-		lkm4ctr_call_usermodehelper_fn = (lkm4ctr_call_usermodehelper_t)
-			shadow_hook_resolve("call_usermodehelper");
-		if (!lkm4ctr_call_usermodehelper_fn)
-			pr_warn("lkm4ctr: safe_unload: could not resolve call_usermodehelper; safe_unload unavailable\n");
-	}
+	LKM4CTR_RESOLVE_ONE(lkm4ctr_module_refcount_fn, "module_refcount");
+	LKM4CTR_RESOLVE_ONE(lkm4ctr_call_usermodehelper_fn, "call_usermodehelper");
 
 	return lkm4ctr_module_refcount_fn && lkm4ctr_call_usermodehelper_fn;
 }
@@ -249,23 +288,41 @@ abort:
 	return 0;
 }
 
-static ssize_t safe_unload_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t lkm4ctr_unload_read(struct file *file, char __user *ubuf,
+				    size_t count, loff_t *ppos)
 {
 	bool in_progress;
+	const char *msg;
 
 	mutex_lock(&lkm4ctr_unload_lock);
 	in_progress = lkm4ctr_unload_in_progress;
 	mutex_unlock(&lkm4ctr_unload_lock);
 
-	return sysfs_emit(buf, "%s\n", in_progress ? "in-progress" : "idle");
+	msg = in_progress ? "in-progress\n" : "idle\n";
+	return simple_read_from_buffer(ubuf, count, ppos, msg, strlen(msg));
 }
 
-static ssize_t safe_unload_store(struct kobject *kobj, struct kobj_attribute *attr,
-				  const char *buf, size_t count)
+static ssize_t lkm4ctr_unload_write(struct file *file, const char __user *ubuf,
+				     size_t count, loff_t *ppos)
 {
+	char cmd[16];
 	struct task_struct *thread;
 
-	if (!sysfs_streq(buf, "1") && !sysfs_streq(buf, "unload") && !sysfs_streq(buf, "remove"))
+	/*
+	 * Reject oversized writes outright instead of silently truncating
+	 * them: none of the accepted commands ("1"/"unload"/"remove") are
+	 * anywhere close to sizeof(cmd), so a longer write is always a
+	 * malformed command, not a valid one that merely didn't fit.
+	 */
+	if (count == 0 || count >= sizeof(cmd))
+		return -EINVAL;
+
+	if (copy_from_user(cmd, ubuf, count))
+		return -EFAULT;
+	cmd[count] = '\0';
+	strim(cmd);
+
+	if (strcmp(cmd, "1") && strcmp(cmd, "unload") && strcmp(cmd, "remove"))
 		return -EINVAL;
 
 	if (!lkm4ctr_safe_unload_resolve())
@@ -291,36 +348,24 @@ static ssize_t safe_unload_store(struct kobject *kobj, struct kobj_attribute *at
 	return count;
 }
 
-static struct kobj_attribute lkm4ctr_safe_unload_attr = __ATTR_RW(safe_unload);
-
-static struct attribute *lkm4ctr_sysfs_attrs[] = {
-	&lkm4ctr_safe_unload_attr.attr,
-	NULL,
+static const struct file_operations lkm4ctr_unload_fops = {
+	.owner = THIS_MODULE,
+	.read = lkm4ctr_unload_read,
+	.write = lkm4ctr_unload_write,
 };
-ATTRIBUTE_GROUPS(lkm4ctr_sysfs);
+
+static struct miscdevice lkm4ctr_unload_miscdev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "lkm4ctr_safe_unload",
+	.fops = &lkm4ctr_unload_fops,
+};
 
 int lkm4ctr_safe_unload_init(void)
 {
-	/*
-	 * Hang safe_unload off THIS_MODULE's own kobject
-	 * (/sys/module/lkm4ctr/) rather than creating a new one under
-	 * kernel_kobj. kernel_kobj is EXPORT_SYMBOL_GPL()'d but, like
-	 * ftrace_set_filter_ip()/vm_mmap()/anon_inode_getfd_secure()
-	 * elsewhere in this module, it is a data symbol with no built-in
-	 * (non-modular) callers on some production GKI kernels and so gets
-	 * stripped by CONFIG_TRIM_UNUSED_KSYMS -- causing insmod to fail
-	 * with "Unknown symbol kernel_kobj". Unlike those function symbols,
-	 * a data symbol can't be recovered via shadow_hook_resolve()'s
-	 * register_kprobe() trick (kprobes only accept text addresses), so
-	 * the fix here is to avoid needing kernel_kobj at all:
-	 * THIS_MODULE->mkobj.kobj is set up by the module loader itself
-	 * (mod_sysfs_setup(), before our module_init runs) and requires no
-	 * export whatsoever.
-	 */
-	return sysfs_create_groups(&THIS_MODULE->mkobj.kobj, lkm4ctr_sysfs_groups);
+	return misc_register(&lkm4ctr_unload_miscdev);
 }
 
 void lkm4ctr_safe_unload_exit(void)
 {
-	sysfs_remove_groups(&THIS_MODULE->mkobj.kobj, lkm4ctr_sysfs_groups);
+	misc_deregister(&lkm4ctr_unload_miscdev);
 }

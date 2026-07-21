@@ -53,7 +53,10 @@
 #      initramfs's un-mounted /dev contents), runs lkm4ctr_checker,
 #      insmods lkm4ctr.ko, runs lkm4ctr_checker again, starts a real
 #      dockerd, imports+runs the alpine tarball already baked into
-#      image1.ext4, then powers off via sysrq.
+#      image1.ext4, exercises the /dev/lkm4ctr_safe_unload misc device
+#      (writes "1" and confirms lkm4ctr disappears from /proc/modules on
+#      its own, i.e. a real self-unload rather than just insmod success),
+#      then powers off via sysrq.
 
 if [ "$$" != "1" ]; then
 	# ==================================================================
@@ -184,6 +187,27 @@ done
 echo "=== LKM4CTR_QEMU_TEST: docker run (test container sanity) ==="
 docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest ps -e
 docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
+
+echo "=== LKM4CTR_QEMU_TEST: safe_unload via /dev/lkm4ctr_safe_unload ==="
+# misc_register() (lkm4ctr_safe_unload_init()) only creates the device
+# class entry under /sys/class/misc/lkm4ctr_safe_unload; since these test
+# kernels have no devtmpfs, the /dev node itself only exists once mdev's
+# coldplug scan runs again (mdev -s only picked up devices present at the
+# time it was last invoked, before insmod created this one).
+busybox mdev -s
+ls -l /dev/lkm4ctr_safe_unload
+cat /dev/lkm4ctr_safe_unload
+echo 1 > /dev/lkm4ctr_safe_unload
+for _ in $(seq 1 30); do
+  grep -q '^lkm4ctr ' /proc/modules || break
+  sleep 1
+done
+if grep -q '^lkm4ctr ' /proc/modules; then
+  echo "LKM4CTR_QEMU_TEST: safe_unload FAILED, module still loaded"
+else
+  echo "LKM4CTR_QEMU_TEST: safe_unload OK, module unloaded itself"
+fi
+dmesg | tail -n 40
 
 echo "=== LKM4CTR_QEMU_TEST: DONE ==="
 # unmounts whatever /do-mounts.sh mounted above, so the following

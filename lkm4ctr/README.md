@@ -12,7 +12,7 @@ The unified module links these internal subsystem source trees together:
 * `shadow_sysvipc/` — SysV IPC hooks and registry
 * `shadow_mqueue/` — POSIX mqueue hooks and queue engine
 * `shadow_cgdevices/` — device-open compatibility hooks
-* `lkm4ctr_safe_unload.c` — sysfs-triggered self-unload (see below)
+* `lkm4ctr_safe_unload.c` — misc-device-triggered self-unload (see below)
 
 Their sources stay split by subsystem for maintainability, but they now build
 and load only as one module with the single entry point in
@@ -27,21 +27,27 @@ with in-flight calls: the kernel returns `-EBUSY` ("Module lkm4ctr is in
 use") until they finish, instead of panicking once their code is freed out
 from under them.
 
-## Safe unload via sysfs
+## Safe unload via a control device
 
-Writing `1` (or `unload`/`remove`) to `/sys/module/lkm4ctr/safe_unload`
+Writing `1` (or `unload`/`remove`) to `/dev/lkm4ctr_safe_unload`
 triggers the module to unload itself with no further operator action:
 
 ```sh
-echo 1 > /sys/module/lkm4ctr/safe_unload
+echo 1 > /dev/lkm4ctr_safe_unload
 ```
 
 This spawns a worker thread that quiesces every hook (stopping new
 redirected calls from starting), waits for any already in-flight calls to
 finish, and then launches a real userspace `rmmod lkm4ctr` on its own. If
 in-flight calls don't drain within 30 seconds, the attempt is aborted, hooks
-resume normal operation, and the module stays loaded. Reading the file
+resume normal operation, and the module stays loaded. Reading the device
 reports `idle` or `in-progress`.
+
+This control is a plain misc character device (`misc_register()`) rather
+than a sysfs attribute: `misc_register()`/`misc_deregister()` are relied
+upon by a very large number of essential built-in Android/GKI drivers, so
+they are realistically never stripped by `CONFIG_TRIM_UNUSED_KSYMS` on any
+kernel this module targets, keeping this control surface always available.
 
 ## Build
 
