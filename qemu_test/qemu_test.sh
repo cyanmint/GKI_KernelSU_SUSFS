@@ -1,51 +1,187 @@
-#!/usr/bin/env bash
-# Boot-test a single kernel under QEMU against the injected (busybox) ramdisk
-# and the prebuilt image1.ext4 testsuite root filesystem.
+#!/busybox sh
+# Merged host-launcher + stage-1/stage-2 init script. This single file plays
+# three different roles, dispatched purely by PID and argv[0]/$0 -- no
+# separate files/arguments select the mode:
 #
-# Extracted from .github/workflows/build-shadow-ctr.yml's "Boot all three
-# kernels under QEMU" step so the same QEMU invocation can be reused/run
-# locally without re-reading the workflow YAML.
+#   1. Host-side QEMU launcher ("qemu_test.sh" mode), when $$ (the running
+#      shell's own PID) is not 1 -- i.e. whenever this script is not acting
+#      as some kernel's PID 1. Boots a single kernel under QEMU against a
+#      given image1.ext4 (and, optionally, an injected ramdisk), for use in
+#      both build-shadow-ctr.yml and ad-hoc manual debugging:
 #
-# Usage:
-#   qemu_test.sh <image1.ext4 path> <kernel path> <variant name>
+#        bash qemu_test.sh <image1.ext4 path> <kernel path> <init path> [ramdisk path]
 #
-# Expects "injected-ramdisk.cpio" (built by the "Build injected (busybox)
-# ramdisk" workflow step) to exist in the current working directory, and
-# writes its QEMU console log to "qemu-logs/qemu-console-<variant name>.log"
-# (also relative to the current working directory).
+#      If <ramdisk path> is given, boots with "-initrd <ramdisk path>" and
+#      "rdinit=<init path>" (the injected ramdisk owns /, so the kernel is
+#      told which program on *that* ramdisk to run as init). If omitted,
+#      boots without "-initrd" at all, and "root=/dev/nvme0n1
+#      init=<init path>" instead (image1.ext4 -- /dev/nvme0n1 -- is used
+#      directly as the root filesystem, so <init path> must exist there).
 #
-# Exits with QEMU's own exit status (propagated from `timeout`).
+#      IMPORTANT: this file's shebang is "#!/busybox sh" (needed for roles 2
+#      and 3 below, where the kernel/switch_root exec it directly and only
+#      /busybox is guaranteed to exist). That shebang is almost certainly
+#      *not* usable on a plain Ubuntu host (no /busybox binary), so this
+#      script must always be invoked explicitly as `bash qemu_test.sh ...`
+#      on the host -- never `./qemu_test.sh ...`, which would honor the
+#      shebang and try (and typically fail) to exec /busybox.
+#
+#   2. Stage-1 init (PID 1, argv[0]/$0 == "init"): this is the role played
+#      when the script is baked into the injected (busybox) ramdisk as
+#      /init and the kernel starts it as rdinit=/init. It:
+#        a. populates /dev via mdev -- the QEMU test kernels have no
+#           devtmpfs support, so /dev must be populated the old way: mount
+#           sysfs, then `mdev -s` coldplugs every device node (console,
+#           kmsg, nvme...) from /sys.
+#        b. mounts image1.ext4 (/dev/nvme0n1, the prebuilt testsuite root
+#           filesystem downloaded verbatim in build-shadow-ctr.yml) at
+#           /newroot.
+#        c. copies /shadow_ctr.ko + /shadow_ctr_checker, baked into this
+#           same ramdisk, onto the new root.
+#        d. copies this very script onto the new root as /second_init
+#           (`cat /init` works because /init is this script's own path in
+#           the initramfs).
+#        e. busybox switch_root's into /newroot and execs /second_init --
+#           since its argv[0] is now "/second_init" rather than "init", it
+#           runs the stage-2 body below instead of stage-1 again.
+#
+#   3. Stage-2 init (PID 1, argv[0]/$0 != "init"): out of the real root,
+#      image1.ext4, as /second_init (or, if booted directly against
+#      image1.ext4 with no ramdisk at all via "init=/second_init" on the
+#      kernel command line, straight away). Populates /dev again (same
+#      reasoning as stage 1 -- switch_root does not preserve the
+#      initramfs's un-mounted /dev contents), runs shadow_ctr_checker,
+#      insmods shadow_ctr.ko, runs shadow_ctr_checker again, starts a real
+#      dockerd, imports+runs the alpine tarball already baked into
+#      image1.ext4, then powers off via sysrq.
 
-set -uo pipefail
-# Note: intentionally not "set -e" -- QEMU's exit status (including a
-# timeout/KILL) is captured explicitly below so the console log tail is
-# always printed and the script's own exit status still reflects QEMU's,
-# rather than the shell aborting immediately on a nonzero exit.
+if [ "$$" != "1" ]; then
+	# ==================================================================
+	# mode 1: host-side QEMU launcher ("qemu_test.sh")
+	# ==================================================================
+	set -uo pipefail
+	# Note: intentionally not "set -e" -- QEMU's exit status (including a
+	# timeout/KILL) is captured explicitly below so the console log is
+	# always printed and this script's own exit status still reflects
+	# QEMU's, rather than the shell aborting immediately on a nonzero
+	# exit.
 
-if [ "$#" -ne 3 ]; then
-	echo "usage: $0 <image1.ext4 path> <kernel path> <variant name>" >&2
-	exit 2
+	if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+		echo "usage: bash $0 <image1.ext4 path> <kernel path> <init path> [ramdisk path]" >&2
+		exit 2
+	fi
+
+	IMAGE1="$1"
+	KERNEL="$2"
+	INIT="$3"
+	RAMDISK="${4:-}"
+
+	mkdir -p qemu-logs
+	LOG="qemu-logs/qemu-console-$(basename "$KERNEL").log"
+
+	if [ -n "$RAMDISK" ]; then
+		echo "=== booting kernel: $KERNEL (ramdisk=$RAMDISK, rdinit=$INIT) ==="
+		set -- \
+			-M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
+			-kernel "$KERNEL" \
+			-initrd "$RAMDISK" \
+			-drive file="$IMAGE1",if=none,id=image1,format=raw \
+			-device nvme,serial=11451401,drive=image1 \
+			-append "console=ttyAMA0 rdinit=$INIT earlycon panic=-1"
+	else
+		echo "=== booting kernel: $KERNEL (no ramdisk, init=$INIT) ==="
+		set -- \
+			-M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
+			-kernel "$KERNEL" \
+			-drive file="$IMAGE1",if=none,id=image1,format=raw \
+			-device nvme,serial=11451401,drive=image1 \
+			-append "console=ttyAMA0 root=/dev/nvme0n1 init=$INIT earlycon panic=-1"
+	fi
+
+	timeout --signal=KILL 120 qemu-system-aarch64 "$@" > "$LOG" 2>&1
+	status=$?
+	echo "QEMU exited with status $status"
+	cat "$LOG"
+
+	exit "$status"
 fi
 
-IMAGE1="$1"
-KERNEL="$2"
-VARIANT="$3"
+if [ "$(/busybox basename "$0")" = "init" ]; then
+	# ==================================================================
+	# mode 2: stage 1 (initramfs, PID 1 as /init)
+	# ==================================================================
+	PATH=/
+	busybox mkdir -p /sys /dev /newroot
+	busybox mount -t sysfs sysfs /sys
+	busybox mdev -s
+	busybox echo "=== SHADOW_CTR_QEMU_TEST: stage1 (initramfs) ==="
 
-mkdir -p qemu-logs
-LOG="qemu-logs/qemu-console-$VARIANT.log"
+	busybox mount -t ext4 /dev/nvme0n1 /newroot
+	busybox echo "mount image1.ext4 -> $?"
 
-echo "=== booting kernel variant: $VARIANT ==="
-timeout --signal=KILL 120 \
-	qemu-system-aarch64 \
-		-M virt -cpu max -m 2G -smp 2 -nographic -no-reboot \
-		-kernel "$KERNEL" \
-		-initrd injected-ramdisk.cpio \
-		-drive file="$IMAGE1",if=none,id=image1,format=raw \
-		-device nvme,serial=11451401,drive=image1 \
-		-append "console=ttyAMA0 rdinit=/init earlycon panic=-1" \
-	> "$LOG" 2>&1
-status=$?
-echo "QEMU ($VARIANT) exited with status $status"
-cat "$LOG"
+	busybox cp /shadow_ctr_checker /newroot/
+	busybox cp /shadow_ctr.ko /newroot/
+	busybox cat /init > /newroot/second_init
+	busybox chmod 755 /newroot/second_init
 
-exit "$status"
+	busybox echo "=== SHADOW_CTR_QEMU_TEST: exec second init ==="
+	exec busybox switch_root /newroot /busybox env -i /system/bin/sh /second_init
+fi
+
+# ======================================================================
+# mode 3: stage 2 (real root, image1.ext4, PID 1 as /second_init)
+# ======================================================================
+#
+# All ramdisk utilities are invoked with absolute paths: bionic's dynamic
+# linker needs /proc/self/exe (or a resolvable argv[0]) to load shared
+# objects, which only holds once /proc is mounted and the path is absolute.
+set -x
+# /dev is not preserved across switch_root (it was never a separate mount in
+# stage 1, just mdev-populated directory entries on the initramfs, which
+# switch_root discards along with the rest of the old root), so it must be
+# populated again here the same way: mount sysfs, then mdev -s. Re-point
+# stdio at /dev/kmsg immediately afterwards -- PID 1's original fds are
+# otherwise easy to lose track of once /dev is replaced, silently dropping
+# every echo/trace/command-output line for the rest of the script even
+# though it keeps executing. /dev/kmsg writes become kernel printk records,
+# which reliably reaches the QEMU console log.
+
+source /do-mounts.sh
+PATH=/:$PATH
+
+busybox mdev -s
+ifconfig lo up
+
+echo "=== SHADOW_CTR_QEMU_TEST: /ctr (module + checker) copied onto the new root by stage1 ==="
+chmod 755 /shadow_ctr_checker
+
+echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (pre-insmod) ==="
+shadow_ctr_checker
+
+echo "=== SHADOW_CTR_QEMU_TEST: inserting merged module ==="
+insmod /shadow_ctr.ko
+dmesg
+
+echo "=== SHADOW_CTR_QEMU_TEST: shadow_ctr_checker (post-insmod) ==="
+shadow_ctr_checker
+
+echo "=== SHADOW_CTR_QEMU_TEST: starting dockerd (daemon) ==="
+dockerd &
+for i in $(seq 1 30); do
+  [ -S /var/run/docker.sock ] && break
+  sleep 1
+done
+
+echo "=== SHADOW_CTR_QEMU_TEST: docker run (test container sanity) ==="
+docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest ps -e
+docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
+
+echo "=== SHADOW_CTR_QEMU_TEST: DONE ==="
+source /do-umounts.sh
+/system/bin/mount -o remount,ro /
+echo o > /proc/sysrq-trigger
+for i in 1 2 3 4 5; do
+  echo $i
+  sleep $i
+done
+exec env -i /system/bin/sh

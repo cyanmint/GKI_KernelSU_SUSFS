@@ -54,9 +54,10 @@
 # the "test" job downloads both, fetches testsuite.zip, and builds a single
 # injected (busybox) ramdisk before booting all three kernels in the same
 # job:
-#   - the injected ramdisk's /init is a merged busybox script
-#     (qemu_test/init.sh, dispatching on argv[0]) that acts as both stage-1
-#     and stage-2 init. As stage 1 (argv[0] == "init"), it populates /dev
+#   - the injected ramdisk's /init is qemu_test/qemu_test.sh (a single
+#     "#!/busybox sh" script that also doubles as the host-side QEMU
+#     launcher used below -- see its own header comment), dispatching on
+#     PID/argv[0]. As stage 1 (PID 1, argv[0] == "init"), it populates /dev
 #     via mdev (the test kernels have no devtmpfs support), mounts
 #     image1.ext4 (/dev/nvme0n1, the prebuilt testsuite root filesystem --
 #     the test kernels have no virtio support either, hence NVMe) at
@@ -190,38 +191,37 @@ jobs:
       fail-fast: false
       matrix:
         kmi: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    # Run the whole job inside the DDK image (see
+    # https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/run-jobs-in-a-container)
+    # instead of a separate "docker pull" + "docker run -v ... bash -c '...'"
+    # step pair: Actions pulls/starts the container once for the job and
+    # runs every step's "run:" directly inside it (workspace already
+    # bind-mounted at $GITHUB_WORKSPACE, no manual -v/-w/-e plumbing, and no
+    # more root-owned modules-out/ requiring a chown afterwards, since the
+    # checkout/build/upload steps all execute as the container's own user
+    # throughout).
+    container:
+      image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Pull DDK build image (${{ matrix.kmi }}-${{ env.DDK_RELEASE }})
-        run: |
-          docker pull "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}"
-
       - name: Build shadow_ctr.ko (arm64, via DDK container)
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace \
-            -e KMI="${{ matrix.kmi }}" \
-            "ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-${{ env.DDK_RELEASE }}" \
-            bash -euxo pipefail -c '
-              KDIR="/opt/ddk/kdir/${KMI}"
-              ROOT="/workspace/shadow_ctr"
+          set -euxo pipefail
+          KDIR="/opt/ddk/kdir/${{ matrix.kmi }}"
+          ROOT="$GITHUB_WORKSPACE/shadow_ctr"
 
-              make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
+          make -C "$KDIR" M="$ROOT" modules -j"$(nproc)"
 
-              # collect the built .ko into a staging dir for upload.
-              mkdir -p /workspace/modules-out
-              cp "$ROOT/shadow_ctr.ko" /workspace/modules-out/
+          # collect the built .ko into a staging dir for upload.
+          mkdir -p "$GITHUB_WORKSPACE/modules-out"
+          cp "$ROOT/shadow_ctr.ko" "$GITHUB_WORKSPACE/modules-out/"
 
-              echo "=== built modules ==="
-              printf "%s\n" "$ROOT/shadow_ctr.ko"
-              echo "=== staged modules ==="
-              ls -la /workspace/modules-out
-            '
-          # The DDK container runs as root, so modules-out/ (created inside
-          # the container via the bind mount) is root-owned on the host;
-          # reopen it for the "runner" user before uploading.
-          sudo chown -R "$(id -u):$(id -g)" modules-out
+          echo "=== built modules ==="
+          printf "%s\n" "$ROOT/shadow_ctr.ko"
+          echo "=== staged modules ==="
+          ls -la "$GITHUB_WORKSPACE/modules-out"
 
       # --- single artifact containing only shadow_ctr.ko for this KMI ---
       # (no longer bundles shadow_ctr_checker -- see build-checker above)
@@ -283,8 +283,8 @@ jobs:
           ls -la testsuite
 
       # --- 2. injected ramdisk: /ctr (module + checker), /busybox and the
-      #        merged init script (qemu_test/init.sh), which mounts
-      #        image1.ext4 (/dev/nvme0n1) and switch_root's into it ---
+      #        merged qemu_test.sh (init mode), which mounts image1.ext4
+      #        (/dev/nvme0n1) and switch_root's into it ---
       - name: Build injected (busybox) ramdisk
         run: |
           set -e
@@ -299,13 +299,17 @@ jobs:
           cp payload/shadow_ctr_checker injected-ramdisk/
           chmod 755 injected-ramdisk/shadow_ctr_checker
 
-          # Merged stage-1/stage-2 init script: committed at
-          # qemu_test/init.sh for better management (rather than generated
-          # inline here). Dispatches on argv[0]: run as /init it performs
-          # stage 1 (mdev-populate /dev, mount image1.ext4, copy /ctr and
-          # /busybox onto it, switch_root); copied onto the new root and run
-          # as /second_init it performs stage 2 instead.
-          cp qemu_test/init.sh injected-ramdisk/init
+          # Merged host-launcher/stage-1/stage-2 script: committed at
+          # qemu_test/qemu_test.sh for better management (rather than
+          # generated inline here). Its own shebang (#!/busybox sh) is what
+          # the kernel execs here, dispatching on PID/argv[0]: run as /init
+          # with PID 1 it performs stage 1 (mdev-populate /dev, mount
+          # image1.ext4, copy /ctr and /busybox onto it, switch_root);
+          # copied onto the new root and run as /second_init it performs
+          # stage 2 instead. (Host invocations of this same file, i.e. `bash
+          # qemu_test.sh ...` below, take its third mode instead -- see the
+          # script's own header comment.)
+          cp qemu_test/qemu_test.sh injected-ramdisk/init
           chmod 755 injected-ramdisk/init
 
           (cd injected-ramdisk && find . | cpio -o -H newc > "$GITHUB_WORKSPACE/injected-ramdisk.cpio")
@@ -322,9 +326,12 @@ jobs:
           # are booted; "set +e" keeps all three variants running
           # regardless of any individual failure.
           set +e
-          chmod 755 qemu_test/qemu_test.sh
+          # qemu_test.sh's shebang is #!/busybox sh (needed for its
+          # ramdisk-init roles above), so it must be invoked explicitly as
+          # "bash qemu_test.sh ..." here rather than "./qemu_test.sh ...",
+          # which would honor that shebang instead.
           for variant in stock sukisu sukisu-ctrpatches; do
-            qemu_test/qemu_test.sh testsuite/image1.ext4 "testsuite/kernel-$variant" "$variant"
+            bash qemu_test/qemu_test.sh testsuite/image1.ext4 "testsuite/kernel-$variant" /init injected-ramdisk.cpio
           done
           ls -la qemu-logs
 
