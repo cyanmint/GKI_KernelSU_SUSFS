@@ -236,12 +236,34 @@ static bool lkm4ctr_hotreload_path_is_safe(const char *path)
 	return true;
 }
 
+typedef struct file *(*lkm4ctr_hotreload_filp_open_t)(const char *, int, umode_t);
+
 static int lkm4ctr_hotreload_check_exists(const char *path)
 {
+	static lkm4ctr_hotreload_filp_open_t filp_open_fn;
+	lkm4ctr_hotreload_filp_open_t fn = READ_ONCE(filp_open_fn);
 	struct file *filp;
 	int ret = 0;
 
-	filp = filp_open(path, O_RDONLY, 0);
+	if (!fn) {
+		mutex_lock(&lkm4ctr_hotreload_lock);
+		fn = READ_ONCE(filp_open_fn);
+		if (!fn) {
+			fn = (lkm4ctr_hotreload_filp_open_t)
+				shadow_hook_resolve("filp_open");
+			if (fn)
+				WRITE_ONCE(filp_open_fn, fn);
+		}
+		mutex_unlock(&lkm4ctr_hotreload_lock);
+	}
+	if (!fn) {
+		LKM4CTR_WARN(LKM4CTR_HOTRELOAD_TAG,
+			     "could not resolve filp_open; rejecting do-hot-reload path \"%s\"",
+			     path);
+		return -ENOSYS;
+	}
+
+	filp = fn(path, O_RDONLY, 0);
 	if (IS_ERR(filp))
 		return PTR_ERR(filp);
 	if (!S_ISREG(file_inode(filp)->i_mode))
