@@ -220,10 +220,12 @@ jobs:
             -e 's/^# CONFIG_FEATURE_SH_STANDALONE is not set/CONFIG_FEATURE_SH_STANDALONE=y/' \
             .config
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-          grep -E "^CONFIG_STATIC=y|^CONFIG_FEATURE_PREFER_APPLETS=y|^CONFIG_FEATURE_SH_STANDALONE=y" .config
+          grep -q "^CONFIG_STATIC=y" .config
+          grep -q "^CONFIG_FEATURE_PREFER_APPLETS=y" .config
+          grep -q "^CONFIG_FEATURE_SH_STANDALONE=y" .config
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
-          file busybox
+          file busybox | grep -q "ARM aarch64.*statically linked"
           cp busybox "$GITHUB_WORKSPACE/busybox-arm64"
 
       - name: Upload busybox (arm64, static)
