@@ -245,7 +245,7 @@ lkm4ctr_init_2() {
 }
 
 lkm4ctr_init_tail(){
-	
+	echo o > /proc/sysrq-trigger
 }
 
 if [ "$$" != "1" ]; then
