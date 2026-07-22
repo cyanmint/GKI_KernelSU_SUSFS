@@ -219,7 +219,14 @@ jobs:
             -e 's/^# CONFIG_FEATURE_PREFER_APPLETS is not set/CONFIG_FEATURE_PREFER_APPLETS=y/' \
             -e 's/^# CONFIG_FEATURE_SH_STANDALONE is not set/CONFIG_FEATURE_SH_STANDALONE=y/' \
             .config
+          # "yes" exits nonzero (broken pipe) once make oldconfig stops
+          # reading stdin after the last prompt, which "set -o pipefail"
+          # above would otherwise treat as a pipeline failure even though
+          # make itself succeeded; temporarily disable it so only make's
+          # own exit status (last command in the pipe) is checked.
+          set +o pipefail
           yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+          set -o pipefail
           grep -q "^CONFIG_STATIC=y" .config
           grep -q "^CONFIG_FEATURE_PREFER_APPLETS=y" .config
           grep -q "^CONFIG_FEATURE_SH_STANDALONE=y" .config
