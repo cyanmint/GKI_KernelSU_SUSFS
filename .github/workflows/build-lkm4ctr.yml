@@ -122,6 +122,10 @@ env:
   DDK_RELEASE: '20260313'
   # KMI whose build is boot-tested under QEMU below.
   TEST_KMI: android14-6.1
+  # Busybox version statically built (in build-checker below) for use as
+  # the injected QEMU test ramdisk's /busybox, replacing the previous
+  # `docker pull busybox:musl` + `docker cp` extraction.
+  BUSYBOX_VERSION: '1.36.1'
   # testsuite.zip bundles the three QEMU test kernels (stock / sukisu /
   # sukisu+ctr_patches) and a ready-to-use image1.ext4 (a full Android
   # system-as-root userland with toybox, bionic libc, static
@@ -164,6 +168,15 @@ jobs:
   # per-KMI kernel-module "build" job below -- neither job needs/depends on
   # the other, and the .ko artifact produced by "build" no longer bundles
   # this checker binary at all.
+  #
+  # This job also statically cross-builds busybox (arm64) for the QEMU
+  # test's injected ramdisk (/busybox), replacing the previous `docker pull
+  # busybox:musl` + `docker cp` extraction of its prebuilt binary. Built
+  # from source here with CONFIG_FEATURE_PREFER_APPLETS=y and
+  # CONFIG_FEATURE_SH_STANDALONE=y so that qemu_test.sh's "#!/busybox sh"
+  # script can exec other busybox applets (mdev, switch_root, mount, ...)
+  # without needing them on $PATH as separate processes/symlinks, sharing
+  # the same aarch64 cross toolchain/runner as lkm4ctr_checker above.
   build-checker:
     runs-on: ubuntu-latest
     steps:
@@ -186,6 +199,38 @@ jobs:
         with:
           name: lkm4ctr_checker-arm64
           path: lkm4ctr_checker/lkm4ctr_checker
+
+      - name: Build static busybox (arm64)
+        run: |
+          set -euxo pipefail
+          curl -fL -o busybox.tar.bz2 \
+            "https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2"
+          tar xjf busybox.tar.bz2
+          cd "busybox-${BUSYBOX_VERSION}"
+
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+
+          # CONFIG_TC (the "tc" applet) fails to build against modern
+          # kernel headers (removed TCA_CBQ_*/struct tc_cbq_* qdisc API),
+          # and is not needed for the test ramdisk anyway.
+          sed -i \
+            -e 's/^CONFIG_TC=y/# CONFIG_TC is not set/' \
+            -e 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' \
+            -e 's/^# CONFIG_FEATURE_PREFER_APPLETS is not set/CONFIG_FEATURE_PREFER_APPLETS=y/' \
+            -e 's/^# CONFIG_FEATURE_SH_STANDALONE is not set/CONFIG_FEATURE_SH_STANDALONE=y/' \
+            .config
+          yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+          grep -E "^CONFIG_STATIC=y|^CONFIG_FEATURE_PREFER_APPLETS=y|^CONFIG_FEATURE_SH_STANDALONE=y" .config
+
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
+          file busybox
+          cp busybox "$GITHUB_WORKSPACE/busybox-arm64"
+
+      - name: Upload busybox (arm64, static)
+        uses: actions/upload-artifact@v7
+        with:
+          name: busybox-arm64
+          path: busybox-arm64
 
   build:
     needs: [prepare]
@@ -270,6 +315,13 @@ jobs:
           path: payload/
       - run: chmod +x payload/lkm4ctr_checker
 
+      - name: Download busybox (arm64, static)
+        uses: actions/download-artifact@v8
+        with:
+          name: busybox-arm64
+          path: payload/
+      - run: chmod +x payload/busybox-arm64
+
       # --- 1. Fetch testsuite.zip: three kernels + prebuilt image1.ext4 ---
       - name: Download and extract testsuite.zip
         run: |
@@ -291,11 +343,8 @@ jobs:
       - name: Build injected (busybox) ramdisk
         run: |
           set -e
-          docker pull --platform linux/arm64 busybox:musl
-          cid=$(docker create --platform linux/arm64 busybox:musl true)
           mkdir injected-ramdisk/
-          docker cp "$cid:/bin/busybox" injected-ramdisk/busybox
-          docker rm "$cid"
+          cp payload/busybox-arm64 injected-ramdisk/busybox
           chmod 755 injected-ramdisk/busybox
 
           cp payload/lkm4ctr.ko injected-ramdisk/
