@@ -106,10 +106,15 @@
  * @address:  resolved address of the hooked symbol.
  * @ops:      ftrace_ops instance driving the hook (ftrace backend only).
  * @kp:       kprobe instance driving the hook (kprobe backend only).
- * @installed: whether the hook is currently active.
+ * @installed: whether the forward hook is currently active.
  * @retprobe: kretprobe placed on @function itself (regardless of which
  *            forward-hook backend is active), used purely to make module
- *            unload safe -- see the "rmmod safety" note below.
+ *            unload safe -- see the "rmmod safety" note below. Once
+ *            installed, this is deliberately left registered for the rest
+ *            of @owner's lifetime, even across a runtime
+ *            shadow_hook_remove() -- see shadow_hook_remove()'s own
+ *            comment in shadow_hijack.c for why tearing it down early
+ *            would permanently hang module_refcount() above zero.
  * @retprobe_installed: whether @retprobe is currently registered.
  *
  * rmmod safety
@@ -136,6 +141,17 @@
  * sys_delete_module() refuses rmmod (-EBUSY, "Module ... is in use")
  * instead of racing with it -- exactly the same protection a misc/char
  * device gets from struct file_operations::owner while a file is open.
+ *
+ * @retprobe is only ever unregistered by
+ * shadow_hook_teardown_all_retprobes() at true module exit, once the
+ * kernel has already guaranteed module_refcount() is zero: unregistering
+ * a kretprobe nulls out every already in-flight kretprobe_instance's back
+ * pointer to it (see kernel/kprobes.c unregister_kretprobes()), which
+ * would otherwise permanently orphan that in-flight call's
+ * module_put()/atomic_dec() the moment a runtime shadow_hook_remove()
+ * (deactivate) raced with it -- observable as module_refcount() (and the
+ * diagfs "references" file's in-flight count) hanging above zero forever
+ * even after every submodule reports itself unloaded.
  */
 struct shadow_hook {
 	const char * const	*names;

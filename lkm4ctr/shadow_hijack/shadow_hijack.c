@@ -490,10 +490,20 @@ static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_reg
  * reference, so we never acquire a module reference we could fail to
  * release). CONFIG_KRETPROBES is implied by CONFIG_KPROBES on every arch
  * this module targets, so this is not expected to fail in practice.
+ *
+ * Idempotent by design, same as shadow_hook_install(): a hook that is
+ * force-unloaded and reloaded at runtime via
+ * shadow_hook_registry_set_active() never has its retprobe torn down (see
+ * shadow_hook_remove()'s comment below for why), so a reinstall must not
+ * blindly re-register -- doing so would double-register an already-live
+ * kretprobe (and the memset() below would corrupt it mid-flight).
  */
 static void shadow_hook_retprobe_install(struct shadow_hook *hook)
 {
 	int err;
+
+	if (hook->retprobe_installed)
+		return;
 
 	memset(&hook->retprobe, 0, sizeof(hook->retprobe));
 	hook->retprobe.kp.addr = (kprobe_opcode_t *)hook->function;
@@ -509,6 +519,15 @@ static void shadow_hook_retprobe_install(struct shadow_hook *hook)
 	hook->retprobe_installed = true;
 }
 
+/*
+ * shadow_hook_retprobe_remove() - only ever safe to call once the kernel
+ * itself has already guaranteed no call can still be executing inside
+ * hook->function, i.e. from shadow_hook_teardown_all_retprobes() at the
+ * very end of lkm4ctr_exit() (module_exit() is only reached after the
+ * kernel's own delete_module() path has confirmed module_refcount() is
+ * zero). See that function's comment for the full rationale on why this
+ * must never be called from a runtime shadow_hook_remove() (deactivate).
+ */
 static void shadow_hook_retprobe_remove(struct shadow_hook *hook)
 {
 	if (!hook->retprobe_installed)
@@ -743,6 +762,38 @@ int shadow_hook_install(struct shadow_hook *hook)
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
 
+/*
+ * shadow_hook_remove() - stop redirecting *new* calls into hook->function.
+ *
+ * Deliberately does NOT tear down hook->retprobe: that would call
+ * unregister_kretprobe(), which (kernel/kprobes.c
+ * unregister_kretprobes()) unconditionally sets every already in-flight
+ * kretprobe_instance's rp back-pointer (ri->rph->rp, via
+ * get_kretprobe()) to NULL before returning -- by design, so a caller
+ * that immediately frees/reuses the kretprobe struct after unregistering
+ * cannot be used-after-freed by a late-firing instance. That means any
+ * call that was already redirected into hook->function *before* this
+ * shadow_hook_remove() runs, but has not returned yet, would silently
+ * lose its shadow_hook_retprobe_ret() callback the moment
+ * unregister_kretprobe() executes: shadow_hook_ri_to_kretprobe()
+ * (get_kretprobe()/ri->rp) now returns NULL for it, so the handler
+ * returns immediately without its atomic_dec(&shadow_hook_inflight) or
+ * module_put(hook->owner) -- permanently orphaning that one reference
+ * and hanging module_refcount() above zero forever (observed via the
+ * diagfs "references" file reporting a huge, permanently-stuck
+ * in-flight count with every submodule already reporting "unloaded").
+ *
+ * Since hook->retprobe is embedded in struct shadow_hook (this module's
+ * own static/allocated memory, not a separately freed object), there is
+ * no such use-after-free risk here: it is always safe to simply leave
+ * the retprobe registered for the rest of the hook's lifetime once
+ * installed, so already in-flight calls keep draining correctly no
+ * matter how many times this hook is force-unloaded/reloaded at runtime
+ * via shadow_hook_registry_set_active(). It is only ever torn down by
+ * shadow_hook_teardown_all_retprobes() at the very end of lkm4ctr_exit(),
+ * once the kernel itself has already guaranteed module_refcount() is
+ * zero (module_exit() is only reached after that).
+ */
 void shadow_hook_remove(struct shadow_hook *hook)
 {
 	if (!hook->installed)
@@ -751,7 +802,6 @@ void shadow_hook_remove(struct shadow_hook *hook)
 	shadow_unregister_ftrace_function_fn(&hook->ops);
 	shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 1, 0);
 	hook->installed = false;
-	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
@@ -870,6 +920,12 @@ int shadow_hook_install(struct shadow_hook *hook)
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
 
+/*
+ * shadow_hook_remove() - stop redirecting *new* calls into hook->function.
+ * See the ftrace-backend variant's comment above for why hook->retprobe
+ * is deliberately left registered here (only torn down at true module
+ * exit, via shadow_hook_teardown_all_retprobes()).
+ */
 void shadow_hook_remove(struct shadow_hook *hook)
 {
 	if (!hook->installed)
@@ -877,7 +933,6 @@ void shadow_hook_remove(struct shadow_hook *hook)
 
 	unregister_kprobe(&hook->kp);
 	hook->installed = false;
-	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
@@ -945,6 +1000,35 @@ void shadow_hook_remove_all(struct shadow_hook **hooks)
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove_all);
 
+/*
+ * shadow_hook_teardown_all_retprobes() - unregister every hook's retprobe,
+ * across every group ever registered via shadow_hook_install_all(),
+ * whether or not that group's forward hooks are currently installed.
+ *
+ * Only safe to call once the kernel itself has already guaranteed
+ * module_refcount() is zero, i.e. from shadow_hijack_exit() -- the very
+ * last submodule _exit() called from lkm4ctr_exit() -- since module_exit()
+ * is only ever reached after the kernel's own delete_module() path has
+ * confirmed no reference (including every try_module_get(hook->owner)
+ * this file's redirect points take) remains outstanding. At that point
+ * there cannot be any call still executing inside any hook->function, so
+ * unregister_kretprobe()'s in-flight-instance-orphaning behaviour (see
+ * shadow_hook_remove()'s comment) is a non-issue here.
+ */
+static void shadow_hook_teardown_all_retprobes(void)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		int i;
+
+		for (i = 0; g->hooks[i]; i++)
+			shadow_hook_retprobe_remove(g->hooks[i]);
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+}
+
 int shadow_hijack_init(void)
 {
 	/*
@@ -958,5 +1042,6 @@ int shadow_hijack_init(void)
 
 void shadow_hijack_exit(void)
 {
+	shadow_hook_teardown_all_retprobes();
 	LKM4CTR_INFO("shadow_hijack", "unloaded");
 }
