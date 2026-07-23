@@ -144,6 +144,7 @@ int svipc_tgid_own_current(struct svipc_resource *res);
 int svipc_tgid_destroy_current(u32 type, u32 id);
 void svipc_tgid_release_all(void);
 void svipc_force_free_all_resources(void);
+size_t shadow_sysvipc_diag_snprintf(char *buf, size_t buflen);
 
 /* shadow_sysvipc_msgq.c: simulated message-queue payload transfer. */
 void svipc_msgq_purge_locked(struct svipc_resource *res);
@@ -165,6 +166,7 @@ long svipc_sys_semctl_val(int semid, int semnum, int cmd, unsigned long arg);
  * segment id.
  */
 void svipc_shm_purge_locked(struct svipc_resource *res);
+void svipc_shm_release_all_attachments(void);
 long svipc_sys_shmat(int shmid, const void __user *ushmaddr, int shmflg,
 		    unsigned long *raddr);
 long svipc_sys_shmdt(const void __user *ushmaddr);

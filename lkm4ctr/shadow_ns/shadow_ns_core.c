@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "shadow_ns_internal.h"
+#include "lkm4ctr_log.h"
 
 static long (*real_sys_unshare)(const struct pt_regs *regs);
 static long (*real_sys_setns)(const struct pt_regs *regs);
@@ -139,7 +140,7 @@ static long shadow_ns_hook_clone3(const struct pt_regs *regs)
 	ret = real_sys_clone3(regs);
 
 	if (patched && copy_to_user(uargs, &orig_flags, sizeof(orig_flags)))
-		pr_warn("shadow_ns: failed to restore clone3 flags for current task\n");
+		LKM4CTR_WARN("shadow_ns", "failed to restore clone3 flags for current task");
 
 	return shadow_ns_clone_finalize(ret, parent, shadow_flags);
 }

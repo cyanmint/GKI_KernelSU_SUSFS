@@ -80,10 +80,295 @@
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/string.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#include <linux/list.h>
+#include <linux/atomic.h>
 
 #include "shadow_hook.h"
+#include "lkm4ctr_log.h"
 
 #define SHADOW_HIJACK_VERSION	"1.0"
+
+/*
+ * shadow_hook_registry - a global, tag-keyed record of every hook group a
+ * subsystem has handed to shadow_hook_install_all(), kept purely so the
+ * lkm4ctr diagfs (lkm4ctr_diagfs.c) can render "what hooks are currently
+ * loaded, in which submodule" without each subsystem needing its own
+ * bespoke introspection API, and so the diagfs's per-module "status" files
+ * can force a submodule's hooks to load/unload at runtime
+ * (shadow_hook_registry_set_active()) without needing a dedicated
+ * force-load/unload entry point in every subsystem.
+ *
+ * Unlike the registry's first revision, nodes are never freed once created:
+ * a subsystem's hook array is a static file-scope array for the entire
+ * life of the module, so the pointer (and the node describing it) remains
+ * a valid, reusable handle across repeated shadow_hook_install_all()/
+ * shadow_hook_remove_all() cycles -- exactly what runtime force-load/unload
+ * needs. @active tracks whether the group's hooks are currently installed.
+ */
+struct shadow_hook_registry_group {
+	const char		*tag;
+	struct shadow_hook	**hooks;
+	bool			active;
+	struct list_head	list;
+};
+
+static LIST_HEAD(shadow_hook_registry_groups);
+static DEFINE_MUTEX(shadow_hook_registry_lock);
+
+/*
+ * shadow_hook_inflight - count of currently in-flight redirected calls,
+ * incremented alongside every successful try_module_get(hook->owner) at
+ * each redirect point (shadow_hook_thunk() x2, shadow_hook_pre_handler())
+ * and decremented in shadow_hook_retprobe_ret() alongside the matching
+ * module_put(). Exists purely for diagnostics -- see the comment on
+ * shadow_hook_inflight_count() in common/shadow_hook.h.
+ */
+static atomic_t shadow_hook_inflight = ATOMIC_INIT(0);
+
+int shadow_hook_inflight_count(void)
+{
+	return atomic_read(&shadow_hook_inflight);
+}
+EXPORT_SYMBOL_GPL(shadow_hook_inflight_count);
+
+/* Caller must hold shadow_hook_registry_lock. */
+static struct shadow_hook_registry_group *
+shadow_hook_registry_find_locked(struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (g->hooks == hooks)
+			return g;
+	}
+	return NULL;
+}
+
+static void shadow_hook_registry_add(const char *tag, struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g) {
+		g->active = true;
+		mutex_unlock(&shadow_hook_registry_lock);
+		return;
+	}
+
+	mutex_unlock(&shadow_hook_registry_lock);
+	g = kzalloc(sizeof(*g), GFP_KERNEL);
+	if (!g)
+		return;
+	g->tag = tag;
+	g->hooks = hooks;
+	g->active = true;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	/* Re-check: another caller may have raced us in while unlocked. */
+	if (shadow_hook_registry_find_locked(hooks)) {
+		kfree(g);
+	} else {
+		list_add_tail(&g->list, &shadow_hook_registry_groups);
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+}
+
+static void shadow_hook_registry_remove(struct shadow_hook **hooks)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g)
+		g->active = false;
+	mutex_unlock(&shadow_hook_registry_lock);
+}
+
+/*
+ * shadow_hook_registry_tag_matches() - whether @group_tag (e.g.
+ * "shadow_ns_procfs") belongs to the @filter subsystem (e.g. "shadow_ns"):
+ * either an exact match, or @filter followed by '_' as a prefix. shadow_ns
+ * registers several hook groups under related-but-distinct tags (its own
+ * "shadow_ns" core plus "shadow_ns_uts"/"_pid"/"_user"/"_procfs"), so the
+ * diagfs's single per-module "hooks" file needs every one of them when
+ * asked for "shadow_ns", not just an exact-string match.
+ */
+static bool shadow_hook_registry_tag_matches(const char *filter, const char *group_tag)
+{
+	size_t len = strlen(filter);
+
+	if (strncmp(filter, group_tag, len))
+		return false;
+	return group_tag[len] == '\0' || group_tag[len] == '_';
+}
+
+/*
+ * shadow_hook_registry_snprintf() - render every hook belonging to @tag (or
+ * every hook in every group, if @tag is NULL) as one "resolved_name
+ * installed=yes/no address=0x...\n" line per hook into @buf (size @buflen).
+ * Returns the number of bytes that would have been written (snprintf()
+ * semantics), for lkm4ctr_diagfs.c's per-module "hooks" files.
+ */
+size_t shadow_hook_registry_snprintf(const char *tag, char *buf, size_t buflen)
+{
+	struct shadow_hook_registry_group *g;
+	size_t pos = 0;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		int i;
+
+		if (tag && !shadow_hook_registry_tag_matches(tag, g->tag))
+			continue;
+
+		for (i = 0; g->hooks[i]; i++) {
+			struct shadow_hook *h = g->hooks[i];
+			const char *name = h->resolved_name ? h->resolved_name :
+				(h->names && h->names[0] ? h->names[0] : "?");
+
+			pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+					  "%s: %-32s installed=%s address=0x%lx\n",
+					  g->tag, name, h->installed ? "yes" : "no",
+					  h->address);
+		}
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	return pos;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_snprintf);
+
+/*
+ * shadow_hook_registry_tag_active() - whether a subsystem tagged @tag has a
+ * currently-registered hook group, i.e. whether that submodule successfully
+ * made it through shadow_hook_install_all() and has not since called
+ * shadow_hook_remove_all() (nor been force-unloaded via
+ * shadow_hook_registry_set_active()). Used by lkm4ctr_diagfs.c's per-module
+ * "status" files as the "activated" flag requested for the diagnostics
+ * tree.
+ */
+bool shadow_hook_registry_tag_active(const char *tag)
+{
+	struct shadow_hook_registry_group *g;
+	bool found = false;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (!strcmp(g->tag, tag)) {
+			found = g->active;
+			break;
+		}
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	return found;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_tag_active);
+
+/*
+ * shadow_hook_registry_set_active() - force every hook group whose tag
+ * matches @tag (see shadow_hook_registry_tag_matches()) to be installed
+ * (@enable true) or removed (@enable false), if it is not already in that
+ * state. This is what the lkm4ctr diagfs's per-module "status" files use
+ * for `echo load`/`echo unload`.
+ *
+ * Matching groups are first snapshotted (tag + hooks pointer) under
+ * shadow_hook_registry_lock, then acted on with the lock released: both
+ * shadow_hook_install_all() and shadow_hook_remove_all() call back into
+ * shadow_hook_registry_add()/_remove() above, which take the same mutex
+ * themselves, so calling them while already holding it would deadlock.
+ * A fixed-size on-stack snapshot array is enough here -- no subsystem
+ * currently registers more than a handful of hook groups.
+ *
+ * Every step is logged verbosely via LKM4CTR_LOG (tagged with @tag) so
+ * that a "why didn't this take effect?" question is always answerable
+ * from ./mnt/<subsystem>/log alone: which groups matched, which were
+ * already in the requested state, and -- on failure -- exactly which
+ * group and underlying shadow_hook_install_all() error blocked it, plus a
+ * concrete next step.
+ *
+ * Returns 0 on success (including the case where @tag matches nothing, or
+ * every matching group is already in the requested state -- both are
+ * treated as a no-op, matching a status file for a submodule with no
+ * runtime-hookable syscalls on this kernel), or the first non-ENOENT
+ * error shadow_hook_install_all() reports for any matching group.
+ */
+#define SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX 16
+
+static int shadow_hook_group_count(struct shadow_hook **hooks)
+{
+	int n = 0;
+
+	while (hooks[n])
+		n++;
+	return n;
+}
+
+int shadow_hook_registry_set_active(const char *tag, bool enable)
+{
+	struct shadow_hook_registry_group *g;
+	struct shadow_hook_registry_group *snapshot[SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX];
+	int i, n = 0, ret = 0;
+	bool any_group_for_tag = false;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		if (!shadow_hook_registry_tag_matches(tag, g->tag))
+			continue;
+		any_group_for_tag = true;
+		if (g->active == enable) {
+			LKM4CTR_INFO(tag, "hook group \"%s\" is already %s, nothing to do",
+				     g->tag, enable ? "active" : "inactive");
+			continue;
+		}
+		if (n < SHADOW_HOOK_REGISTRY_SNAPSHOT_MAX)
+			snapshot[n++] = g;
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	if (!any_group_for_tag) {
+		LKM4CTR_WARN(tag,
+			     "no hook group is registered under \"%s\"; this submodule either was never initialized on this kernel (e.g. it detected genuine native kernel support and never needed to hook anything) or the tag is unknown -- %s request is a no-op",
+			     tag, enable ? "load" : "unload");
+		return 0;
+	}
+
+	for (i = 0; i < n; i++) {
+		int count = shadow_hook_group_count(snapshot[i]->hooks);
+
+		if (enable) {
+			int installed;
+
+			LKM4CTR_INFO(tag, "loading hook group \"%s\" (%d hook(s) to attempt)",
+				     snapshot[i]->tag, count);
+			installed = shadow_hook_install_all(snapshot[i]->hooks, snapshot[i]->tag);
+			if (installed < 0) {
+				LKM4CTR_ERR(tag, "failed to load hook group \"%s\": %d",
+					    snapshot[i]->tag, installed);
+				LKM4CTR_ERR(tag,
+					    "cause: see the \"failed to install hook[N]\" line just above this one in this same log for the exact hook and the underlying error");
+				LKM4CTR_ERR(tag,
+					    "resolution: common causes are the resolved symbol no longer matching the expected prototype on this kernel build, or the ftrace/kprobe backend rejecting an already-hooked address (only one shadow_hook may own a given symbol at a time)");
+				if (!ret)
+					ret = installed;
+				continue;
+			}
+			LKM4CTR_INFO(tag, "hook group \"%s\" loaded: %d/%d hook(s) installed (the rest, if any, had no matching symbol on this kernel and were skipped -- see \"symbol for hook[N] not found\" lines above)",
+				     snapshot[i]->tag, installed, count);
+		} else {
+			LKM4CTR_INFO(tag, "unloading hook group \"%s\" (%d hook(s))",
+				     snapshot[i]->tag, count);
+			shadow_hook_remove_all(snapshot[i]->hooks);
+			LKM4CTR_INFO(tag, "hook group \"%s\" unloaded", snapshot[i]->tag);
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(shadow_hook_registry_set_active);
 
 /*
  * shadow_hook_resolve - find the runtime address of a kernel symbol.
@@ -163,15 +448,16 @@ static unsigned long shadow_hook_caller_pc(const struct pt_regs *regs)
  * long as a redirected call is in flight anywhere in the system.
  *
  * shadow_hook_ri_to_kretprobe() maps a struct kretprobe_instance back to
- * its owning struct kretprobe. The get_kretprobe() helper that encapsulates
- * this (correctly handling both the CONFIG_KRETPROBE_ON_RETHOOK rethook
- * form and the older struct kretprobe_holder indirection) was only added
- * upstream around v5.17; kernels at or before that (android12-5.10,
- * android13-5.10, android13-5.15, android14-5.15 in our KMI matrix) instead
- * have a plain `struct kretprobe *rp` field directly on
- * struct kretprobe_instance, with no get_kretprobe() declared at all.
+ * its owning struct kretprobe. Upstream replaced the plain `struct kretprobe
+ * *rp` field of struct kretprobe_instance with the struct kretprobe_holder
+ * indirection (and introduced the get_kretprobe() accessor) in the 5.15
+ * cycle; every supported Android GKI branch tracks that upstream cutoff
+ * exactly (android12-5.10 and android13-5.10 still have the plain `rp`
+ * field and no get_kretprobe() at all, while android13-5.15 and newer both
+ * have the holder indirection and get_kretprobe()), so gating on
+ * LINUX_VERSION_CODE >= 5.15 is reliable here.
  */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 static struct kretprobe *shadow_hook_ri_to_kretprobe(struct kretprobe_instance *ri)
 {
 	return get_kretprobe(ri);
@@ -192,6 +478,7 @@ static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_reg
 		return 0;
 
 	hook = container_of(rp, struct shadow_hook, retprobe);
+	atomic_dec(&shadow_hook_inflight);
 	module_put(hook->owner);
 	return 0;
 }
@@ -203,10 +490,20 @@ static int shadow_hook_retprobe_ret(struct kretprobe_instance *ri, struct pt_reg
  * reference, so we never acquire a module reference we could fail to
  * release). CONFIG_KRETPROBES is implied by CONFIG_KPROBES on every arch
  * this module targets, so this is not expected to fail in practice.
+ *
+ * Idempotent by design, same as shadow_hook_install(): a hook that is
+ * force-unloaded and reloaded at runtime via
+ * shadow_hook_registry_set_active() never has its retprobe torn down (see
+ * shadow_hook_remove()'s comment below for why), so a reinstall must not
+ * blindly re-register -- doing so would double-register an already-live
+ * kretprobe (and the memset() below would corrupt it mid-flight).
  */
 static void shadow_hook_retprobe_install(struct shadow_hook *hook)
 {
 	int err;
+
+	if (hook->retprobe_installed)
+		return;
 
 	memset(&hook->retprobe, 0, sizeof(hook->retprobe));
 	hook->retprobe.kp.addr = (kprobe_opcode_t *)hook->function;
@@ -214,13 +511,23 @@ static void shadow_hook_retprobe_install(struct shadow_hook *hook)
 
 	err = register_kretprobe(&hook->retprobe);
 	if (err) {
-		pr_warn("shadow_hook: register_kretprobe() failed for %s: %d; rmmod will not wait for in-flight calls to this hook\n",
-			hook->resolved_name, err);
+		LKM4CTR_WARN("shadow_hijack",
+			     "register_kretprobe() failed for %s: %d; rmmod will not wait for in-flight calls to this hook",
+			     hook->resolved_name, err);
 		return;
 	}
 	hook->retprobe_installed = true;
 }
 
+/*
+ * shadow_hook_retprobe_remove() - only ever safe to call once the kernel
+ * itself has already guaranteed no call can still be executing inside
+ * hook->function, i.e. from shadow_hook_teardown_all_retprobes() at the
+ * very end of lkm4ctr_exit() (module_exit() is only reached after the
+ * kernel's own delete_module() path has confirmed module_refcount() is
+ * zero). See that function's comment for the full rationale on why this
+ * must never be called from a runtime shadow_hook_remove() (deactivate).
+ */
 static void shadow_hook_retprobe_remove(struct shadow_hook *hook)
 {
 	if (!hook->retprobe_installed)
@@ -265,6 +572,63 @@ EXPORT_SYMBOL_GPL(shadow_hook_is_quiescing);
 #if defined(CONFIG_FUNCTION_TRACER) && defined(CONFIG_DYNAMIC_FTRACE)
 
 /*
+ * ftrace_set_filter_ip()/register_ftrace_function()/
+ * unregister_ftrace_function() are EXPORT_SYMBOL_GPL()'d, but -- like
+ * path_put()/vfs_mkdir()/anon_inode_getfd_secure() elsewhere in this
+ * module -- some "certified"/production Android GKI boot images build
+ * with CONFIG_TRIM_UNUSED_KSYMS, which strips their ksymtab entries
+ * whenever no *other* module the vendor ships happens to reference them,
+ * causing a hard "Unknown symbol" failure at insmod time even though
+ * CONFIG_FUNCTION_TRACER/CONFIG_DYNAMIC_FTRACE are both enabled and this
+ * backend is otherwise fully applicable. Resolve them the same way as
+ * every other potentially-trimmed symbol instead of linking against them
+ * directly.
+ */
+typedef int (*shadow_ftrace_set_filter_ip_t)(struct ftrace_ops *, unsigned long,
+					      int, int);
+typedef int (*shadow_register_ftrace_function_t)(struct ftrace_ops *);
+typedef int (*shadow_unregister_ftrace_function_t)(struct ftrace_ops *);
+
+static shadow_ftrace_set_filter_ip_t shadow_ftrace_set_filter_ip_fn;
+static shadow_register_ftrace_function_t shadow_register_ftrace_function_fn;
+static shadow_unregister_ftrace_function_t shadow_unregister_ftrace_function_fn;
+
+/*
+ * shadow_hook_ftrace_api_ready() - resolve the ftrace registration API on
+ * first use and cache the results; idempotent. Only ever called from
+ * shadow_hook_install()/shadow_hook_remove(), both of which run from the
+ * single-threaded module init/exit sequencer (never concurrently), so no
+ * extra locking is needed here -- same assumption already relied upon by
+ * every other shadow_hook_resolve()-based lazy resolution in this codebase
+ * (e.g. shadow_mqueue_mount.c's mq_dev_mqueue_ensure()).
+ */
+static bool shadow_hook_ftrace_api_ready(void)
+{
+	if (!shadow_ftrace_set_filter_ip_fn) {
+		shadow_ftrace_set_filter_ip_fn = (shadow_ftrace_set_filter_ip_t)
+			shadow_hook_resolve("ftrace_set_filter_ip");
+		if (!shadow_ftrace_set_filter_ip_fn)
+			pr_debug("shadow_hook: could not resolve ftrace_set_filter_ip\n");
+	}
+	if (!shadow_register_ftrace_function_fn) {
+		shadow_register_ftrace_function_fn = (shadow_register_ftrace_function_t)
+			shadow_hook_resolve("register_ftrace_function");
+		if (!shadow_register_ftrace_function_fn)
+			pr_debug("shadow_hook: could not resolve register_ftrace_function\n");
+	}
+	if (!shadow_unregister_ftrace_function_fn) {
+		shadow_unregister_ftrace_function_fn = (shadow_unregister_ftrace_function_t)
+			shadow_hook_resolve("unregister_ftrace_function");
+		if (!shadow_unregister_ftrace_function_fn)
+			pr_debug("shadow_hook: could not resolve unregister_ftrace_function\n");
+	}
+
+	return shadow_ftrace_set_filter_ip_fn &&
+	       shadow_register_ftrace_function_fn &&
+	       shadow_unregister_ftrace_function_fn;
+}
+
+/*
  * --- ftrace_ops/IPMODIFY backend --------------------------------------
  *
  * The ftrace callback signature changed with
@@ -301,8 +665,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (shadow_hook_is_quiescing())
 		return;
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return;
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return;
+		atomic_inc(&shadow_hook_inflight);
+	}
 	shadow_hook_redirect(regs, hook->function);
 }
 #else
@@ -315,8 +682,11 @@ static void notrace shadow_hook_thunk(unsigned long ip, unsigned long parent_ip,
 		return;
 	if (shadow_hook_is_quiescing())
 		return;
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return;
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return;
+		atomic_inc(&shadow_hook_inflight);
+	}
 	shadow_hook_redirect(regs, hook->function);
 }
 #endif
@@ -338,6 +708,19 @@ int shadow_hook_install(struct shadow_hook *hook)
 	const char * const *name;
 	int err;
 
+	/*
+	 * Idempotent by design: shadow_hook_registry_set_active()'s runtime
+	 * force-load path (diagfs "status" writes) may call this on a hook
+	 * that is already installed (e.g. re-issuing "load" after it already
+	 * took effect), and must be able to do so safely without re-arming
+	 * the ftrace_ops/kprobe or double-counting install state.
+	 */
+	if (hook->installed)
+		return 0;
+
+	if (!shadow_hook_ftrace_api_ready())
+		return -ENOENT;
+
 	for (name = hook->names; *name; name++) {
 		hook->address = shadow_hook_resolve(*name);
 		if (hook->address) {
@@ -358,18 +741,18 @@ int shadow_hook_install(struct shadow_hook *hook)
 			 | FTRACE_OPS_FL_IPMODIFY
 			 | FTRACE_OPS_FL_RECURSION;
 
-	err = ftrace_set_filter_ip(&hook->ops, hook->address, 0, 0);
+	err = shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 0, 0);
 	if (err) {
 		pr_debug("shadow_hook: ftrace_set_filter_ip(%s) failed: %d\n",
 			 hook->resolved_name, err);
 		return err;
 	}
 
-	err = register_ftrace_function(&hook->ops);
+	err = shadow_register_ftrace_function_fn(&hook->ops);
 	if (err) {
 		pr_debug("shadow_hook: register_ftrace_function(%s) failed: %d\n",
 			 hook->resolved_name, err);
-		ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
+		shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 1, 0);
 		return err;
 	}
 
@@ -379,15 +762,46 @@ int shadow_hook_install(struct shadow_hook *hook)
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
 
+/*
+ * shadow_hook_remove() - stop redirecting *new* calls into hook->function.
+ *
+ * Deliberately does NOT tear down hook->retprobe: that would call
+ * unregister_kretprobe(), which (kernel/kprobes.c
+ * unregister_kretprobes()) unconditionally sets every already in-flight
+ * kretprobe_instance's rp back-pointer (ri->rph->rp, via
+ * get_kretprobe()) to NULL before returning -- by design, so a caller
+ * that immediately frees/reuses the kretprobe struct after unregistering
+ * cannot be used-after-freed by a late-firing instance. That means any
+ * call that was already redirected into hook->function *before* this
+ * shadow_hook_remove() runs, but has not returned yet, would silently
+ * lose its shadow_hook_retprobe_ret() callback the moment
+ * unregister_kretprobe() executes: shadow_hook_ri_to_kretprobe()
+ * (get_kretprobe()/ri->rp) now returns NULL for it, so the handler
+ * returns immediately without its atomic_dec(&shadow_hook_inflight) or
+ * module_put(hook->owner) -- permanently orphaning that one reference
+ * and hanging module_refcount() above zero forever (observed via the
+ * diagfs "references" file reporting a huge, permanently-stuck
+ * in-flight count with every submodule already reporting "unloaded").
+ *
+ * Since hook->retprobe is embedded in struct shadow_hook (this module's
+ * own static/allocated memory, not a separately freed object), there is
+ * no such use-after-free risk here: it is always safe to simply leave
+ * the retprobe registered for the rest of the hook's lifetime once
+ * installed, so already in-flight calls keep draining correctly no
+ * matter how many times this hook is force-unloaded/reloaded at runtime
+ * via shadow_hook_registry_set_active(). It is only ever torn down by
+ * shadow_hook_teardown_all_retprobes() at the very end of lkm4ctr_exit(),
+ * once the kernel itself has already guaranteed module_refcount() is
+ * zero (module_exit() is only reached after that).
+ */
 void shadow_hook_remove(struct shadow_hook *hook)
 {
 	if (!hook->installed)
 		return;
 
-	unregister_ftrace_function(&hook->ops);
-	ftrace_set_filter_ip(&hook->ops, hook->address, 1, 0);
+	shadow_unregister_ftrace_function_fn(&hook->ops);
+	shadow_ftrace_set_filter_ip_fn(&hook->ops, hook->address, 1, 0);
 	hook->installed = false;
-	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
@@ -455,8 +869,11 @@ static int shadow_hook_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	if (shadow_hook_is_quiescing())
 		return 0;
 
-	if (hook->retprobe_installed && !try_module_get(hook->owner))
-		return 0;
+	if (hook->retprobe_installed) {
+		if (!try_module_get(hook->owner))
+			return 0;
+		atomic_inc(&shadow_hook_inflight);
+	}
 
 	shadow_hook_redirect(regs, hook->function);
 	return 1;
@@ -466,6 +883,10 @@ int shadow_hook_install(struct shadow_hook *hook)
 {
 	const char * const *name;
 	int err;
+
+	/* Idempotent by design -- see the ftrace-backend variant's comment above. */
+	if (hook->installed)
+		return 0;
 
 	for (name = hook->names; *name; name++) {
 		hook->address = shadow_hook_resolve(*name);
@@ -499,6 +920,12 @@ int shadow_hook_install(struct shadow_hook *hook)
 }
 EXPORT_SYMBOL_GPL(shadow_hook_install);
 
+/*
+ * shadow_hook_remove() - stop redirecting *new* calls into hook->function.
+ * See the ftrace-backend variant's comment above for why hook->retprobe
+ * is deliberately left registered here (only torn down at true module
+ * exit, via shadow_hook_teardown_all_retprobes()).
+ */
 void shadow_hook_remove(struct shadow_hook *hook)
 {
 	if (!hook->installed)
@@ -506,7 +933,6 @@ void shadow_hook_remove(struct shadow_hook *hook)
 
 	unregister_kprobe(&hook->kp);
 	hook->installed = false;
-	shadow_hook_retprobe_remove(hook);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove);
 
@@ -524,19 +950,21 @@ int shadow_hook_install_all(struct shadow_hook **hooks, const char *tag)
 {
 	int i, err, installed = 0;
 
+	shadow_hook_registry_add(tag, hooks);
+
 	for (i = 0; hooks[i]; i++) {
 		pr_debug("%s: attempting to install hook[%d]\n", tag, i);
 		err = shadow_hook_install(hooks[i]);
 		if (err == -ENOENT) {
-			pr_info("%s: symbol for hook[%d] not found, skipping\n", tag, i);
+			LKM4CTR_INFO(tag, "symbol for hook[%d] not found, skipping", i);
 			continue;
 		}
 		if (err) {
-			pr_err("%s: failed to install hook[%d]: %d\n", tag, i, err);
+			LKM4CTR_ERR(tag, "failed to install hook[%d]: %d", i, err);
 			return err;
 		}
-		pr_info("%s: hooked %s at %px\n", tag, hooks[i]->resolved_name,
-			(void *)hooks[i]->address);
+		LKM4CTR_INFO(tag, "hooked %s at %px", hooks[i]->resolved_name,
+			     (void *)hooks[i]->address);
 		installed++;
 	}
 
@@ -547,12 +975,59 @@ EXPORT_SYMBOL_GPL(shadow_hook_install_all);
 
 void shadow_hook_remove_all(struct shadow_hook **hooks)
 {
-	int i;
+	struct shadow_hook_registry_group *g;
+	const char *tag = "shadow_hook";
+	int i, removed = 0;
 
-	for (i = 0; hooks[i]; i++)
+	mutex_lock(&shadow_hook_registry_lock);
+	g = shadow_hook_registry_find_locked(hooks);
+	if (g)
+		tag = g->tag;
+	mutex_unlock(&shadow_hook_registry_lock);
+
+	for (i = 0; hooks[i]; i++) {
+		if (!hooks[i]->installed)
+			continue;
+		LKM4CTR_INFO(tag, "removing hook %s (was installed at 0x%lx)",
+			     hooks[i]->resolved_name ? hooks[i]->resolved_name : "?",
+			     hooks[i]->address);
 		shadow_hook_remove(hooks[i]);
+		removed++;
+	}
+	LKM4CTR_INFO(tag, "hook remove pass complete, %d hook(s) removed", removed);
+
+	shadow_hook_registry_remove(hooks);
 }
 EXPORT_SYMBOL_GPL(shadow_hook_remove_all);
+
+/*
+ * shadow_hook_teardown_all_retprobes() - unregister every hook's retprobe,
+ * across every group ever registered via shadow_hook_install_all(),
+ * whether or not that group's forward hooks are currently installed.
+ *
+ * Only safe to call once the kernel itself has already guaranteed
+ * module_refcount() is zero, i.e. from shadow_hijack_exit() -- the very
+ * last submodule _exit() called from lkm4ctr_exit() -- since module_exit()
+ * is only ever reached after the kernel's own delete_module() path has
+ * confirmed no reference (including every try_module_get(hook->owner)
+ * this file's redirect points take) remains outstanding. At that point
+ * there cannot be any call still executing inside any hook->function, so
+ * unregister_kretprobe()'s in-flight-instance-orphaning behaviour (see
+ * shadow_hook_remove()'s comment) is a non-issue here.
+ */
+static void shadow_hook_teardown_all_retprobes(void)
+{
+	struct shadow_hook_registry_group *g;
+
+	mutex_lock(&shadow_hook_registry_lock);
+	list_for_each_entry(g, &shadow_hook_registry_groups, list) {
+		int i;
+
+		for (i = 0; g->hooks[i]; i++)
+			shadow_hook_retprobe_remove(g->hooks[i]);
+	}
+	mutex_unlock(&shadow_hook_registry_lock);
+}
 
 int shadow_hijack_init(void)
 {
@@ -561,11 +1036,12 @@ int shadow_hijack_init(void)
 	 * exported shadow_hook_* implementation. Loading it makes those
 	 * symbols available to the hooking modules that depend on it.
 	 */
-	pr_info("shadow_hijack: loaded (shared shadow_hook implementation)\n");
+	LKM4CTR_INFO("shadow_hijack", "loaded (shared shadow_hook implementation)");
 	return 0;
 }
 
 void shadow_hijack_exit(void)
 {
-	pr_info("shadow_hijack: unloaded\n");
+	shadow_hook_teardown_all_retprobes();
+	LKM4CTR_INFO("shadow_hijack", "unloaded");
 }

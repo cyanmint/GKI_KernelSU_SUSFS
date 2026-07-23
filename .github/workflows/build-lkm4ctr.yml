@@ -51,9 +51,10 @@
 # it at all -- it is downloaded and used completely verbatim.
 #
 # Once the TEST_KMI (android14-6.1) .ko build and the checker build finish,
-# the "test" job downloads both, fetches testsuite.zip, and builds a single
-# injected (busybox) ramdisk before booting all three kernels in the same
-# job:
+# the "test" job downloads both, fetches testsuite.zip (which also bundles a
+# prebuilt /busybox binary, so none is built by this workflow), and builds a
+# single injected (busybox) ramdisk before booting all three kernels in the
+# same job:
 #   - the injected ramdisk's /init is qemu_test/qemu_test.sh (a single
 #     "#!/busybox sh" script that also doubles as the host-side QEMU
 #     launcher used below -- see its own header comment), dispatching on
@@ -123,10 +124,12 @@ env:
   # KMI whose build is boot-tested under QEMU below.
   TEST_KMI: android14-6.1
   # testsuite.zip bundles the three QEMU test kernels (stock / sukisu /
-  # sukisu+ctr_patches) and a ready-to-use image1.ext4 (a full Android
+  # sukisu+ctr_patches), a ready-to-use image1.ext4 (a full Android
   # system-as-root userland with toybox, bionic libc, static
   # docker/dockerd/containerd/runc preinstalled under /system/bin, and the
-  # exported alpine tarball already baked in at its root) in one archive.
+  # exported alpine tarball already baked in at its root), and a prebuilt
+  # static arm64 busybox binary for the injected QEMU test ramdisk's
+  # /busybox, in one archive.
   TESTSUITE_URL: https://github.com/cyanmint/GKI_KernelSU_SUSFS/releases/download/v2.2.0/testsuite.zip
 
 jobs:
@@ -164,6 +167,7 @@ jobs:
   # per-KMI kernel-module "build" job below -- neither job needs/depends on
   # the other, and the .ko artifact produced by "build" no longer bundles
   # this checker binary at all.
+  #
   build-checker:
     runs-on: ubuntu-latest
     steps:
@@ -270,7 +274,8 @@ jobs:
           path: payload/
       - run: chmod +x payload/lkm4ctr_checker
 
-      # --- 1. Fetch testsuite.zip: three kernels + prebuilt image1.ext4 ---
+      # --- 1. Fetch testsuite.zip: three kernels + prebuilt image1.ext4 +
+      #        prebuilt busybox (arm64, static) ---
       - name: Download and extract testsuite.zip
         run: |
           set -e
@@ -283,19 +288,18 @@ jobs:
           mv testsuite/kernel-stock-* testsuite/kernel-stock
           mv testsuite/kernel-sukisu-ctrpatches-* testsuite/kernel-sukisu-ctrpatches
           mv testsuite/kernel-sukisu-[0-9]* testsuite/kernel-sukisu
+          chmod +x testsuite/busybox
           ls -la testsuite
 
-      # --- 2. injected ramdisk: /ctr (module + checker), /busybox and the
-      #        merged qemu_test.sh (init mode), which mounts image1.ext4
-      #        (/dev/nvme0n1) and switch_root's into it ---
+      # --- 2. injected ramdisk: /ctr (module + checker), /busybox (prebuilt,
+      #        from testsuite.zip) and the merged qemu_test.sh (init mode),
+      #        which mounts image1.ext4 (/dev/nvme0n1) and switch_root's into
+      #        it ---
       - name: Build injected (busybox) ramdisk
         run: |
           set -e
-          docker pull --platform linux/arm64 busybox:musl
-          cid=$(docker create --platform linux/arm64 busybox:musl true)
           mkdir injected-ramdisk/
-          docker cp "$cid:/bin/busybox" injected-ramdisk/busybox
-          docker rm "$cid"
+          cp testsuite/busybox injected-ramdisk/busybox
           chmod 755 injected-ramdisk/busybox
 
           cp payload/lkm4ctr.ko injected-ramdisk/

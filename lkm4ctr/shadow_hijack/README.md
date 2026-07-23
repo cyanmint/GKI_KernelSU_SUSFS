@@ -79,3 +79,11 @@ Out-of-tree modules for GKI **must** be built inside the matching
 [`../../.github/workflows/build-lkm4ctr.yml`](../../.github/workflows/build-lkm4ctr.yml).
 
 Load `lkm4ctr.ko`; do not try to build or load `shadow_hijack` separately.
+
+## Diagfs paths
+
+With `mount -t lkm4ctr diag <mnt>`, the shared hook engine is exposed at
+`/<mnt>/hijack/{control,status,log,functions}`. `functions` lists the live hook
+registry across all submodules. `control` is informational only here: the shared
+hook engine is always active while `lkm4ctr.ko` is loaded, so unload commands
+are intentionally unsupported on that path.

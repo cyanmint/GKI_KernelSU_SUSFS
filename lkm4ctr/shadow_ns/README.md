@@ -307,3 +307,22 @@ modules are built against the identical target kernel config in the same DDK
 image, so the results are guaranteed to agree). Exported for any external
 consumer that does want to query at runtime whether a namespace type is being
 simulated and, if so, whether that simulation is functionally real.
+
+## Diagfs paths
+
+Once `lkm4ctr.ko` is mounted with `mount -t lkm4ctr diag <mnt>`, shadow_ns is
+controlled through `/<mnt>/ns/control` and observed through `/<mnt>/ns/status`,
+`/<mnt>/ns/hooks`, `/<mnt>/ns/log`, and `/<mnt>/ns/namespaces`. Each namespace
+type also has its own filtered directory:
+
+* `/<mnt>/ns/pid/...`
+* `/<mnt>/ns/ipc/...`
+* `/<mnt>/ns/mnt/...`
+* `/<mnt>/ns/net/...`
+* `/<mnt>/ns/user/...`
+* `/<mnt>/ns/uts/...`
+* `/<mnt>/ns/cgroup/...`
+
+Those per-type `control`/`status` files intentionally share the one real
+shadow_ns lifecycle; their `namespaces` files are the type-filtered live
+membership view.

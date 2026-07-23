@@ -2,6 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
+#include "lkm4ctr_log.h"
+
 int shadow_hijack_init(void);
 void shadow_hijack_exit(void);
 int shadow_ns_init(void);
@@ -12,11 +14,24 @@ int shadow_mqueue_init(void);
 void shadow_mqueue_exit(void);
 int shadow_cgdevices_init(void);
 void shadow_cgdevices_exit(void);
-int lkm4ctr_safe_unload_init(void);
-void lkm4ctr_safe_unload_exit(void);
+int lkm4ctr_diagfs_init(void);
+void lkm4ctr_diagfs_exit(void);
+int lkm4ctr_hotreload_init(void);
+void lkm4ctr_hotreload_exit(void);
 
-#define LKM4CTR_VERSION "4.0"
+#define LKM4CTR_VERSION "4.0.1"
+#define LKM4CTR_TAG	"lkm4ctr"
 
+/*
+ * No submodule (shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices) is
+ * auto-loaded at insmod time any more: shadow_hijack_init() is a no-op
+ * (shared hook-engine bookkeeping only, no hooks of its own) and
+ * lkm4ctr_diagfs_init() only registers the "lkm4ctr" filesystem type, so
+ * lkm4ctr.ko now comes up completely passive -- every submodule starts
+ * "not loaded" until deliberately started via
+ * ./mnt/<name>/control ("echo load"), or all at once via
+ * ./mnt/global/control ("echo load"). See lkm4ctr_diagfs.c for both.
+ */
 static int __init lkm4ctr_init(void)
 {
 	int ret;
@@ -25,51 +40,40 @@ static int __init lkm4ctr_init(void)
 	if (ret)
 		return ret;
 
-	ret = shadow_ns_init();
-	if (ret)
-		goto err_ns;
-
-	ret = shadow_sysvipc_init();
-	if (ret)
-		goto err_sysvipc;
-
-	ret = shadow_mqueue_init();
-	if (ret)
-		goto err_mqueue;
-
-	ret = shadow_cgdevices_init();
-	if (ret)
-		goto err_cgdevices;
-
-	ret = lkm4ctr_safe_unload_init();
+	ret = lkm4ctr_diagfs_init();
 	if (ret) {
-		pr_warn("lkm4ctr: safe_unload sysfs registration failed: %d (safe_unload will be unavailable)\n",
-			ret);
+		LKM4CTR_WARN(LKM4CTR_TAG,
+			     "diagfs registration failed: %d (mount -t lkm4ctr, including global/control and every submodule's load/unload control, will be unavailable)",
+			     ret);
 	}
 
-	pr_info("lkm4ctr: loaded unified module\n");
-	return 0;
+	lkm4ctr_hotreload_init();
 
-err_cgdevices:
-	shadow_mqueue_exit();
-err_mqueue:
-	shadow_sysvipc_exit();
-err_sysvipc:
-	shadow_ns_exit();
-err_ns:
-	shadow_hijack_exit();
-	return ret;
+	LKM4CTR_INFO(LKM4CTR_TAG,
+		     "loaded unified module (no submodule auto-started; mount -t lkm4ctr diag <mountpoint> then \"echo load\" to <mountpoint>/global/control or a specific <mountpoint>/<name>/control)");
+	return 0;
 }
 
+/*
+ * lkm4ctr_exit() unconditionally calls every submodule's own _exit(), which
+ * is idempotent-safe and force-frees all of that submodule's resources even
+ * if it was never loaded (shadow_hook_remove_all() on hooks that were never
+ * installed is a no-op; every submodule's own resource-registry teardown is
+ * likewise a no-op on an already-empty registry) or was already manually
+ * unloaded via diagfs. This is what guarantees rmmod is never blocked by a
+ * submodule's own state: whatever the diagfs left active is force-cleaned
+ * up right here, unconditionally, on the way out.
+ */
 static void __exit lkm4ctr_exit(void)
 {
-	lkm4ctr_safe_unload_exit();
+	lkm4ctr_diagfs_exit();
+	lkm4ctr_hotreload_exit();
 	shadow_cgdevices_exit();
 	shadow_mqueue_exit();
 	shadow_sysvipc_exit();
 	shadow_ns_exit();
 	shadow_hijack_exit();
-	pr_info("lkm4ctr: unloaded unified module\n");
+	LKM4CTR_INFO(LKM4CTR_TAG, "unloaded unified module");
 }
 
 module_init(lkm4ctr_init);

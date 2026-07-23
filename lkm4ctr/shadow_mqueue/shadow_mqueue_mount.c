@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "shadow_mqueue_internal.h"
+#include "lkm4ctr_log.h"
 
 #define SHADOW_MQ_DEV_MQUEUE_PATH "/dev/mqueue"
 #define SHADOW_MQ_DEV_MQUEUE_MODE 0755
@@ -79,8 +80,8 @@ static void mq_dev_mqueue_ensure(void)
 
 	if (!kern_path_fn || !kern_path_create_fn || !done_path_create_fn ||
 	    !vfs_mkdir_fn || !path_mount_fn || !path_put_fn) {
-		pr_info("shadow_mqueue: init: could not resolve VFS helpers for proactive %s mount; falling back to the reactive mount(2) hook only\n",
-			SHADOW_MQ_DEV_MQUEUE_PATH);
+		LKM4CTR_INFO("shadow_mqueue", "init: could not resolve VFS helpers for proactive %s mount; falling back to the reactive mount(2) hook only",
+			     SHADOW_MQ_DEV_MQUEUE_PATH);
 		return;
 	}
 
@@ -95,8 +96,8 @@ static void mq_dev_mqueue_ensure(void)
 		 * here without a NULL check.
 		 */
 		if (path.dentry == path.dentry->d_sb->s_root) {
-			pr_info("shadow_mqueue: init: %s is already a mountpoint; leaving it as-is\n",
-				SHADOW_MQ_DEV_MQUEUE_PATH);
+			LKM4CTR_INFO("shadow_mqueue", "init: %s is already a mountpoint; leaving it as-is",
+				     SHADOW_MQ_DEV_MQUEUE_PATH);
 			path_put_fn(&path);
 			return;
 		}
@@ -104,17 +105,15 @@ static void mq_dev_mqueue_ensure(void)
 		ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
 		path_put_fn(&path);
 		if (ret)
-			pr_info("shadow_mqueue: init: proactive tmpfs mount on existing %s failed: %d\n",
-				SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+			LKM4CTR_INFO("shadow_mqueue", "init: proactive tmpfs mount on existing %s failed: %d",
+				     SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 		else
-			pr_info("shadow_mqueue: init: mounted tmpfs on existing %s\n",
-				SHADOW_MQ_DEV_MQUEUE_PATH);
+			LKM4CTR_INFO("shadow_mqueue", "init: mounted tmpfs on existing %s", SHADOW_MQ_DEV_MQUEUE_PATH);
 		return;
 	}
 
 	if (ret != -ENOENT) {
-		pr_info("shadow_mqueue: init: kern_path(%s) failed: %d\n",
-			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		LKM4CTR_INFO("shadow_mqueue", "init: kern_path(%s) failed: %d", SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 		return;
 	}
 
@@ -122,8 +121,8 @@ static void mq_dev_mqueue_ensure(void)
 	dentry = kern_path_create_fn(AT_FDCWD, SHADOW_MQ_DEV_MQUEUE_PATH,
 				      &create_path, LOOKUP_DIRECTORY);
 	if (IS_ERR(dentry)) {
-		pr_info("shadow_mqueue: init: kern_path_create(%s) failed: %ld\n",
-			 SHADOW_MQ_DEV_MQUEUE_PATH, PTR_ERR(dentry));
+		LKM4CTR_INFO("shadow_mqueue", "init: kern_path_create(%s) failed: %ld",
+			     SHADOW_MQ_DEV_MQUEUE_PATH, PTR_ERR(dentry));
 		return;
 	}
 
@@ -131,53 +130,52 @@ static void mq_dev_mqueue_ensure(void)
 			    SHADOW_MQ_DEV_MQUEUE_MODE);
 	done_path_create_fn(&create_path, dentry);
 	if (ret) {
-		pr_info("shadow_mqueue: init: mkdir(%s) failed: %d\n",
-			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		LKM4CTR_INFO("shadow_mqueue", "init: mkdir(%s) failed: %d", SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 		return;
 	}
 
 	ret = kern_path_fn(SHADOW_MQ_DEV_MQUEUE_PATH, LOOKUP_DIRECTORY, &path);
 	if (ret) {
-		pr_info("shadow_mqueue: init: kern_path(%s) failed after mkdir: %d\n",
-			 SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		LKM4CTR_INFO("shadow_mqueue", "init: kern_path(%s) failed after mkdir: %d",
+			     SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 		return;
 	}
 
 	ret = mq_dev_mqueue_do_mount(path_mount_fn, &path);
 	path_put_fn(&path);
 	if (ret)
-		pr_info("shadow_mqueue: init: created %s but tmpfs mount failed: %d\n",
-			SHADOW_MQ_DEV_MQUEUE_PATH, ret);
+		LKM4CTR_INFO("shadow_mqueue", "init: created %s but tmpfs mount failed: %d",
+			     SHADOW_MQ_DEV_MQUEUE_PATH, ret);
 	else
-		pr_info("shadow_mqueue: init: created and mounted %s\n",
-			SHADOW_MQ_DEV_MQUEUE_PATH);
+		LKM4CTR_INFO("shadow_mqueue", "init: created and mounted %s", SHADOW_MQ_DEV_MQUEUE_PATH);
 }
 
 int shadow_mqueue_init(void)
 {
 	int ret;
 
-	pr_info("shadow_mqueue: init: installing transparent mq_*/mount hooks\n");
+	LKM4CTR_INFO("shadow_mqueue", "init: installing transparent mq_*/mount hooks");
 	ret = shadow_mqueue_install_hooks();
 	if (ret < 0) {
-		pr_err("shadow_mqueue: init: shadow_hook_install_all() failed: %d\n", ret);
+		LKM4CTR_ERR("shadow_mqueue", "init: shadow_hook_install_all() failed: %d", ret);
 		shadow_mqueue_remove_hooks();
 		return ret;
 	}
-	pr_info("shadow_mqueue: init: %d hook(s) installed\n", ret);
+	LKM4CTR_INFO("shadow_mqueue", "init: %d hook(s) installed", ret);
 
 	mq_dev_mqueue_ensure();
 
-	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem loaded with transparent mq_* hooks\n");
+	LKM4CTR_INFO("shadow_mqueue",
+		     "simulated POSIX mqueue subsystem loaded with transparent mq_* hooks");
 	return 0;
 }
 
 void shadow_mqueue_exit(void)
 {
-	pr_info("shadow_mqueue: exit: removing transparent mq_* hooks\n");
+	LKM4CTR_INFO("shadow_mqueue", "exit: removing transparent mq_* hooks");
 	shadow_mqueue_remove_hooks();
 	mq_release_all();
-	pr_info("shadow_mqueue: simulated POSIX mqueue subsystem unloaded\n");
+	LKM4CTR_INFO("shadow_mqueue", "simulated POSIX mqueue subsystem unloaded");
 }
 
 /*

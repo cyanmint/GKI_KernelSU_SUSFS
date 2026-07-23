@@ -20,12 +20,28 @@
 #define _LKM4CTR_COMPAT_H
 
 #include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/version.h>
 
 #ifndef fd_file
 #define fd_file(f) ((f).file)
 #endif
 #ifndef fd_empty
 #define fd_empty(f) (!fd_file(f))
+#endif
+
+/*
+ * lkm4ctr_inode_init_ts() - set a freshly allocated inode's
+ * atime/mtime/ctime to "now", across the API rework simple_inode_init_ts()
+ * introduced upstream in v6.6 (older kernels this module targets, down to
+ * 5.10, still expose the plain i_atime/i_mtime/i_ctime struct timespec64
+ * fields directly). Used by lkm4ctr_diagfs.c's inode allocation helper.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+#define lkm4ctr_inode_init_ts(inode) simple_inode_init_ts(inode)
+#else
+#define lkm4ctr_inode_init_ts(inode) \
+	((inode)->i_atime = (inode)->i_mtime = (inode)->i_ctime = current_time(inode))
 #endif
 
 #endif /* _LKM4CTR_COMPAT_H */
