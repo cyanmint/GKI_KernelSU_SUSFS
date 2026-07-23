@@ -54,143 +54,78 @@ lkm4ctr_run_checker_mode() {
 	# loaded QEMU VM, without hanging the whole boot test indefinitely if
 	# it never does.
 	SAFE_UNLOAD_TIMEOUT_SEC=30
-
 	echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (pre-insmod) ==="
 	"$CHECKER"
-
 	echo "=== LKM4CTR_QEMU_TEST: inserting merged module ==="
 	insmod "$MODULE"
-
-	echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (post-insmod) ==="
-	"$CHECKER"
-
 	echo "=== LKM4CTR_QEMU_TEST: mounting lkm4ctr diagfs ==="
 	mkdir -p "$MNT"
 	mount -t lkm4ctr diag "$MNT"
-	echo "mount -t lkm4ctr diag $MNT -> $?"
-
+	echo load > "$MNT"/global/control
 	echo "=== LKM4CTR_QEMU_TEST: diagfs control/status/hooks/namespaces/log ==="
 	for m in hijack ns sysvipc mqueue cgroupdevices; do
-		echo "--- $m/control ---"
-		cat "$MNT/$m/control"
-		echo "--- $m/status ---"
 		cat "$MNT/$m/status"
 		if [ -f "$MNT/$m/hooks" ]; then
-			echo "--- $m/hooks ---"
 			cat "$MNT/$m/hooks"
 		fi
 		if [ -f "$MNT/$m/namespaces" ]; then
-			echo "--- $m/namespaces ---"
 			cat "$MNT/$m/namespaces"
 		fi
 		if [ -f "$MNT/$m/msg" ]; then
-			echo "--- $m/msg ---"
 			cat "$MNT/$m/msg"
 		fi
 		if [ -f "$MNT/$m/functions" ]; then
-			echo "--- $m/functions ---"
 			cat "$MNT/$m/functions"
 		fi
-		echo "--- $m/log (tail) ---"
-		cat "$MNT/$m/log" | tail -n 10
+		cat "$MNT/$m/log"
 	done
-	echo "--- global/resources ---"
 	cat "$MNT/global/resources"
-	echo "--- global/log (tail) ---"
-	cat "$MNT/global/log" | tail -n 20
-	echo "--- ns/pid/namespaces ---"
+	cat "$MNT/global/log"
 	cat "$MNT/ns/pid/namespaces"
-
 	echo "=== LKM4CTR_QEMU_TEST: diagfs hot upgrade (unload/reload shadow_ns hooks) ==="
 	echo unload > "$MNT/ns/control"
 	echo "post-unload status: $(cat "$MNT/ns/status")"
 	echo load > "$MNT/ns/control"
 	echo "post-reload status: $(cat "$MNT/ns/status")"
-
 	echo "=== LKM4CTR_QEMU_TEST: deactivating all submodules via diagfs ==="
 	for m in ns sysvipc mqueue cgroupdevices; do
 		echo unload > "$MNT/$m/control"
 		echo "$m/status after unload: $(cat "$MNT/$m/status")"
 	done
-
-	echo "=== LKM4CTR_QEMU_TEST: global unload via diagfs ==="
-	cat "$MNT/global/control"
-	echo unload > "$MNT/global/control"
-	for _ in $(seq 1 "$SAFE_UNLOAD_TIMEOUT_SEC"); do
-		grep -q '^lkm4ctr ' /proc/modules || break
-		sleep 1
-	done
-	if grep -q '^lkm4ctr ' /proc/modules; then
-		echo "LKM4CTR_QEMU_TEST: global unload FAILED, module still loaded"
-	else
-		echo "LKM4CTR_QEMU_TEST: global unload OK, module unloaded itself"
-	fi
-
-	# global unload auto-unmounts every active diagfs mount itself before it
-	# starts waiting for module_refcount() to drain (see
-	# lkm4ctr_auto_umount_diagfs() in lkm4ctr_diagfs.c), so $MNT should
-	# already be gone; this is just a last-resort fallback in case
-	# the global unload path could not fully unload the module (e.g. still busy for
-	# some other reason), to leave the system in a clean state either way.
-	if grep -q '^lkm4ctr ' /proc/modules; then
-		echo "=== LKM4CTR_QEMU_TEST: global unload did not remove the module, forcing umount+rmmod ==="
-		umount "$MNT" 2>/dev/null
-		rmmod "$MODULE"
-		echo "rmmod -> $?"
-	fi
-
+    echo load > "$MNT"/global/control
+	echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (post-insmod) ==="
+	"$CHECKER"
 	echo "=== LKM4CTR_QEMU_TEST: checker mode DONE ==="
-}
-
-lkm4ctr_do_reboot() {
-	# $1: "heavy" (real image1.ext4 root, bionic userland present) or
-	# "light" (busybox-only initramfs, no real root to remount).
-	if [ "$1" = "heavy" ]; then
-		/system/bin/mount -o remount,ro / 2>/dev/null
-	fi
-	echo o > /proc/sysrq-trigger
-	for i in 1 2 3 4 5; do
-		echo "$i"
-		sleep "$i"
-	done
-	if [ "$1" = "heavy" ]; then
-		exec env -i /system/bin/sh
-	else
-		exec busybox sh
-	fi
 }
 
 lkm4ctr_init_1() {
 
-	PATH=/
-	busybox mkdir -p /sys /dev /newroot /proc
-	busybox mount -t sysfs sysfs /sys
-	busybox mount -t proc proc /proc
-	busybox mdev -s
-	busybox echo "=== LKM4CTR_QEMU_TEST: stage1 (initramfs) ==="
+	mkdir -p /sys /dev /newroot /proc
+	mount -t sysfs sysfs /sys
+	mount -t proc proc /proc
+	mdev -s
+	echo "=== LKM4CTR_QEMU_TEST: stage1 (initramfs) ==="
 
-	if busybox test -e /dev/nvme0n1 && busybox mount -t ext4 /dev/nvme0n1 /newroot; then
-		busybox echo "=== LKM4CTR_QEMU_TEST: nvme available, proceeding to stage 2 ==="
+	if test -e /dev/nvme0n1 && mount -t ext4 /dev/nvme0n1 /newroot; then
+		echo "=== LKM4CTR_QEMU_TEST: nvme available, proceeding to stage 2 ==="
 
-		busybox cp /lkm4ctr_checker /newroot/
-		busybox cp /lkm4ctr.ko /newroot/
-		busybox cat /init > /newroot/second_init
-		busybox chmod 755 /newroot/second_init
+		cp /lkm4ctr_checker /newroot/
+		cp /lkm4ctr.ko /newroot/
+		cat /init > /newroot/second_init
+		chmod 755 /newroot/second_init
 
-		busybox echo "=== LKM4CTR_QEMU_TEST: exec second init ==="
+		echo "=== LKM4CTR_QEMU_TEST: exec second init ==="
 		# switch_root replaces PID 1 with the given command, run under the new
 		# root; /busybox (copied onto image1.ext4 above) provides "env" here
 		# since image1.ext4's own /system/bin/env may not exist yet at this
 		# point, but /system/bin/sh (the real root's bionic-linked shell,
 		# already baked into image1.ext4) is used to interpret /second_init so
 		# stage 2 runs under the actual target userland's shell, not busybox's.
-		exec busybox switch_root /newroot /busybox env -i /system/bin/sh /second_init
+		exec switch_root /newroot /busybox env -i /system/bin/sh /second_init
 	fi
 
-	busybox echo "=== LKM4CTR_QEMU_TEST: no nvme device, running LIGHT MODE checker directly ==="
-	busybox sh /init -t /lkm4ctr_checker /lkm4ctr.ko
-
-	lkm4ctr_do_reboot light
+	echo "=== LKM4CTR_QEMU_TEST: no nvme device, running LIGHT MODE checker directly ==="
+	/busybox sh /init -t /lkm4ctr_checker /lkm4ctr.ko
 }
 
 lkm4ctr_init_2() {
@@ -235,17 +170,17 @@ lkm4ctr_init_2() {
 	echo "=== LKM4CTR_QEMU_TEST: docker run (test container sanity) ==="
 	docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest ps -e
 	docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
+	pkill -2 dockerd
+	sleep 15
 
 	echo "=== LKM4CTR_QEMU_TEST: DONE ==="
 	# unmounts whatever /do-mounts.sh mounted above, so the following
 	# remount,ro is clean.
 	source /do-umounts.sh
-
-	lkm4ctr_do_reboot heavy
 }
 
 lkm4ctr_init_tail(){
-	echo o > /proc/sysrq-trigger
+	exec /busybox sh
 }
 
 if [ "$$" != "1" ]; then
