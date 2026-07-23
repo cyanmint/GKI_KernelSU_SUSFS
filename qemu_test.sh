@@ -101,9 +101,9 @@ lkm4ctr_run_checker_mode() {
 lkm4ctr_init_1() {
 
 	mkdir -p /sys /dev /newroot /proc
-	mount -t sysfs sysfs /sys
-	mount -t proc proc /proc
-	mdev -s
+	/busybox mount -t sysfs sysfs /sys
+	/busybox mount -t proc proc /proc
+	/busybox mdev -s
 	echo "=== LKM4CTR_QEMU_TEST: stage1 (initramfs) ==="
 
 	if test -e /dev/nvme0n1 && mount -t ext4 /dev/nvme0n1 /newroot; then
