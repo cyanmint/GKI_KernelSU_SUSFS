@@ -116,15 +116,15 @@ submodule's diagfs files. No algorithm is "improved" or refactored.
 
 | File | Vendored from |
 |------|---------------|
-| `vns_nsfs.c` | `fs/nsfs.c` + `fs/proc/generic.c` (`ns_common` inode-number allocation, biased above `PROC_DYNAMIC_FIRST`) and `include/linux/ns_common.h` (the `inum`+`refcount_t` namespace-object shape). |
-| `vns_utsns.c` | `kernel/utsname.c` (`clone_uts_ns()`'s `memcpy` of `struct new_utsname`) and `include/linux/utsname.h` (`struct uts_namespace`/`struct new_utsname`). |
-| `vns_userns.c` | `kernel/user_namespace.c` (`struct uid_gid_map`'s extent-array `map_id_up()`/`map_id_down()` base-path lookup) and `include/linux/user_namespace.h` (`struct uid_gid_extent`/`struct uid_gid_map`/`struct user_namespace`). |
-| `vns_pidns.c` | `kernel/pid.c` (`alloc_pid()`'s `idr_alloc_cyclic()` cyclic pid allocation + `RESERVED_PIDS` wraparound) and `kernel/pid_namespace.c` (`create_pid_namespace()` idr init + `disable_pid_allocation()`). |
-| `vns_generic.c` | The common "payload + `ns_common`" shape of `ipc/namespace.c`, `fs/namespace.c`, `kernel/cgroup/namespace.c`, `net/core/net_namespace.c` and `kernel/time/namespace.c` (used for the bookkeeping-only IPC/MNT/CGROUP/NET/TIME types). |
-| `vns_nsproxy.c` | `kernel/nsproxy.c` (`create_new_namespaces()`'s per-type clone-or-reference logic and `free_nsproxy()`) and `include/linux/nsproxy.h` (`struct nsproxy` shape). |
+| `fs/nsfs.c` | `fs/nsfs.c` + `fs/proc/generic.c` (`ns_common` inode-number allocation, biased above `PROC_DYNAMIC_FIRST`) and `include/linux/ns_common.h` (the `inum`+`refcount_t` namespace-object shape). |
+| `kernel/utsname.c` | `kernel/utsname.c` (`clone_uts_ns()`'s `memcpy` of `struct new_utsname`) and `include/linux/utsname.h` (`struct uts_namespace`/`struct new_utsname`). |
+| `kernel/user_namespace.c` | `kernel/user_namespace.c` (`struct uid_gid_map`'s extent-array `map_id_up()`/`map_id_down()` base-path lookup) and `include/linux/user_namespace.h` (`struct uid_gid_extent`/`struct uid_gid_map`/`struct user_namespace`). |
+| `kernel/pid.c` + `kernel/pid_namespace.c` | `kernel/pid.c` (`alloc_pid()`'s `idr_alloc_cyclic()` cyclic pid allocation + `RESERVED_PIDS` wraparound) and `kernel/pid_namespace.c` (`create_pid_namespace()` idr init + `disable_pid_allocation()`). |
+| `glue/vendor_ns_generic.c` | The common "payload + `ns_common`" shape of `ipc/namespace.c`, `fs/namespace.c`, `kernel/cgroup/namespace.c`, `net/core/net_namespace.c` and `kernel/time/namespace.c` (used for the bookkeeping-only IPC/MNT/CGROUP/NET/TIME types). |
+| `kernel/nsproxy.c` | `kernel/nsproxy.c` (`create_new_namespaces()`'s per-type clone-or-reference logic and `free_nsproxy()`) and `include/linux/nsproxy.h` (`struct nsproxy` shape). |
 
-The remaining `vendor_ns_*.c` files (`vendor_ns_syscalls.c`, `vendor_ns_procfs.c`,
-`vendor_ns_diag.c`, `vendor_ns_module.c`) are vendor_ns's own plumbing — they use
+The remaining glue files (`glue/vendor_ns_syscalls.c`, `glue/vendor_ns_procfs.c`,
+`glue/vendor_ns_diag.c`, `glue/vendor_ns_module.c`) are vendor_ns's own plumbing — they use
 the shared `shadow_hook` engine and the vendored cores above, and are not
 adapted from any single kernel source file.
 

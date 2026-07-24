@@ -23,9 +23,9 @@
 #include <linux/sched.h>
 #include <linux/utsname.h>
 
-#include "vendor_ns.h"
-#include "../../common/shadow_hook.h"
-#include "../../common/lkm4ctr_log.h"
+#include "../vendor_ns.h"
+#include "../../../common/shadow_hook.h"
+#include "../../../common/lkm4ctr_log.h"
 
 /* ------------------------------------------------------------------ */
 /* pt_regs syscall-argument accessors (arch-specific).		    */
@@ -200,12 +200,12 @@ static long vns_store_uts(const struct pt_regs *regs, bool domain)
 {
 	char __user *uname = (char __user *)(uintptr_t)vns_sys_arg0(regs);
 	int len = (int)vns_sys_arg1(regs);
-	char kbuf[VNS_UTS_LEN + 1];
+	char kbuf[__NEW_UTS_LEN + 1];
 
 	if (len < 0)
 		return -EINVAL;
-	if (len > VNS_UTS_LEN)
-		len = VNS_UTS_LEN;
+	if (len > __NEW_UTS_LEN)
+		len = __NEW_UTS_LEN;
 
 	memset(kbuf, 0, sizeof(kbuf));
 	if (uname && len && copy_from_user(kbuf, uname, len))
@@ -239,7 +239,7 @@ static long vns_hook_setdomainname(const struct pt_regs *regs)
  * uname(2) fills the user buffer we overlay the vendored nodename/domainname if
  * the calling namespace set them.
  */
-#define VNS_UTS_FIELD_SZ	(VNS_UTS_LEN + 1)
+#define VNS_UTS_FIELD_SZ	(__NEW_UTS_LEN + 1)
 #define VNS_UTS_OFF_NODENAME	(1 * VNS_UTS_FIELD_SZ)
 #define VNS_UTS_OFF_DOMAIN	(5 * VNS_UTS_FIELD_SZ)
 

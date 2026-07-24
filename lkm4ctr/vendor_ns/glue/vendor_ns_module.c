@@ -19,14 +19,34 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/hashtable.h>
+#include <linux/string.h>
 
-#include "vendor_ns.h"
-#include "../../common/shadow_hook.h"
-#include "../../common/lkm4ctr_log.h"
+#include "../vendor_ns.h"
+#include "../../../common/shadow_hook.h"
+#include "../../../common/lkm4ctr_log.h"
 
 struct vns_registry vendor_ns_registry;
 
 static bool vendor_ns_loaded;
+
+static struct uts_namespace *vns_build_root_uts(void)
+{
+	struct uts_namespace *ns;
+
+	ns = kzalloc(sizeof(*ns), GFP_KERNEL); /* STANDALONE COMPILE */
+	if (!ns)
+		return NULL;
+	refcount_set(&ns->ns.count, 1);
+	memcpy(&ns->name, &init_uts_ns.name, sizeof(ns->name));
+	ns->user_ns = get_user_ns(current_user_ns());
+	if (vns_ns_alloc_inum(&ns->ns)) {
+		put_user_ns(ns->user_ns);
+		kfree(ns);
+		return NULL;
+	}
+	vns_ns_register(&ns->ns, VENDOR_NS_TYPE_UTS);
+	return ns;
+}
 
 /* ---- root namespace construction / teardown (registry lock held) ---- */
 
@@ -40,7 +60,7 @@ static int vns_build_roots(void)
 	if (!vendor_ns_registry.root_user)
 		return -ENOMEM;
 
-	vendor_ns_registry.root_uts = vns_uts_root();
+	vendor_ns_registry.root_uts = vns_build_root_uts();
 	if (!vendor_ns_registry.root_uts)
 		return -ENOMEM;
 

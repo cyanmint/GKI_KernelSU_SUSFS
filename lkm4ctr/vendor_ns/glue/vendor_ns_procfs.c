@@ -26,10 +26,10 @@
 #include <linux/dcache.h>
 #include <linux/magic.h>
 
-#include "vendor_ns.h"
-#include "../../common/shadow_hook.h"
-#include "../../common/lkm4ctr_compat.h"
-#include "../../common/lkm4ctr_log.h"
+#include "../vendor_ns.h"
+#include "../../../common/shadow_hook.h"
+#include "../../../common/lkm4ctr_compat.h"
+#include "../../../common/lkm4ctr_log.h"
 
 /* Mirror of struct linux_dirent64 (fs/readdir.c / include/linux/dirent.h). */
 struct vns_linux_dirent64 {
