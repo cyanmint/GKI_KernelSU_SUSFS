@@ -5,6 +5,26 @@
 `shadow_ns_base` +
 `shadow_ns_{uts,ipc,mnt,pid,net,user,cgroup}` family.
 
+## Relationship to `vendor_ns` (mutually exclusive)
+
+`shadow_ns` has an aggressive sibling, [`vendor_ns`](../vendor_ns/README.md).
+Where `shadow_ns` only takes over a namespace type the running kernel
+*genuinely lacks* (and otherwise gets out of the way so the real kernel does
+the isolation), `vendor_ns` hooks **every** namespace syscall
+*unconditionally* and replaces the kernel's own namespace bookkeeping with
+its own fully-vendored implementation for every type.
+
+The two are **mutually exclusive at runtime**: both hook the same syscall
+entry points (`unshare`/`setns`/`clone`/`clone3`/`getpid`/…), and the shared
+`shadow_hijack` hook engine permits only one hook per symbol, so at most one
+of them may be active at a time. Attempting to `load` `shadow_ns` via its
+diagfs `control` file while `vendor_ns` is already active/loading (or vice
+versa) is refused with `-EBUSY` and a clear log message; a global `load`
+(load-all) loads `shadow_ns` and silently skips `vendor_ns`. Use `shadow_ns`
+when you want "only fake what's genuinely missing"; use `vendor_ns` when you
+want a real, complete, always-on namespace subsystem regardless of what the
+kernel natively supports.
+
 ## Why this exists
 
 dockerd/containerd relies on `unshare(2)`/`clone(2)` with `CLONE_NEW*` flags

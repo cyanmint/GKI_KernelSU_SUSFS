@@ -8,6 +8,8 @@ int shadow_hijack_init(void);
 void shadow_hijack_exit(void);
 int shadow_ns_init(void);
 void shadow_ns_exit(void);
+int vendor_ns_init(void);
+void vendor_ns_exit(void);
 int shadow_sysvipc_init(void);
 void shadow_sysvipc_exit(void);
 int shadow_mqueue_init(void);
@@ -23,7 +25,7 @@ void lkm4ctr_hotreload_exit(void);
 #define LKM4CTR_TAG	"lkm4ctr"
 
 /*
- * No submodule (shadow_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices) is
+ * No submodule (shadow_ns/vendor_ns/shadow_sysvipc/shadow_mqueue/shadow_cgdevices) is
  * auto-loaded at insmod time any more: shadow_hijack_init() is a no-op
  * (shared hook-engine bookkeeping only, no hooks of its own) and
  * lkm4ctr_diagfs_init() only registers the "lkm4ctr" filesystem type, so
@@ -71,6 +73,7 @@ static void __exit lkm4ctr_exit(void)
 	shadow_cgdevices_exit();
 	shadow_mqueue_exit();
 	shadow_sysvipc_exit();
+	vendor_ns_exit();
 	shadow_ns_exit();
 	shadow_hijack_exit();
 	LKM4CTR_INFO(LKM4CTR_TAG, "unloaded unified module");

@@ -9,6 +9,9 @@ The unified module links these internal subsystem source trees together:
 
 * `shadow_hijack/` — shared ftrace/kprobe hook implementation
 * `shadow_ns/` — namespace hooks and fallback simulation
+* `vendor_ns/` — always-on, fully-vendored namespace subsystem (mutually
+  exclusive with `shadow_ns`; hooks every namespace syscall unconditionally
+  and replaces the kernel's own bookkeeping)
 * `shadow_sysvipc/` — SysV IPC hooks and registry
 * `shadow_mqueue/` — POSIX mqueue hooks and queue engine
 * `shadow_cgdevices/` — device-open compatibility hooks
@@ -30,8 +33,8 @@ and load only as one module with the single entry point in
 
 `insmod lkm4ctr.ko` only brings up the shared hook engine (`shadow_hijack`)
 and registers the `lkm4ctr` diagfs filesystem type — none of
-`shadow_ns`/`shadow_sysvipc`/`shadow_mqueue`/`shadow_cgdevices` are started
-automatically. Mount the diagfs and start what you need:
+`shadow_ns`/`vendor_ns`/`shadow_sysvipc`/`shadow_mqueue`/`shadow_cgdevices` are
+started automatically. Mount the diagfs and start what you need:
 
 ```sh
 mount -t lkm4ctr diag /mnt
@@ -50,6 +53,11 @@ relevant) `hooks` or a live-state listing file directly under the mount root:
 * `/mnt/hijack/{control,status,log,functions,references}`
 * `/mnt/ns/{control,status,hooks,log,namespaces,references}` plus
   `/mnt/ns/{pid,ipc,mnt,net,user,uts,cgroup}/...`
+* `/mnt/vendor_ns/{control,status,hooks,log,namespaces,references}` plus
+  `/mnt/vendor_ns/{pid,ipc,mnt,net,user,uts,cgroup,time}/...` — the always-on,
+  fully-vendored namespace subsystem. Mutually exclusive with `shadow_ns`
+  (`/mnt/ns/`): loading one while the other is active is refused with
+  `-EBUSY`, and a global `load` starts `shadow_ns` and skips `vendor_ns`.
 * `/mnt/sysvipc/{control,status,hooks,resources,log,references}`
 * `/mnt/mqueue/{control,status,hooks,log,msg,references}`
 * `/mnt/cgroupdevices/{control,status,hooks,log,references}`

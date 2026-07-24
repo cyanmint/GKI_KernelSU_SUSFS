@@ -31,6 +31,16 @@ lkm4ctr-objs := \
 	shadow_ns/shadow_ns_procfs.o \
 	shadow_ns/shadow_ns_module.o \
 	shadow_ns/shadow_ns_diag.o \
+	vendor_ns/vns_nsfs.o \
+	vendor_ns/vns_utsns.o \
+	vendor_ns/vns_userns.o \
+	vendor_ns/vns_pidns.o \
+	vendor_ns/vns_generic.o \
+	vendor_ns/vns_nsproxy.o \
+	vendor_ns/vendor_ns_syscalls.o \
+	vendor_ns/vendor_ns_procfs.o \
+	vendor_ns/vendor_ns_diag.o \
+	vendor_ns/vendor_ns_module.o \
 	shadow_sysvipc/shadow_sysvipc_registry.o \
 	shadow_sysvipc/shadow_sysvipc_tgid.o \
 	shadow_sysvipc/shadow_sysvipc_hooks.o \

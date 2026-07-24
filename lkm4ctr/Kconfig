@@ -26,6 +26,29 @@ config LKM4CTR
 	  status/hooks/namespaces/log diagnostics and a safe self-unload
 	  control file.
 
+	  Two namespace subsystems are linked in and are MUTUALLY EXCLUSIVE
+	  at runtime:
+
+	    * shadow_ns  - conservative: only takes over a namespace type the
+	      running kernel genuinely lacks (IS_ENABLED(CONFIG_*_NS) plus a
+	      load-time canary re-check), otherwise leaves the real kernel to
+	      do the isolation.
+	    * vendor_ns  - aggressive: hooks every namespace syscall
+	      unconditionally and replaces the kernel's own namespace
+	      bookkeeping with its own fully-vendored implementation for every
+	      type (UTS/IPC/PID/USER/MNT/CGROUP functional-or-bookkeeping, NET
+	      and TIME bookkeeping only).
+
+	  Both hook the same syscall entry points, and the shared hook engine
+	  permits only one hook per symbol, so only one of shadow_ns/vendor_ns
+	  may be active at a time. Loading one via its diagfs `control` file
+	  while the other is active/loading is refused with -EBUSY; a global
+	  load starts shadow_ns and skips vendor_ns. (This Kconfig is never
+	  actually evaluated in the out-of-tree build -- see the header comment
+	  above -- so the exclusion is enforced purely at runtime by the diagfs
+	  load path, not by a Kconfig relationship; this help text documents
+	  it.)
+
 config LKM4CTR_LOG_DMESG
 	bool "lkm4ctr: also log to the kernel log (dmesg)"
 	depends on LKM4CTR

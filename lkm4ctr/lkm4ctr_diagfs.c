@@ -99,6 +99,29 @@
  *                                    file is still filtered to only that type's
  *                                    live namespace objects and member tgids.
  *
+ *   ./mnt/vendor_ns/{control,status,hooks,log,namespaces,references}
+ *                                  - aggregate vendor_ns lifecycle, hooks,
+ *                                    full namespace registry and task-group
+ *                                    membership dump. vendor_ns is the
+ *                                    always-on, fully-vendored namespace
+ *                                    subsystem (see lkm4ctr/vendor_ns/README.md):
+ *                                    it hooks every namespace syscall
+ *                                    unconditionally and replaces the kernel's
+ *                                    own bookkeeping. It is MUTUALLY EXCLUSIVE
+ *                                    with shadow_ns above -- loading one while
+ *                                    the other is active is refused with
+ *                                    -EBUSY, since both hook the same syscalls
+ *                                    and the shared hook engine allows only one
+ *                                    hook per symbol.
+ *   ./mnt/vendor_ns/<type>/{control,status,log,namespaces}
+ *                                  - one directory per vendor_ns namespace type
+ *                                    (pid/ipc/mnt/net/user/uts/cgroup/time --
+ *                                    like shadow_ns plus TIME). Same shared
+ *                                    backing-lifecycle caveat as shadow_ns; each
+ *                                    per-type namespaces file is filtered to
+ *                                    that type's live vendored namespace objects
+ *                                    and member tgids.
+ *
  *   ./mnt/sysvipc/{control,status,hooks,resources,log,references}
  *   ./mnt/mqueue/{control,status,hooks,log,msg,references}
  *   ./mnt/cgroupdevices/{control,status,hooks,log,references}
@@ -166,6 +189,7 @@
 
 #include "shadow_hook.h"
 #include "shadow_ns/shadow_ns_internal.h"
+#include "vendor_ns/include/uapi/vendor_ns.h"
 #include "lkm4ctr_log.h"
 #include "lkm4ctr_compat.h"
 
@@ -250,11 +274,15 @@ static lkm4ctr_call_usermodehelper_t lkm4ctr_call_usermodehelper_fn;
 
 extern size_t shadow_ns_diag_snprintf(char *buf, size_t buflen);
 extern size_t shadow_ns_diag_snprintf_type(u32 type, char *buf, size_t buflen);
+extern size_t vendor_ns_diag_snprintf(char *buf, size_t buflen);
+extern size_t vendor_ns_diag_snprintf_type(u32 type, char *buf, size_t buflen);
 extern size_t shadow_mqueue_diag_snprintf(char *buf, size_t buflen);
 extern size_t shadow_sysvipc_diag_snprintf(char *buf, size_t buflen);
 
 extern int shadow_ns_init(void);
 extern void shadow_ns_exit(void);
+extern int vendor_ns_init(void);
+extern void vendor_ns_exit(void);
 extern int shadow_sysvipc_init(void);
 extern void shadow_sysvipc_exit(void);
 extern int shadow_mqueue_init(void);
@@ -330,6 +358,7 @@ struct lkm4ctr_diagfs_ns_type {
 static struct lkm4ctr_diagfs_module lkm4ctr_diagfs_modules[] = {
 	{ "hijack", 		"shadow_hijack", 	false, false, shadow_hijack_init,	shadow_hijack_exit,	LKM4CTR_STATE_ACTIVE },
 	{ "ns", 		"shadow_ns", 		true,  true,  shadow_ns_init,		shadow_ns_exit,		LKM4CTR_STATE_UNLOADED },
+	{ "vendor_ns", 	"vendor_ns", 		true,  true,  vendor_ns_init,		vendor_ns_exit,		LKM4CTR_STATE_UNLOADED },
 	{ "sysvipc", 		"shadow_sysvipc", 	true,  false, shadow_sysvipc_init,	shadow_sysvipc_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "mqueue", 		"shadow_mqueue", 	true,  false, shadow_mqueue_init,	shadow_mqueue_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "cgroupdevices", 	"shadow_cgdevices", 	true,  false, shadow_cgdevices_init,	shadow_cgdevices_exit,	LKM4CTR_STATE_UNLOADED },
@@ -343,6 +372,25 @@ static const struct lkm4ctr_diagfs_ns_type lkm4ctr_diagfs_ns_types[] = {
 	{ SHADOW_NS_TYPE_USER, 	  "user" },
 	{ SHADOW_NS_TYPE_UTS, 	  "uts" },
 	{ SHADOW_NS_TYPE_CGROUP, "cgroup" },
+};
+
+/*
+ * vendor_ns exposes the same per-type layout as shadow_ns but additionally
+ * carries a TIME namespace entry (bookkeeping only, see
+ * vendor_ns/README.md). The first seven entries share the same numeric type
+ * values as their shadow_ns counterparts above, so lkm4ctr_diagfs_find_ns_type()
+ * can resolve either subsystem's per-type display name; the eighth (TIME) is
+ * unique to vendor_ns.
+ */
+static const struct lkm4ctr_diagfs_ns_type lkm4ctr_diagfs_vendor_ns_types[] = {
+	{ VENDOR_NS_TYPE_PID, 	  "pid" },
+	{ VENDOR_NS_TYPE_IPC, 	  "ipc" },
+	{ VENDOR_NS_TYPE_MNT, 	  "mnt" },
+	{ VENDOR_NS_TYPE_NET, 	  "net" },
+	{ VENDOR_NS_TYPE_USER, 	  "user" },
+	{ VENDOR_NS_TYPE_UTS, 	  "uts" },
+	{ VENDOR_NS_TYPE_CGROUP, "cgroup" },
+	{ VENDOR_NS_TYPE_TIME, 	  "time" },
 };
 
 static enum lkm4ctr_diagfs_lifecycle_state lkm4ctr_diagfs_global_state =
@@ -572,6 +620,16 @@ static const struct lkm4ctr_diagfs_ns_type *lkm4ctr_diagfs_find_ns_type(u32 type
 		if (lkm4ctr_diagfs_ns_types[i].type == type)
 			return &lkm4ctr_diagfs_ns_types[i];
 	}
+	/*
+	 * vendor_ns carries one type (TIME) the shadow_ns table above does
+	 * not; fall back to the vendor_ns table so its per-type display name
+	 * still resolves. The overlapping types (0..6) share names, so order
+	 * does not matter for them.
+	 */
+	for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_vendor_ns_types); i++) {
+		if (lkm4ctr_diagfs_vendor_ns_types[i].type == type)
+			return &lkm4ctr_diagfs_vendor_ns_types[i];
+	}
 	return NULL;
 }
 
@@ -658,9 +716,15 @@ static size_t lkm4ctr_diagfs_hooks_snprintf(const struct lkm4ctr_diagfs_info *in
 static size_t lkm4ctr_diagfs_namespaces_snprintf(const struct lkm4ctr_diagfs_info *info,
 						 char *buf, size_t buflen)
 {
+	bool is_vendor = !strcmp(info->tag, "vendor_ns");
+
 	if (info->has_ns_type)
-		return shadow_ns_diag_snprintf_type(info->ns_type, buf, buflen);
-	return shadow_ns_diag_snprintf(buf, buflen);
+		return is_vendor ?
+			vendor_ns_diag_snprintf_type(info->ns_type, buf, buflen) :
+			shadow_ns_diag_snprintf_type(info->ns_type, buf, buflen);
+	return is_vendor ?
+		vendor_ns_diag_snprintf(buf, buflen) :
+		shadow_ns_diag_snprintf(buf, buflen);
 }
 
 static size_t lkm4ctr_diagfs_log_snprintf(const struct lkm4ctr_diagfs_info *info,
@@ -691,6 +755,10 @@ static size_t lkm4ctr_diagfs_global_resources_snprintf(const struct lkm4ctr_diag
 	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
 			 "shadow_ns:\n");
 	pos += shadow_ns_diag_snprintf(buf + pos,
+				      pos < buflen ? buflen - pos : 0);
+	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
+			 "vendor_ns:\n");
+	pos += vendor_ns_diag_snprintf(buf + pos,
 				      pos < buflen ? buflen - pos : 0);
 	return pos;
 }
@@ -1021,6 +1089,38 @@ static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
 		LKM4CTR_INFO(mod->tag,
 			     "load requested via diagfs control write, but already active; nothing to do");
 		return 0;
+	}
+	/*
+	 * vendor_ns and shadow_ns are mutually exclusive: both hook the same
+	 * namespace syscall entry points (unshare/setns/clone/getpid/...), and
+	 * the shared shadow_hook engine permits only one hook per symbol, so at
+	 * most one namespace subsystem may be active at a time. Refuse a manual
+	 * (diagfs control-write) load of one while the other is active or
+	 * loading with -EBUSY; during a global load-all just skip the second
+	 * one so shadow_ns (the load-all default) wins without reporting a
+	 * spurious failure.
+	 */
+	if (!strcmp(mod->tag, "shadow_ns") || !strcmp(mod->tag, "vendor_ns")) {
+		const char *conflict = !strcmp(mod->tag, "shadow_ns") ?
+				       "vendor_ns" : "shadow_ns";
+		struct lkm4ctr_diagfs_module *other =
+			lkm4ctr_diagfs_find_module(conflict);
+
+		if (other &&
+		    (other->state != LKM4CTR_STATE_UNLOADED ||
+		     lkm4ctr_diagfs_module_stable_state(other) != LKM4CTR_STATE_UNLOADED)) {
+			mutex_unlock(&lkm4ctr_unload_lock);
+			if (from_global) {
+				LKM4CTR_INFO(mod->tag,
+					     "skipping load: mutually-exclusive namespace subsystem '%s' is already active (only one of shadow_ns/vendor_ns may run at a time)",
+					     conflict);
+				return 0;
+			}
+			LKM4CTR_WARN(mod->tag,
+				     "cannot load: mutually-exclusive namespace subsystem '%s' is currently active/loading; unload it first (vendor_ns and shadow_ns both hook the same namespace syscalls, and the shared hook engine permits only one hook per symbol)",
+				     conflict);
+			return -EBUSY;
+		}
 	}
 	mod->state = LKM4CTR_STATE_LOADING;
 	mutex_unlock(&lkm4ctr_unload_lock);
@@ -1868,6 +1968,7 @@ static const struct super_operations lkm4ctr_diagfs_super_ops = {
 
 static int lkm4ctr_diagfs_fill_ns_type_dir(struct super_block *sb,
 					   struct dentry *ns_dir,
+					   const char *tag,
 					   const struct lkm4ctr_diagfs_ns_type *ns_type)
 {
 	struct dentry *dir;
@@ -1879,25 +1980,25 @@ static int lkm4ctr_diagfs_fill_ns_type_dir(struct super_block *sb,
 
 	ret = lkm4ctr_diagfs_create_checked(sb, dir, "control", 0644,
 					    LKM4CTR_DIAG_CONTROL,
-					    "shadow_ns", false, true,
+					    tag, false, true,
 					    ns_type->type);
 	if (ret)
 		return ret;
 	ret = lkm4ctr_diagfs_create_checked(sb, dir, "status", 0444,
 					    LKM4CTR_DIAG_STATUS,
-					    "shadow_ns", false, true,
+					    tag, false, true,
 					    ns_type->type);
 	if (ret)
 		return ret;
 	ret = lkm4ctr_diagfs_create_checked(sb, dir, "log", 0444,
 					    LKM4CTR_DIAG_LOG,
-					    "shadow_ns", false, true,
+					    tag, false, true,
 					    ns_type->type);
 	if (ret)
 		return ret;
 	return lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
 					    LKM4CTR_DIAG_NAMESPACES,
-					    "shadow_ns", false, true,
+					    tag, false, true,
 					    ns_type->type);
 }
 
@@ -1955,8 +2056,23 @@ static int lkm4ctr_diagfs_fill_module_dir(struct super_block *sb,
 		if (ret)
 			return ret;
 		for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_ns_types); i++) {
-			ret = lkm4ctr_diagfs_fill_ns_type_dir(sb, dir,
+			ret = lkm4ctr_diagfs_fill_ns_type_dir(sb, dir, mod->tag,
 						      &lkm4ctr_diagfs_ns_types[i]);
+			if (ret)
+				return ret;
+		}
+		return 0;
+	}
+
+	if (!strcmp(mod->tag, "vendor_ns")) {
+		ret = lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
+					    LKM4CTR_DIAG_NAMESPACES,
+					    mod->tag, false, false, 0);
+		if (ret)
+			return ret;
+		for (i = 0; i < ARRAY_SIZE(lkm4ctr_diagfs_vendor_ns_types); i++) {
+			ret = lkm4ctr_diagfs_fill_ns_type_dir(sb, dir, mod->tag,
+						      &lkm4ctr_diagfs_vendor_ns_types[i]);
 			if (ret)
 				return ret;
 		}
