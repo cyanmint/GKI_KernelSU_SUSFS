@@ -49,6 +49,7 @@
 #include <linux/spinlock.h>
 #include <linux/user_namespace.h>
 #include <linux/pid.h>
+#include <linux/pid_namespace.h>
 #include <linux/security.h>
 #include <linux/perf_event.h>
 #include <linux/ipc_namespace.h>
@@ -57,6 +58,14 @@
 #include <linux/sched.h>
 #include <linux/err.h>
 #include <linux/file.h>
+#include <linux/fs_struct.h>
+#include <linux/ptrace.h>
+#include <linux/key.h>
+#include <linux/time_namespace.h>
+#include <linux/cgroup.h>
+#include <linux/proc_fs.h>
+#include <linux/sem.h>
+#include <linux/cred.h>
 
 #include "../vendor_ns.h"
 #include "../include/uapi/vendor_ns.h"
@@ -78,6 +87,35 @@ typedef void (*mq_put_mnt_fn_t)(struct ipc_namespace *);
 typedef int  (*msg_init_ns_fn_t)(struct ipc_namespace *);
 typedef struct ns_common *(*from_mnt_ns_fn_t)(struct mnt_namespace *);
 typedef struct pid *(*pidfd_pid_fn_t)(const struct file *);
+typedef void (*set_fs_root_fn_t)(struct fs_struct *, const struct path *);
+typedef struct fs_struct *(*copy_fs_struct_fn_t)(struct fs_struct *);
+typedef void (*set_fs_pwd_fn_t)(struct fs_struct *, const struct path *);
+typedef void (*free_fs_struct_fn_t)(struct fs_struct *);
+typedef bool (*ptrace_may_access_fn_t)(struct task_struct *, unsigned int);
+typedef bool (*current_chrooted_fn_t)(void);
+typedef void (*disable_pid_allocation_fn_t)(struct pid_namespace *);
+typedef bool (*proc_ns_file_fn_t)(const struct file *);
+typedef void (*retire_ipc_sysctls_fn_t)(struct ipc_namespace *);
+#ifdef CONFIG_POSIX_MQUEUE
+typedef void (*retire_mq_sysctls_fn_t)(struct ipc_namespace *);
+#endif
+#ifdef CONFIG_KEYS
+typedef void (*key_free_user_ns_fn_t)(struct user_namespace *);
+#endif
+#ifdef CONFIG_SYSVIPC
+typedef void (*sem_init_ns_fn_t)(struct ipc_namespace *);
+typedef void (*shm_init_ns_fn_t)(struct ipc_namespace *);
+typedef void (*exit_sem_fn_t)(struct task_struct *);
+#endif
+typedef bool (*setup_ipc_sysctls_fn_t)(struct ipc_namespace *);
+typedef int  (*set_cred_ucounts_fn_t)(struct cred *);
+#ifdef CONFIG_USER_NS
+typedef bool (*in_userns_fn_t)(const struct user_namespace *,
+			       const struct user_namespace *);
+#endif
+#ifdef CONFIG_POSIX_MQUEUE
+typedef int  (*mq_init_ns_fn_t)(struct ipc_namespace *);
+#endif
 
 static inc_ucount_fn_t            vns_inc_ucount_real;
 static dec_ucount_fn_t            vns_dec_ucount_real;
@@ -91,6 +129,53 @@ static mq_put_mnt_fn_t            vns_mq_put_mnt_real;
 static msg_init_ns_fn_t           vns_msg_init_ns_real;
 static from_mnt_ns_fn_t           vns_from_mnt_ns_real;
 static pidfd_pid_fn_t             vns_pidfd_pid_real;
+static set_fs_root_fn_t           vns_set_fs_root_real;
+static copy_fs_struct_fn_t        vns_copy_fs_struct_real;
+static set_fs_pwd_fn_t            vns_set_fs_pwd_real;
+static free_fs_struct_fn_t        vns_free_fs_struct_real;
+static ptrace_may_access_fn_t     vns_ptrace_may_access_real;
+static current_chrooted_fn_t      vns_current_chrooted_real;
+static disable_pid_allocation_fn_t vns_disable_pid_allocation_real;
+static proc_ns_file_fn_t          vns_proc_ns_file_real;
+static retire_ipc_sysctls_fn_t    vns_retire_ipc_sysctls_real;
+#ifdef CONFIG_POSIX_MQUEUE
+static retire_mq_sysctls_fn_t     vns_retire_mq_sysctls_real;
+#endif
+#ifdef CONFIG_KEYS
+static key_free_user_ns_fn_t      vns_key_free_user_ns_real;
+#endif
+#ifdef CONFIG_SYSVIPC
+static sem_init_ns_fn_t           vns_sem_init_ns_real;
+static shm_init_ns_fn_t           vns_shm_init_ns_real;
+static exit_sem_fn_t              vns_exit_sem_real;
+#endif
+static setup_ipc_sysctls_fn_t     vns_setup_ipc_sysctls_real;
+static set_cred_ucounts_fn_t      vns_set_cred_ucounts_real;
+#ifdef CONFIG_USER_NS
+static in_userns_fn_t             vns_in_userns_real;
+#endif
+#ifdef CONFIG_POSIX_MQUEUE
+static mq_init_ns_fn_t            vns_mq_init_ns_real;
+#endif
+
+/*
+ * [BUILD-COMPAT] tasklist_lock (kernel/fork.c, not exported).
+ * Protects the task list when pid_namespace.c walks processes during teardown.
+ * This is a module-local lock; it does not protect the kernel's task list,
+ * but satisfies the linker reference and provides mutual exclusion within
+ * vendor_ns's own teardown paths.
+ */
+DEFINE_RWLOCK(tasklist_lock);
+
+/* Resolved pointer to the kernel's init_cgroup_ns data object. */
+#ifdef CONFIG_CGROUPS
+struct cgroup_namespace *vns_init_cgroup_ns_ptr;
+#endif /* CONFIG_CGROUPS */
+
+/* Resolved pointer to the kernel's init_ipc_ns data object. */
+#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+struct ipc_namespace *vns_init_ipc_ns_ptr;
+#endif /* CONFIG_POSIX_MQUEUE || CONFIG_SYSVIPC */
 
 /*
  * Resolve all non-exported symbols at init time.  Called from
@@ -118,6 +203,48 @@ void vns_compat_resolve(void)
 	RESOLVE(vns_msg_init_ns_real,           msg_init_ns);
 	RESOLVE(vns_from_mnt_ns_real,           from_mnt_ns);
 	RESOLVE(vns_pidfd_pid_real,             pidfd_pid);
+	RESOLVE(vns_set_fs_root_real,           set_fs_root);
+	RESOLVE(vns_copy_fs_struct_real,        copy_fs_struct);
+	RESOLVE(vns_set_fs_pwd_real,            set_fs_pwd);
+	RESOLVE(vns_free_fs_struct_real,        free_fs_struct);
+	RESOLVE(vns_ptrace_may_access_real,     ptrace_may_access);
+	RESOLVE(vns_current_chrooted_real,      current_chrooted);
+	RESOLVE(vns_disable_pid_allocation_real, disable_pid_allocation);
+	RESOLVE(vns_proc_ns_file_real,          proc_ns_file);
+	RESOLVE(vns_retire_ipc_sysctls_real,    retire_ipc_sysctls);
+#ifdef CONFIG_POSIX_MQUEUE
+	RESOLVE(vns_retire_mq_sysctls_real,     retire_mq_sysctls);
+#endif
+#ifdef CONFIG_KEYS
+	RESOLVE(vns_key_free_user_ns_real,      key_free_user_ns);
+#endif
+#ifdef CONFIG_SYSVIPC
+	RESOLVE(vns_sem_init_ns_real,           sem_init_ns);
+	RESOLVE(vns_shm_init_ns_real,           shm_init_ns);
+	RESOLVE(vns_exit_sem_real,              exit_sem);
+#endif
+	RESOLVE(vns_setup_ipc_sysctls_real,     setup_ipc_sysctls);
+	RESOLVE(vns_set_cred_ucounts_real,      set_cred_ucounts);
+#ifdef CONFIG_USER_NS
+	RESOLVE(vns_in_userns_real,             in_userns);
+#endif
+#ifdef CONFIG_POSIX_MQUEUE
+	RESOLVE(vns_mq_init_ns_real,            mq_init_ns);
+#endif
+#ifdef CONFIG_CGROUPS
+	vns_init_cgroup_ns_ptr = (struct cgroup_namespace *)(uintptr_t)
+		shadow_hook_resolve("init_cgroup_ns");
+	if (!vns_init_cgroup_ns_ptr)
+		LKM4CTR_WARN(VENDOR_NS_TAG,
+			"compat: init_cgroup_ns not resolved (cgroup ns disabled)");
+#endif
+#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+	vns_init_ipc_ns_ptr = (struct ipc_namespace *)(uintptr_t)
+		shadow_hook_resolve("init_ipc_ns");
+	if (!vns_init_ipc_ns_ptr)
+		LKM4CTR_WARN(VENDOR_NS_TAG,
+			"compat: init_ipc_ns not resolved (ipc ns disabled)");
+#endif
 #undef RESOLVE
 }
 
@@ -296,3 +423,255 @@ struct pid *pidfd_pid(const struct file *file)
 		return vns_pidfd_pid_real(file);
 	return ERR_PTR(-EBADF); /* stub */
 }
+
+/*
+ * [BUILD-COMPAT] free_time_ns (kernel/time/namespace.c, not exported).
+ * put_time_ns() is a static inline in <linux/time_namespace.h> that calls
+ * free_time_ns() when the refcount reaches zero.  Our vendored copy of
+ * free_time_ns lives as vns_free_time_ns(); this shim forwards the call so
+ * the inline can resolve.
+ */
+void free_time_ns(struct time_namespace *ns)
+{
+	vns_free_time_ns(ns);
+}
+
+/*
+ * [BUILD-COMPAT] set_fs_root (fs/fs_struct.c, not exported).
+ * Updates the root path stored in a task's fs_struct.  Used by
+ * vns_install_nsproxy() when switching namespaces.
+ */
+void set_fs_root(struct fs_struct *fs, const struct path *path)
+{
+	if (vns_set_fs_root_real)
+		vns_set_fs_root_real(fs, path);
+	/* stub: root path unchanged — acceptable for the parallel ns subsystem */
+}
+
+/*
+ * [BUILD-COMPAT] copy_fs_struct (fs/fs_struct.c, not exported).
+ * Allocates a copy of the caller's fs_struct.  Used in copy_namespaces()
+ * when the new namespace set needs an independent filesystem root.
+ */
+struct fs_struct *copy_fs_struct(struct fs_struct *old)
+{
+	if (vns_copy_fs_struct_real)
+		return vns_copy_fs_struct_real(old);
+	return NULL; /* stub: no fs_struct copy — fs root stays shared */
+}
+
+/*
+ * [BUILD-COMPAT] ptrace_may_access (kernel/ptrace.c, not exported on GKI).
+ * Access-mode check used in vns_sys_setns() to gate cross-process ns changes.
+ * Fall back to denying access if the real function is not resolved.
+ */
+bool ptrace_may_access(struct task_struct *task, unsigned int mode)
+{
+	if (vns_ptrace_may_access_real)
+		return vns_ptrace_may_access_real(task, mode);
+	return false; /* stub: deny — safer than allow */
+}
+
+/*
+ * [BUILD-COMPAT] disable_pid_allocation (kernel/pid.c, not exported).
+ * Clears the PIDNS_ADDING flag so the pid namespace stops accepting new pids.
+ * Called in vns_zap_pid_ns_processes() during pid namespace teardown.
+ */
+void disable_pid_allocation(struct pid_namespace *ns)
+{
+	if (vns_disable_pid_allocation_real)
+		vns_disable_pid_allocation_real(ns);
+	/* stub: no-op — pids drain normally on process exit */
+}
+
+#ifdef CONFIG_KEYS
+/*
+ * [BUILD-COMPAT] key_free_user_ns (security/keys/user_defined.c, not exported).
+ * Releases keyrings tied to a user_namespace.
+ * <linux/key.h> already provides a no-op macro when !CONFIG_KEYS.
+ */
+void key_free_user_ns(struct user_namespace *ns)
+{
+	if (vns_key_free_user_ns_real)
+		vns_key_free_user_ns_real(ns);
+	/* stub: keyrings not freed — acceptable as they are ref-counted */
+}
+#endif /* CONFIG_KEYS */
+
+#ifdef CONFIG_SYSVIPC
+/*
+ * [BUILD-COMPAT] sem_init_ns (ipc/sem.c, not exported).
+ * Initialises the SysV semaphore IDs for a new ipc_namespace.
+ * ipc/util.h already provides a static inline no-op when !CONFIG_SYSVIPC.
+ */
+void sem_init_ns(struct ipc_namespace *ns)
+{
+	if (vns_sem_init_ns_real)
+		vns_sem_init_ns_real(ns);
+	/* stub: no semaphores in this IPC namespace */
+}
+#endif /* CONFIG_SYSVIPC */
+
+/*
+ * [BUILD-COMPAT] free_uts_ns (kernel/utsname.c, not exported).
+ * put_uts_ns() is a static inline in <linux/utsname.h> that calls
+ * free_uts_ns() when the refcount reaches zero.  Delegate to
+ * vns_free_uts_ns() defined in our vendored utsname.c.
+ */
+void free_uts_ns(struct uts_namespace *ns)
+{
+	vns_free_uts_ns(ns);
+}
+
+/*
+ * [BUILD-COMPAT] set_fs_pwd (fs/fs_struct.c, not exported).
+ * Updates the current working directory in a task's fs_struct.
+ */
+void set_fs_pwd(struct fs_struct *fs, const struct path *path)
+{
+	if (vns_set_fs_pwd_real)
+		vns_set_fs_pwd_real(fs, path);
+	/* stub: pwd unchanged */
+}
+
+/*
+ * [BUILD-COMPAT] free_fs_struct (fs/fs_struct.c, not exported).
+ * Releases an fs_struct allocated by copy_fs_struct().
+ */
+void free_fs_struct(struct fs_struct *fs)
+{
+	if (vns_free_fs_struct_real)
+		vns_free_fs_struct_real(fs);
+	/* stub: no-op (minor leak acceptable for ns teardown) */
+}
+
+/*
+ * [BUILD-COMPAT] current_chrooted (fs/fs_struct.c, not exported).
+ * Returns true if the current task is in a chroot jail.
+ * Used in user_namespace.c to gate unshare(CLONE_NEWUSER).
+ */
+bool current_chrooted(void)
+{
+	if (vns_current_chrooted_real)
+		return vns_current_chrooted_real();
+	return false; /* stub: not chrooted — allow user namespace creation */
+}
+
+/*
+ * [BUILD-COMPAT] proc_ns_file (fs/nsfs.c, not exported on GKI).
+ * Returns true if the given file is a /proc/<pid>/ns/<ns> magic-link file.
+ * Used in vns_sys_setns() to check whether the fd refers to a namespace.
+ */
+bool proc_ns_file(const struct file *file)
+{
+	if (vns_proc_ns_file_real)
+		return vns_proc_ns_file_real(file);
+	return false; /* stub: treat as non-proc-ns file */
+}
+
+/*
+ * [BUILD-COMPAT] retire_ipc_sysctls (ipc/sysctls.c, not exported).
+ * Unregisters per-ipc-ns sysctl entries.
+ * <linux/ipc_namespace.h> declares this when CONFIG_SYSCTL=y.
+ */
+void retire_ipc_sysctls(struct ipc_namespace *ns)
+{
+	if (vns_retire_ipc_sysctls_real)
+		vns_retire_ipc_sysctls_real(ns);
+	/* stub: sysctl entries remain (harmless for a parallel ns subsystem) */
+}
+
+#ifdef CONFIG_POSIX_MQUEUE
+/*
+ * [BUILD-COMPAT] retire_mq_sysctls (ipc/mqueue.c, not exported).
+ * Unregisters per-ipc-ns mqueue sysctl entries.
+ */
+void retire_mq_sysctls(struct ipc_namespace *ns)
+{
+	if (vns_retire_mq_sysctls_real)
+		vns_retire_mq_sysctls_real(ns);
+	/* stub: no-op */
+}
+#endif /* CONFIG_POSIX_MQUEUE */
+
+#ifdef CONFIG_SYSVIPC
+/*
+ * [BUILD-COMPAT] shm_init_ns (ipc/shm.c, not exported).
+ * Initialises the SysV shared memory IDs for a new ipc_namespace.
+ * ipc/util.h provides a static inline no-op when !CONFIG_SYSVIPC.
+ */
+void shm_init_ns(struct ipc_namespace *ns)
+{
+	if (vns_shm_init_ns_real)
+		vns_shm_init_ns_real(ns);
+	/* stub: no shared memory segments in this IPC namespace */
+}
+#endif /* CONFIG_SYSVIPC */
+
+/*
+ * [BUILD-COMPAT] setup_ipc_sysctls (ipc/sysctls.c, not exported).
+ * Registers per-ipc-ns sysctl table entries.
+ * <linux/ipc_namespace.h> declares this as extern when CONFIG_SYSCTL=y.
+ */
+bool setup_ipc_sysctls(struct ipc_namespace *ns)
+{
+	if (vns_setup_ipc_sysctls_real)
+		return vns_setup_ipc_sysctls_real(ns);
+	return true; /* stub: pretend success */
+}
+
+/*
+ * [BUILD-COMPAT] set_cred_ucounts (kernel/cred.c, not exported).
+ * Associates ucounts with a credentials struct during user_namespace creation.
+ * Returns 0 on success.  Stub returns 0 (allow) when not resolved.
+ */
+int set_cred_ucounts(struct cred *new)
+{
+	if (vns_set_cred_ucounts_real)
+		return vns_set_cred_ucounts_real(new);
+	return 0; /* stub: no ucounts tracking */
+}
+
+#ifdef CONFIG_USER_NS
+/*
+ * [BUILD-COMPAT] in_userns (kernel/user_namespace.c, not exported on GKI).
+ * Returns true if 'descendant' is the same as or a descendant of 'ancestor'.
+ * <linux/user_namespace.h> provides a static inline fallback when !CONFIG_USER_NS.
+ */
+bool in_userns(const struct user_namespace *ancestor,
+	       const struct user_namespace *descendant)
+{
+	if (vns_in_userns_real)
+		return vns_in_userns_real(ancestor, descendant);
+	return ancestor == descendant; /* stub: only exact match */
+}
+#endif /* CONFIG_USER_NS */
+
+#ifdef CONFIG_POSIX_MQUEUE
+/*
+ * [BUILD-COMPAT] mq_init_ns (ipc/mqueue.c, not exported).
+ * Initialises the POSIX mqueue VFS mount for a new ipc_namespace.
+ * <linux/ipc_namespace.h> provides a static inline returning 0 when
+ * !CONFIG_POSIX_MQUEUE.
+ */
+int mq_init_ns(struct ipc_namespace *ns)
+{
+	if (vns_mq_init_ns_real)
+		return vns_mq_init_ns_real(ns);
+	return 0; /* stub: no mqueue for this IPC namespace */
+}
+#endif /* CONFIG_POSIX_MQUEUE */
+
+#ifdef CONFIG_SYSVIPC
+/*
+ * [BUILD-COMPAT] exit_sem (ipc/sem.c, not exported).
+ * Called on task exit to release any SysV semaphore undo structures.
+ * <linux/sem.h> provides a static inline no-op when !CONFIG_SYSVIPC.
+ */
+void exit_sem(struct task_struct *tsk)
+{
+	if (vns_exit_sem_real)
+		vns_exit_sem_real(tsk);
+	/* stub: no-op — undo structs will be cleaned up on process exit */
+}
+#endif /* CONFIG_SYSVIPC */

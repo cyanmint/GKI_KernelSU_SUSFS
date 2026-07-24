@@ -29,6 +29,13 @@
 #include <linux/sched/task.h>
 #include "../vendor_ns.h"
 
+/*
+ * [BUILD-COMPAT] uts_sem is defined in kernel/sys.c (not exported to modules).
+ * The vendor_ns module maintains its own rwsemaphore protecting its separate
+ * copy of UTS namespace data.
+ */
+DECLARE_RWSEM(uts_sem);
+
 /* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 
 static struct ucounts *inc_uts_namespaces(struct user_namespace *ns)

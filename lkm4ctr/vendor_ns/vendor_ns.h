@@ -139,6 +139,12 @@ extern struct shadow_hook *vendor_ns_core_hooks[];
 
 /* compat layer (glue/vendor_ns_compat.c) */
 extern struct ucounts vns_ucounts_stub;
+#ifdef CONFIG_CGROUPS
+extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
+#endif
+#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+extern struct ipc_namespace *vns_init_ipc_ns_ptr;
+#endif
 void vns_compat_resolve(void);
 
 int vendor_ns_init(void);

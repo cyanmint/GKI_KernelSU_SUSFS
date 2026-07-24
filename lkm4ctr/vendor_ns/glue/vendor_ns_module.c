@@ -173,6 +173,17 @@ int vendor_ns_init(void)
 
 	vns_resolve_symbols();
 	vns_compat_resolve(); /* [BUILD-COMPAT] resolve non-exported kernel symbols */
+#ifdef CONFIG_CGROUPS
+	/* [BUILD-COMPAT] init_cgroup_ns can't be used in a static initializer
+	 * (not exported); patch vns_init_nsproxy at runtime once resolved. */
+	if (vns_init_cgroup_ns_ptr)
+		vns_init_nsproxy.cgroup_ns = vns_init_cgroup_ns_ptr;
+#endif
+#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+	/* [BUILD-COMPAT] init_ipc_ns is not exported; patch at runtime. */
+	if (vns_init_ipc_ns_ptr)
+		vns_init_nsproxy.ipc_ns = vns_init_ipc_ns_ptr;
+#endif
 	/* [BUILD-COMPAT] vendored init helpers do not create slab caches out of tree. */
 	vns_uts_ns_init();
 	vns_pid_ns_init();

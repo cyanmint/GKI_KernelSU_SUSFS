@@ -41,13 +41,17 @@
 #include <linux/perf_event.h>
 #include "../vendor_ns.h"
 
+/* [BUILD-COMPAT] Forward declaration for vendored time_namespace init object. */
+extern struct time_namespace vns_init_time_ns;
+
 /* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 
 struct nsproxy vns_init_nsproxy = { /* [RENAME] */
 	.count			= ATOMIC_INIT(1),
 	.uts_ns			= &init_uts_ns,
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
-	.ipc_ns			= &init_ipc_ns,
+	/* [BUILD-COMPAT] init_ipc_ns is not exported; set at runtime in vendor_ns_init(). */
+	.ipc_ns			= NULL,
 #endif
 	.mnt_ns			= NULL,
 	.pid_ns_for_children	= &init_pid_ns,
@@ -55,11 +59,13 @@ struct nsproxy vns_init_nsproxy = { /* [RENAME] */
 	.net_ns			= &init_net,
 #endif
 #ifdef CONFIG_CGROUPS
-	.cgroup_ns		= &init_cgroup_ns,
+	/* [BUILD-COMPAT] init_cgroup_ns is not exported; set at runtime via
+	 * shadow_hook_resolve("init_cgroup_ns") in vendor_ns_init(). */
+	.cgroup_ns		= NULL,
 #endif
 #ifdef CONFIG_TIME_NS
-	.time_ns		= &init_time_ns,
-	.time_ns_for_children	= &init_time_ns,
+	.time_ns		= &vns_init_time_ns, /* [RENAME] init_time_ns → vns_init_time_ns */
+	.time_ns_for_children	= &vns_init_time_ns, /* [RENAME] */
 #endif
 };
 
