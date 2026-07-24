@@ -191,6 +191,32 @@ jobs:
           name: lkm4ctr_checker-arm64
           path: lkm4ctr_checker/lkm4ctr_checker
 
+  vendor-ns-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Shallow checkout Android14 6.1 kernel source
+        run: |
+          git clone https://android.googlesource.com/kernel/common \
+            -b deprecated/android14-6.1-2025-02 \
+            --depth=1 \
+            "$RUNNER_TEMP/kernel-common"
+
+      - name: Diff vendor_ns against kernel-common
+        run: |
+          set -euo pipefail
+          DIFF_OUT="$RUNNER_TEMP/vendor-ns.diff"
+          sh lkm4ctr/vendor_ns/vendor_ns_diff.sh "$RUNNER_TEMP/kernel-common" | tee "$DIFF_OUT"
+          {
+            echo "## vendor_ns vs kernel-common (android14-6.1)"
+            echo
+            echo '```diff'
+            cat "$DIFF_OUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     needs: [prepare]
     runs-on: ubuntu-latest

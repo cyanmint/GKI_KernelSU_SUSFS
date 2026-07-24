@@ -76,7 +76,7 @@ static inline struct nsproxy *create_nsproxy(void)
 	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
 	nsproxy = kzalloc(sizeof(*nsproxy), GFP_KERNEL);
 	if (nsproxy)
-		refcount_set(&nsproxy->count, 1); /* [BUILD-COMPAT] */
+		vns_init_count(&nsproxy->count, 1); /* [BUILD-COMPAT] */
 	return nsproxy;
 }
 
@@ -605,6 +605,6 @@ out:
 
 void vns_put_nsproxy(struct nsproxy *ns) /* [RENAME] */
 {
-	if (ns && refcount_dec_and_test(&ns->count))
+	if (ns && vns_put_count(&ns->count))
 		vns_free_nsproxy(ns);
 }

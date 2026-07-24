@@ -7,6 +7,7 @@
 #define _VENDOR_NS_H
 
 #include <linux/types.h>
+#include <linux/atomic.h>
 #include <linux/hashtable.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -58,6 +59,30 @@ extern void (*vns_put_mnt_ns_fn)(struct mnt_namespace *);
 extern struct net *(*vns_copy_net_ns_fn)(unsigned long, struct user_namespace *, struct net *);
 extern void (*vns_put_net_ns_fn)(struct net *);
 extern bool vendor_ns_enabled;
+
+static inline void vns_count_set(void *count, int value, bool is_refcount)
+{
+	if (is_refcount)
+		refcount_set((refcount_t *)count, value);
+	else
+		atomic_set((atomic_t *)count, value);
+}
+
+static inline bool vns_count_dec_and_test(void *count, bool is_refcount)
+{
+	if (is_refcount)
+		return refcount_dec_and_test((refcount_t *)count);
+	return atomic_dec_and_test((atomic_t *)count);
+}
+
+#define VNS_COUNT_TYPE_IS_REFCOUNT(ptr) \
+	__builtin_types_compatible_p(typeof(*(ptr)), refcount_t)
+
+#define vns_init_count(ptr, value) \
+	vns_count_set((void *)(ptr), (value), VNS_COUNT_TYPE_IS_REFCOUNT(ptr))
+
+#define vns_put_count(ptr) \
+	vns_count_dec_and_test((void *)(ptr), VNS_COUNT_TYPE_IS_REFCOUNT(ptr))
 
 int vns_alloc_inum(struct ns_common *ns);
 void vns_free_inum(struct ns_common *ns);
