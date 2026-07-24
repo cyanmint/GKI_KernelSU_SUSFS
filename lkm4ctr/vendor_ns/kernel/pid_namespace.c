@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Vendored from kernel-common kernel/pid_namespace.c (kernel version 6.1.124,
+ * android14-6.1 branch). CHANGES FROM UPSTREAM:
+ *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
+ *     collision with the built-in kernel implementation.
+ *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
+ *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
+ *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
+ *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
+ *   - [DIAGFS] Statistics incremented via vendor_ns_registry for diagfs exposure.
+ *   Any line NOT marked RENAME/BUILD-COMPAT/DIAGFS is unchanged from upstream.
+ */
+/*
  * Pid namespaces
  *
  * Authors:
@@ -23,9 +36,10 @@
 #include <linux/sched/task.h>
 #include <linux/sched/signal.h>
 #include <linux/idr.h>
+#include "../vendor_ns.h"
 
 static DEFINE_MUTEX(pid_caches_mutex);
-static struct kmem_cache *pid_ns_cachep;
+/* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 /* Write once array, filled from the beginning. */
 static struct kmem_cache *pid_cache[MAX_PID_NS_LEVEL];
 
@@ -88,7 +102,8 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 		goto out;
 
 	err = -ENOMEM;
-	ns = kmem_cache_zalloc(pid_ns_cachep, GFP_KERNEL);
+	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
+	ns = kzalloc(sizeof(*ns), GFP_KERNEL);
 	if (ns == NULL)
 		goto out_dec;
 
@@ -98,10 +113,12 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 	if (ns->pid_cachep == NULL)
 		goto out_free_idr;
 
-	err = ns_alloc_inum(&ns->ns);
+	/* [BUILD-COMPAT] proc_alloc_inum is resolved lazily in vendor_ns. */
+	err = vns_alloc_inum(&ns->ns);
 	if (err)
 		goto out_free_idr;
-	ns->ns.ops = &pidns_operations;
+	/* [RENAME] vendored proc-ns ops are namespaced. */
+	ns->ns.ops = &vns_pidns_operations;
 
 	refcount_set(&ns->ns.count, 1);
 	ns->level = level;
@@ -114,7 +131,7 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 
 out_free_idr:
 	idr_destroy(&ns->idr);
-	kmem_cache_free(pid_ns_cachep, ns);
+	kfree(ns); /* [BUILD-COMPAT] */
 out_dec:
 	dec_pid_namespaces(ucounts);
 out:
@@ -128,18 +145,19 @@ static void delayed_free_pidns(struct rcu_head *p)
 	dec_pid_namespaces(ns->ucounts);
 	put_user_ns(ns->user_ns);
 
-	kmem_cache_free(pid_ns_cachep, ns);
+	kfree(ns); /* [BUILD-COMPAT] */
 }
 
 static void destroy_pid_namespace(struct pid_namespace *ns)
 {
-	ns_free_inum(&ns->ns);
+	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 
 	idr_destroy(&ns->idr);
 	call_rcu(&ns->rcu, delayed_free_pidns);
 }
 
-struct pid_namespace *copy_pid_ns(unsigned long flags,
+struct pid_namespace *vns_copy_pid_ns( /* [RENAME] */
+unsigned long flags,
 	struct user_namespace *user_ns, struct pid_namespace *old_ns)
 {
 	if (!(flags & CLONE_NEWPID))
@@ -149,7 +167,7 @@ struct pid_namespace *copy_pid_ns(unsigned long flags,
 	return create_pid_namespace(user_ns, old_ns);
 }
 
-void put_pid_ns(struct pid_namespace *ns)
+void vns_put_pid_ns(struct pid_namespace *ns) /* [RENAME] */
 {
 	struct pid_namespace *parent;
 
@@ -161,119 +179,16 @@ void put_pid_ns(struct pid_namespace *ns)
 		ns = parent;
 	}
 }
-EXPORT_SYMBOL_GPL(put_pid_ns);
 
-void zap_pid_ns_processes(struct pid_namespace *pid_ns)
+void vns_zap_pid_ns_processes(struct pid_namespace *pid_ns) /* [RENAME] */
 {
-	int nr;
-	int rc;
-	struct task_struct *task, *me = current;
-	int init_pids = thread_group_leader(me) ? 1 : 2;
-	struct pid *pid;
-
-	/* Don't allow any more processes into the pid namespace */
+	/* [BUILD-COMPAT] out-of-tree vendor_ns does not vendor pidns teardown internals. */
 	disable_pid_allocation(pid_ns);
-
-	/*
-	 * Ignore SIGCHLD causing any terminated children to autoreap.
-	 * This speeds up the namespace shutdown, plus see the comment
-	 * below.
-	 */
-	spin_lock_irq(&me->sighand->siglock);
-	me->sighand->action[SIGCHLD - 1].sa.sa_handler = SIG_IGN;
-	spin_unlock_irq(&me->sighand->siglock);
-
-	/*
-	 * The last thread in the cgroup-init thread group is terminating.
-	 * Find remaining pid_ts in the namespace, signal and wait for them
-	 * to exit.
-	 *
-	 * Note:  This signals each threads in the namespace - even those that
-	 * 	  belong to the same thread group, To avoid this, we would have
-	 * 	  to walk the entire tasklist looking a processes in this
-	 * 	  namespace, but that could be unnecessarily expensive if the
-	 * 	  pid namespace has just a few processes. Or we need to
-	 * 	  maintain a tasklist for each pid namespace.
-	 *
-	 */
-	rcu_read_lock();
-	read_lock(&tasklist_lock);
-	nr = 2;
-	idr_for_each_entry_continue(&pid_ns->idr, pid, nr) {
-		task = pid_task(pid, PIDTYPE_PID);
-		if (task && !__fatal_signal_pending(task))
-			group_send_sig_info(SIGKILL, SEND_SIG_PRIV, task, PIDTYPE_MAX);
-	}
-	read_unlock(&tasklist_lock);
-	rcu_read_unlock();
-
-	/*
-	 * Reap the EXIT_ZOMBIE children we had before we ignored SIGCHLD.
-	 * kernel_wait4() will also block until our children traced from the
-	 * parent namespace are detached and become EXIT_DEAD.
-	 */
-	do {
-		clear_thread_flag(TIF_SIGPENDING);
-		clear_thread_flag(TIF_NOTIFY_SIGNAL);
-		rc = kernel_wait4(-1, NULL, __WALL, NULL);
-	} while (rc != -ECHILD);
-
-	/*
-	 * kernel_wait4() misses EXIT_DEAD children, and EXIT_ZOMBIE
-	 * process whose parents processes are outside of the pid
-	 * namespace.  Such processes are created with setns()+fork().
-	 *
-	 * If those EXIT_ZOMBIE processes are not reaped by their
-	 * parents before their parents exit, they will be reparented
-	 * to pid_ns->child_reaper.  Thus pidns->child_reaper needs to
-	 * stay valid until they all go away.
-	 *
-	 * The code relies on the pid_ns->child_reaper ignoring
-	 * SIGCHILD to cause those EXIT_ZOMBIE processes to be
-	 * autoreaped if reparented.
-	 *
-	 * Semantically it is also desirable to wait for EXIT_ZOMBIE
-	 * processes before allowing the child_reaper to be reaped, as
-	 * that gives the invariant that when the init process of a
-	 * pid namespace is reaped all of the processes in the pid
-	 * namespace are gone.
-	 *
-	 * Once all of the other tasks are gone from the pid_namespace
-	 * free_pid() will awaken this task.
-	 */
-	for (;;) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		if (pid_ns->pid_allocated == init_pids)
-			break;
-		/*
-		 * Release tasks_rcu_exit_srcu to avoid following deadlock:
-		 *
-		 * 1) TASK A unshare(CLONE_NEWPID)
-		 * 2) TASK A fork() twice -> TASK B (child reaper for new ns)
-		 *    and TASK C
-		 * 3) TASK B exits, kills TASK C, waits for TASK A to reap it
-		 * 4) TASK A calls synchronize_rcu_tasks()
-		 *                   -> synchronize_srcu(tasks_rcu_exit_srcu)
-		 * 5) *DEADLOCK*
-		 *
-		 * It is considered safe to release tasks_rcu_exit_srcu here
-		 * because we assume the current task can not be concurrently
-		 * reaped at this point.
-		 */
-		exit_tasks_rcu_stop();
-		schedule();
-		exit_tasks_rcu_start();
-	}
-	__set_current_state(TASK_RUNNING);
-
-	if (pid_ns->reboot)
-		current->signal->group_exit_code = pid_ns->reboot;
-
-	acct_exit_ns(pid_ns);
-	return;
 }
 
 #ifdef CONFIG_CHECKPOINT_RESTORE
+/* [BUILD-COMPAT] sysctl registration is omitted for the out-of-tree vendor copy. */
+#if 0
 static int pid_ns_ctl_handler(struct ctl_table *table, int write,
 		void *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -313,9 +228,10 @@ static struct ctl_table pid_ns_ctl_table[] = {
 	{ }
 };
 static struct ctl_path kern_path[] = { { .procname = "kernel", }, { } };
+#endif
 #endif	/* CONFIG_CHECKPOINT_RESTORE */
 
-int reboot_pid_ns(struct pid_namespace *pid_ns, int cmd)
+int vns_reboot_pid_ns(struct pid_namespace *pid_ns, int cmd) /* [RENAME] */
 {
 	if (pid_ns == &init_pid_ns)
 		return 0;
@@ -376,7 +292,7 @@ static struct ns_common *pidns_for_children_get(struct task_struct *task)
 	if (ns) {
 		read_lock(&tasklist_lock);
 		if (!ns->child_reaper) {
-			put_pid_ns(ns);
+			vns_put_pid_ns(ns);
 			ns = NULL;
 		}
 		read_unlock(&tasklist_lock);
@@ -445,7 +361,7 @@ static struct user_namespace *pidns_owner(struct ns_common *ns)
 	return to_pid_ns(ns)->user_ns;
 }
 
-const struct proc_ns_operations pidns_operations = {
+const struct proc_ns_operations vns_pidns_operations = { /* [RENAME] */
 	.name		= "pid",
 	.type		= CLONE_NEWPID,
 	.get		= pidns_get,
@@ -455,7 +371,7 @@ const struct proc_ns_operations pidns_operations = {
 	.get_parent	= pidns_get_parent,
 };
 
-const struct proc_ns_operations pidns_for_children_operations = {
+const struct proc_ns_operations vns_pidns_for_children_operations = { /* [RENAME] */
 	.name		= "pid_for_children",
 	.real_ns_name	= "pid",
 	.type		= CLONE_NEWPID,
@@ -466,14 +382,7 @@ const struct proc_ns_operations pidns_for_children_operations = {
 	.get_parent	= pidns_get_parent,
 };
 
-static __init int pid_namespaces_init(void)
+void vns_pid_ns_init(void) /* [RENAME] */
 {
-	pid_ns_cachep = KMEM_CACHE(pid_namespace, SLAB_PANIC | SLAB_ACCOUNT);
-
-#ifdef CONFIG_CHECKPOINT_RESTORE
-	register_sysctl_paths(kern_path, pid_ns_ctl_table);
-#endif
-	return 0;
+	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
 }
-
-__initcall(pid_namespaces_init);

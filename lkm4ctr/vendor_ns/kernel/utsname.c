@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Vendored from kernel-common kernel/utsname.c (kernel version 6.1.124,
+ * android14-6.1 branch). CHANGES FROM UPSTREAM:
+ *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
+ *     collision with the built-in kernel implementation.
+ *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
+ *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
+ *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
+ *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
+ *   - [DIAGFS] Statistics incremented via vendor_ns_registry for diagfs exposure.
+ *   Any line NOT marked RENAME/BUILD-COMPAT/DIAGFS is unchanged from upstream.
+ */
+/*
  *  Copyright (C) 2004 IBM Corporation
  *
  *  Author: Serge Hallyn <serue@us.ibm.com>
@@ -14,8 +27,9 @@
 #include <linux/user_namespace.h>
 #include <linux/proc_ns.h>
 #include <linux/sched/task.h>
+#include "../vendor_ns.h"
 
-static struct kmem_cache *uts_ns_cache __ro_after_init;
+/* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 
 static struct ucounts *inc_uts_namespaces(struct user_namespace *ns)
 {
@@ -31,7 +45,8 @@ static struct uts_namespace *create_uts_ns(void)
 {
 	struct uts_namespace *uts_ns;
 
-	uts_ns = kmem_cache_alloc(uts_ns_cache, GFP_KERNEL);
+	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
+	uts_ns = kzalloc(sizeof(*uts_ns), GFP_KERNEL);
 	if (uts_ns)
 		refcount_set(&uts_ns->ns.count, 1);
 	return uts_ns;
@@ -59,12 +74,14 @@ static struct uts_namespace *clone_uts_ns(struct user_namespace *user_ns,
 	if (!ns)
 		goto fail_dec;
 
-	err = ns_alloc_inum(&ns->ns);
+	/* [BUILD-COMPAT] proc_alloc_inum is resolved indirectly for vendor_ns. */
+	err = vns_alloc_inum(&ns->ns);
 	if (err)
 		goto fail_free;
 
 	ns->ucounts = ucounts;
-	ns->ns.ops = &utsns_operations;
+	/* [RENAME] vendored proc-ns ops are namespaced to avoid kernel symbol collisions. */
+	ns->ns.ops = &vns_utsns_operations;
 
 	down_read(&uts_sem);
 	memcpy(&ns->name, &old_ns->name, sizeof(ns->name));
@@ -73,7 +90,7 @@ static struct uts_namespace *clone_uts_ns(struct user_namespace *user_ns,
 	return ns;
 
 fail_free:
-	kmem_cache_free(uts_ns_cache, ns);
+	kfree(ns); /* [BUILD-COMPAT] */
 fail_dec:
 	dec_uts_namespaces(ucounts);
 fail:
@@ -86,7 +103,8 @@ fail:
  * utsname of this process won't be seen by parent, and vice
  * versa.
  */
-struct uts_namespace *copy_utsname(unsigned long flags,
+struct uts_namespace *vns_copy_utsname( /* [RENAME] */
+unsigned long flags,
 	struct user_namespace *user_ns, struct uts_namespace *old_ns)
 {
 	struct uts_namespace *new_ns;
@@ -103,12 +121,12 @@ struct uts_namespace *copy_utsname(unsigned long flags,
 	return new_ns;
 }
 
-void free_uts_ns(struct uts_namespace *ns)
+void vns_free_uts_ns(struct uts_namespace *ns) /* [RENAME] */
 {
 	dec_uts_namespaces(ns->ucounts);
 	put_user_ns(ns->user_ns);
-	ns_free_inum(&ns->ns);
-	kmem_cache_free(uts_ns_cache, ns);
+	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
+	kfree(ns); /* [BUILD-COMPAT] */
 }
 
 static inline struct uts_namespace *to_uts_ns(struct ns_common *ns)
@@ -157,7 +175,7 @@ static struct user_namespace *utsns_owner(struct ns_common *ns)
 	return to_uts_ns(ns)->user_ns;
 }
 
-const struct proc_ns_operations utsns_operations = {
+const struct proc_ns_operations vns_utsns_operations = { /* [RENAME] */
 	.name		= "uts",
 	.type		= CLONE_NEWUTS,
 	.get		= utsns_get,
@@ -166,12 +184,7 @@ const struct proc_ns_operations utsns_operations = {
 	.owner		= utsns_owner,
 };
 
-void __init uts_ns_init(void)
+void vns_uts_ns_init(void) /* [RENAME] */
 {
-	uts_ns_cache = kmem_cache_create_usercopy(
-			"uts_namespace", sizeof(struct uts_namespace), 0,
-			SLAB_PANIC|SLAB_ACCOUNT,
-			offsetof(struct uts_namespace, name),
-			sizeof_field(struct uts_namespace, name),
-			NULL);
+	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
 }

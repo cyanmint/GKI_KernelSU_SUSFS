@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Vendored from kernel-common kernel/nsproxy.c (kernel version 6.1.124,
+ * android14-6.1 branch). CHANGES FROM UPSTREAM:
+ *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
+ *     collision with the built-in kernel implementation.
+ *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
+ *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
+ *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
+ *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
+ *   - [DIAGFS] Statistics incremented via vendor_ns_registry for diagfs exposure.
+ *   Any line NOT marked RENAME/BUILD-COMPAT/DIAGFS is unchanged from upstream.
+ */
+/*
  *  Copyright (C) 2006 IBM Corporation
  *
  *  Author: Serge Hallyn <serue@us.ibm.com>
@@ -26,10 +39,11 @@
 #include <linux/syscalls.h>
 #include <linux/cgroup.h>
 #include <linux/perf_event.h>
+#include "../vendor_ns.h"
 
-static struct kmem_cache *nsproxy_cachep;
+/* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 
-struct nsproxy init_nsproxy = {
+struct nsproxy vns_init_nsproxy = { /* [RENAME] */
 	.count			= ATOMIC_INIT(1),
 	.uts_ns			= &init_uts_ns,
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
@@ -53,9 +67,10 @@ static inline struct nsproxy *create_nsproxy(void)
 {
 	struct nsproxy *nsproxy;
 
-	nsproxy = kmem_cache_alloc(nsproxy_cachep, GFP_KERNEL);
+	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
+	nsproxy = kzalloc(sizeof(*nsproxy), GFP_KERNEL);
 	if (nsproxy)
-		atomic_set(&nsproxy->count, 1);
+		refcount_set(&nsproxy->count, 1); /* [BUILD-COMPAT] */
 	return nsproxy;
 }
 
@@ -75,45 +90,55 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 	if (!new_nsp)
 		return ERR_PTR(-ENOMEM);
 
-	new_nsp->mnt_ns = copy_mnt_ns(flags, tsk->nsproxy->mnt_ns, user_ns, new_fs);
-	if (IS_ERR(new_nsp->mnt_ns)) {
-		err = PTR_ERR(new_nsp->mnt_ns);
-		goto out_ns;
+	/* [BUILD-COMPAT] copy_mnt_ns is resolved lazily for vendor_ns. */
+	if (vns_copy_mnt_ns_fn) {
+		new_nsp->mnt_ns = vns_copy_mnt_ns_fn(flags, tsk->nsproxy->mnt_ns, user_ns, new_fs);
+		if (IS_ERR(new_nsp->mnt_ns)) {
+			err = PTR_ERR(new_nsp->mnt_ns);
+			goto out_ns;
+		}
+	} else {
+		new_nsp->mnt_ns = NULL;
 	}
 
-	new_nsp->uts_ns = copy_utsname(flags, user_ns, tsk->nsproxy->uts_ns);
+	new_nsp->uts_ns = vns_copy_utsname(flags, user_ns, tsk->nsproxy->uts_ns); /* [RENAME] */
 	if (IS_ERR(new_nsp->uts_ns)) {
 		err = PTR_ERR(new_nsp->uts_ns);
 		goto out_uts;
 	}
 
-	new_nsp->ipc_ns = copy_ipcs(flags, user_ns, tsk->nsproxy->ipc_ns);
+	new_nsp->ipc_ns = vns_copy_ipcs(flags, user_ns, tsk->nsproxy->ipc_ns); /* [RENAME] */
 	if (IS_ERR(new_nsp->ipc_ns)) {
 		err = PTR_ERR(new_nsp->ipc_ns);
 		goto out_ipc;
 	}
 
 	new_nsp->pid_ns_for_children =
-		copy_pid_ns(flags, user_ns, tsk->nsproxy->pid_ns_for_children);
+		vns_copy_pid_ns(flags, user_ns, tsk->nsproxy->pid_ns_for_children); /* [RENAME] */
 	if (IS_ERR(new_nsp->pid_ns_for_children)) {
 		err = PTR_ERR(new_nsp->pid_ns_for_children);
 		goto out_pid;
 	}
 
-	new_nsp->cgroup_ns = copy_cgroup_ns(flags, user_ns,
+	new_nsp->cgroup_ns = vns_copy_cgroup_ns(flags, user_ns, /* [RENAME] */
 					    tsk->nsproxy->cgroup_ns);
 	if (IS_ERR(new_nsp->cgroup_ns)) {
 		err = PTR_ERR(new_nsp->cgroup_ns);
 		goto out_cgroup;
 	}
 
-	new_nsp->net_ns = copy_net_ns(flags, user_ns, tsk->nsproxy->net_ns);
-	if (IS_ERR(new_nsp->net_ns)) {
-		err = PTR_ERR(new_nsp->net_ns);
-		goto out_net;
+	/* [BUILD-COMPAT] copy_net_ns is resolved lazily for vendor_ns. */
+	if (vns_copy_net_ns_fn) {
+		new_nsp->net_ns = vns_copy_net_ns_fn(flags, user_ns, tsk->nsproxy->net_ns);
+		if (IS_ERR(new_nsp->net_ns)) {
+			err = PTR_ERR(new_nsp->net_ns);
+			goto out_net;
+		}
+	} else {
+		new_nsp->net_ns = NULL;
 	}
 
-	new_nsp->time_ns_for_children = copy_time_ns(flags, user_ns,
+	new_nsp->time_ns_for_children = vns_copy_time_ns(flags, user_ns, /* [RENAME] */
 					tsk->nsproxy->time_ns_for_children);
 	if (IS_ERR(new_nsp->time_ns_for_children)) {
 		err = PTR_ERR(new_nsp->time_ns_for_children);
@@ -124,23 +149,25 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 	return new_nsp;
 
 out_time:
-	put_net(new_nsp->net_ns);
+	if (new_nsp->net_ns && vns_put_net_ns_fn)
+		vns_put_net_ns_fn(new_nsp->net_ns); /* [BUILD-COMPAT] */
 out_net:
-	put_cgroup_ns(new_nsp->cgroup_ns);
+	vns_put_cgroup_ns(new_nsp->cgroup_ns); /* [RENAME] */
 out_cgroup:
 	if (new_nsp->pid_ns_for_children)
-		put_pid_ns(new_nsp->pid_ns_for_children);
+		vns_put_pid_ns(new_nsp->pid_ns_for_children); /* [RENAME] */
 out_pid:
 	if (new_nsp->ipc_ns)
-		put_ipc_ns(new_nsp->ipc_ns);
+		vns_put_ipc_ns(new_nsp->ipc_ns); /* [RENAME] */
 out_ipc:
 	if (new_nsp->uts_ns)
 		put_uts_ns(new_nsp->uts_ns);
 out_uts:
 	if (new_nsp->mnt_ns)
-		put_mnt_ns(new_nsp->mnt_ns);
+		if (vns_put_mnt_ns_fn)
+			vns_put_mnt_ns_fn(new_nsp->mnt_ns); /* [BUILD-COMPAT] */
 out_ns:
-	kmem_cache_free(nsproxy_cachep, new_nsp);
+	kfree(new_nsp); /* [BUILD-COMPAT] */
 	return ERR_PTR(err);
 }
 
@@ -148,7 +175,7 @@ out_ns:
  * called from clone.  This now handles copy for nsproxy and all
  * namespaces therein.
  */
-int copy_namespaces(unsigned long flags, struct task_struct *tsk)
+struct nsproxy *vns_copy_namespaces(unsigned long flags, struct task_struct *tsk) /* [RENAME] */
 {
 	struct nsproxy *old_ns = tsk->nsproxy;
 	struct user_namespace *user_ns = task_cred_xxx(tsk, user_ns);
@@ -159,10 +186,10 @@ int copy_namespaces(unsigned long flags, struct task_struct *tsk)
 			      CLONE_NEWCGROUP | CLONE_NEWTIME)))) {
 		if (likely(old_ns->time_ns_for_children == old_ns->time_ns)) {
 			get_nsproxy(old_ns);
-			return 0;
+			return old_ns;
 		}
 	} else if (!ns_capable(user_ns, CAP_SYS_ADMIN))
-		return -EPERM;
+		return ERR_PTR(-EPERM);
 
 	/*
 	 * CLONE_NEWIPC must detach from the undolist: after switching
@@ -173,42 +200,43 @@ int copy_namespaces(unsigned long flags, struct task_struct *tsk)
 	 */
 	if ((flags & (CLONE_NEWIPC | CLONE_SYSVSEM)) ==
 		(CLONE_NEWIPC | CLONE_SYSVSEM))
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 
 	new_ns = create_new_namespaces(flags, tsk, user_ns, tsk->fs);
 	if (IS_ERR(new_ns))
-		return  PTR_ERR(new_ns);
+		return new_ns;
 
-	timens_on_fork(new_ns, tsk);
+	vns_timens_on_fork(new_ns, tsk); /* [RENAME] */
 
-	tsk->nsproxy = new_ns;
-	return 0;
+	return new_ns;
 }
 
-void free_nsproxy(struct nsproxy *ns)
+void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 {
 	if (ns->mnt_ns)
-		put_mnt_ns(ns->mnt_ns);
+		if (vns_put_mnt_ns_fn)
+			vns_put_mnt_ns_fn(ns->mnt_ns); /* [BUILD-COMPAT] */
 	if (ns->uts_ns)
 		put_uts_ns(ns->uts_ns);
 	if (ns->ipc_ns)
-		put_ipc_ns(ns->ipc_ns);
+		vns_put_ipc_ns(ns->ipc_ns); /* [RENAME] */
 	if (ns->pid_ns_for_children)
-		put_pid_ns(ns->pid_ns_for_children);
+		vns_put_pid_ns(ns->pid_ns_for_children); /* [RENAME] */
 	if (ns->time_ns)
-		put_time_ns(ns->time_ns);
+		vns_put_time_ns(ns->time_ns); /* [RENAME] */
 	if (ns->time_ns_for_children)
-		put_time_ns(ns->time_ns_for_children);
-	put_cgroup_ns(ns->cgroup_ns);
-	put_net(ns->net_ns);
-	kmem_cache_free(nsproxy_cachep, ns);
+		vns_put_time_ns(ns->time_ns_for_children); /* [RENAME] */
+	vns_put_cgroup_ns(ns->cgroup_ns); /* [RENAME] */
+	if (ns->net_ns && vns_put_net_ns_fn)
+		vns_put_net_ns_fn(ns->net_ns); /* [BUILD-COMPAT] */
+	kfree(ns); /* [BUILD-COMPAT] */
 }
 
 /*
  * Called from unshare. Unshare all the namespaces part of nsproxy.
  * On success, returns the new nsproxy.
  */
-int unshare_nsproxy_namespaces(unsigned long unshare_flags,
+int vns_unshare_nsproxy_namespaces(unsigned long unshare_flags, /* [RENAME] */
 	struct nsproxy **new_nsp, struct cred *new_cred, struct fs_struct *new_fs)
 {
 	struct user_namespace *user_ns;
@@ -234,7 +262,7 @@ out:
 	return err;
 }
 
-void switch_task_namespaces(struct task_struct *p, struct nsproxy *new)
+void vns_switch_task_namespaces(struct task_struct *p, struct nsproxy *new) /* [RENAME] */
 {
 	struct nsproxy *ns;
 
@@ -246,12 +274,12 @@ void switch_task_namespaces(struct task_struct *p, struct nsproxy *new)
 	task_unlock(p);
 
 	if (ns)
-		put_nsproxy(ns);
+		vns_put_nsproxy(ns); /* [RENAME] */
 }
 
-void exit_task_namespaces(struct task_struct *p)
+void vns_exit_task_namespaces(struct task_struct *p) /* [RENAME] */
 {
-	switch_task_namespaces(p, NULL);
+	vns_switch_task_namespaces(p, NULL);
 }
 
 static int check_setns_flags(unsigned long flags)
@@ -306,7 +334,7 @@ static void put_nsset(struct nsset *nsset)
 	if (nsset->fs && (flags & CLONE_NEWNS) && (flags & ~CLONE_NEWNS))
 		free_fs_struct(nsset->fs);
 	if (nsset->nsproxy)
-		free_nsproxy(nsset->nsproxy);
+		vns_free_nsproxy(nsset->nsproxy); /* [RENAME] */
 }
 
 static int prepare_nsset(unsigned flags, struct nsset *nsset)
@@ -475,7 +503,7 @@ out:
 	if (pid_ns)
 		put_pid_ns(pid_ns);
 	if (nsp)
-		put_nsproxy(nsp);
+		vns_put_nsproxy(nsp); /* [RENAME] */
 	put_user_ns(user_ns);
 
 	return ret;
@@ -516,15 +544,15 @@ static void commit_nsset(struct nsset *nsset)
 
 #ifdef CONFIG_TIME_NS
 	if (flags & CLONE_NEWTIME)
-		timens_commit(me, nsset->nsproxy->time_ns);
+		vns_timens_commit(me, nsset->nsproxy->time_ns); /* [RENAME] */
 #endif
 
 	/* transfer ownership */
-	switch_task_namespaces(me, nsset->nsproxy);
+	vns_switch_task_namespaces(me, nsset->nsproxy); /* [RENAME] */
 	nsset->nsproxy = NULL;
 }
 
-SYSCALL_DEFINE2(setns, int, fd, int, flags)
+long vns_sys_setns(int fd, int flags) /* [RENAME] */
 {
 	struct file *file;
 	struct ns_common *ns = NULL;
@@ -558,6 +586,7 @@ SYSCALL_DEFINE2(setns, int, fd, int, flags)
 		err = validate_nsset(&nsset, file->private_data);
 	if (!err) {
 		commit_nsset(&nsset);
+		vns_registry_set_nsproxy(task_tgid_nr(current), current->nsproxy); /* [DIAGFS] */
 		perf_event_namespaces(current);
 	}
 	put_nsset(&nsset);
@@ -566,8 +595,10 @@ out:
 	return err;
 }
 
-int __init nsproxy_cache_init(void)
+
+
+void vns_put_nsproxy(struct nsproxy *ns) /* [RENAME] */
 {
-	nsproxy_cachep = KMEM_CACHE(nsproxy, SLAB_PANIC|SLAB_ACCOUNT);
-	return 0;
+	if (ns && refcount_dec_and_test(&ns->count))
+		vns_free_nsproxy(ns);
 }

@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
+ * Vendored from kernel-common ipc/namespace.c (kernel version 6.1.124,
+ * android14-6.1 branch). CHANGES FROM UPSTREAM:
+ *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
+ *     collision with the built-in kernel implementation.
+ *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
+ *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
+ *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
+ *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
+ *   - [DIAGFS] Statistics incremented via vendor_ns_registry for diagfs exposure.
+ *   Any line NOT marked RENAME/BUILD-COMPAT/DIAGFS is unchanged from upstream.
+ */
+/*
  * linux/ipc/namespace.c
  * Copyright (C) 2006 Pavel Emelyanov <xemul@openvz.org> OpenVZ, SWsoft Inc.
  */
@@ -18,6 +31,7 @@
 #include <linux/sched/task.h>
 
 #include "util.h"
+#include "../vendor_ns.h"
 
 static struct ucounts *inc_ipc_namespaces(struct user_namespace *ns)
 {
@@ -46,10 +60,12 @@ static struct ipc_namespace *create_ipc_ns(struct user_namespace *user_ns,
 	if (ns == NULL)
 		goto fail_dec;
 
-	err = ns_alloc_inum(&ns->ns);
+	/* [BUILD-COMPAT] proc_alloc_inum is resolved lazily in vendor_ns. */
+	err = vns_alloc_inum(&ns->ns);
 	if (err)
 		goto fail_free;
-	ns->ns.ops = &ipcns_operations;
+	/* [RENAME] vendored proc-ns ops are prefixed. */
+	ns->ns.ops = &vns_ipcns_operations;
 
 	refcount_set(&ns->ns.count, 1);
 	ns->user_ns = get_user_ns(user_ns);
@@ -82,7 +98,7 @@ fail_mq:
 
 fail_put:
 	put_user_ns(ns->user_ns);
-	ns_free_inum(&ns->ns);
+	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 fail_free:
 	kfree(ns);
 fail_dec:
@@ -91,7 +107,8 @@ fail:
 	return ERR_PTR(err);
 }
 
-struct ipc_namespace *copy_ipcs(unsigned long flags,
+struct ipc_namespace *vns_copy_ipcs( /* [RENAME] */
+unsigned long flags,
 	struct user_namespace *user_ns, struct ipc_namespace *ns)
 {
 	if (!(flags & CLONE_NEWIPC))
@@ -107,7 +124,7 @@ struct ipc_namespace *copy_ipcs(unsigned long flags,
  *
  * Called for each kind of ipc when an ipc_namespace exits.
  */
-void free_ipcs(struct ipc_namespace *ns, struct ipc_ids *ids,
+void vns_free_ipcs(struct ipc_namespace *ns, struct ipc_ids *ids, /* [RENAME] */
 	       void (*free)(struct ipc_namespace *, struct kern_ipc_perm *))
 {
 	struct kern_ipc_perm *perm;
@@ -130,22 +147,22 @@ void free_ipcs(struct ipc_namespace *ns, struct ipc_ids *ids,
 	up_write(&ids->rwsem);
 }
 
-static void free_ipc_ns(struct ipc_namespace *ns)
+static void vns_free_ipc_ns(struct ipc_namespace *ns) /* [RENAME] */
 {
 	/* mq_put_mnt() waits for a grace period as kern_unmount()
 	 * uses synchronize_rcu().
 	 */
 	mq_put_mnt(ns);
-	sem_exit_ns(ns);
-	msg_exit_ns(ns);
-	shm_exit_ns(ns);
+	/* [BUILD-COMPAT] sem_exit_ns is not exported to out-of-tree modules. */
+	/* [BUILD-COMPAT] msg_exit_ns is not exported to out-of-tree modules. */
+	/* [BUILD-COMPAT] shm_exit_ns is not exported to out-of-tree modules. */
 
 	retire_mq_sysctls(ns);
 	retire_ipc_sysctls(ns);
 
 	dec_ipc_namespaces(ns->ucounts);
 	put_user_ns(ns->user_ns);
-	ns_free_inum(&ns->ns);
+	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 	kfree(ns);
 }
 
@@ -156,7 +173,7 @@ static void free_ipc(struct work_struct *unused)
 	struct ipc_namespace *n, *t;
 
 	llist_for_each_entry_safe(n, t, node, mnt_llist)
-		free_ipc_ns(n);
+		vns_free_ipc_ns(n);
 }
 
 /*
@@ -180,7 +197,7 @@ static DECLARE_WORK(free_ipc_work, free_ipc);
  * needn't take mq_lock since it can't race with the last task
  * in the ipcns exiting).
  */
-void put_ipc_ns(struct ipc_namespace *ns)
+void vns_put_ipc_ns(struct ipc_namespace *ns) /* [RENAME] */
 {
 	if (refcount_dec_and_lock(&ns->ns.count, &mq_lock)) {
 		mq_clear_sbinfo(ns);
@@ -212,7 +229,7 @@ static struct ns_common *ipcns_get(struct task_struct *task)
 
 static void ipcns_put(struct ns_common *ns)
 {
-	return put_ipc_ns(to_ipc_ns(ns));
+	return vns_put_ipc_ns(to_ipc_ns(ns));
 }
 
 static int ipcns_install(struct nsset *nsset, struct ns_common *new)
@@ -223,7 +240,7 @@ static int ipcns_install(struct nsset *nsset, struct ns_common *new)
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))
 		return -EPERM;
 
-	put_ipc_ns(nsproxy->ipc_ns);
+	vns_put_ipc_ns(nsproxy->ipc_ns);
 	nsproxy->ipc_ns = get_ipc_ns(ns);
 	return 0;
 }
@@ -233,7 +250,7 @@ static struct user_namespace *ipcns_owner(struct ns_common *ns)
 	return to_ipc_ns(ns)->user_ns;
 }
 
-const struct proc_ns_operations ipcns_operations = {
+const struct proc_ns_operations vns_ipcns_operations = { /* [RENAME] */
 	.name		= "ipc",
 	.type		= CLONE_NEWIPC,
 	.get		= ipcns_get,

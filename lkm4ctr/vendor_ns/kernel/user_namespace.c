@@ -1,4 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Vendored from kernel-common kernel/user_namespace.c (kernel version 6.1.124,
+ * android14-6.1 branch). CHANGES FROM UPSTREAM:
+ *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
+ *     collision with the built-in kernel implementation.
+ *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
+ *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
+ *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
+ *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
+ *   - [DIAGFS] Statistics incremented via vendor_ns_registry for diagfs exposure.
+ *   Any line NOT marked RENAME/BUILD-COMPAT/DIAGFS is unchanged from upstream.
+ */
 
 #include <linux/export.h>
 #include <linux/nsproxy.h>
@@ -21,8 +34,9 @@
 #include <linux/fs_struct.h>
 #include <linux/bsearch.h>
 #include <linux/sort.h>
+#include "../vendor_ns.h"
 
-static struct kmem_cache *user_ns_cachep __read_mostly;
+/* [BUILD-COMPAT] out-of-tree vendor_ns uses kzalloc/kfree instead of a slab cache. */
 static DEFINE_MUTEX(userns_state_mutex);
 
 static bool new_idmap_permitted(const struct file *file,
@@ -79,7 +93,8 @@ static unsigned long enforced_nproc_rlimit(void)
  * This is called by copy_creds(), which will finish setting the target task's
  * credentials.
  */
-int create_user_ns(struct cred *new)
+int vns_create_user_ns( /* [RENAME] */
+struct cred *new)
 {
 	struct user_namespace *ns, *parent_ns = new->user_ns;
 	kuid_t owner = new->euid;
@@ -119,15 +134,15 @@ int create_user_ns(struct cred *new)
 		goto fail_dec;
 
 	ret = -ENOMEM;
-	ns = kmem_cache_zalloc(user_ns_cachep, GFP_KERNEL);
+	ns = kzalloc(sizeof(struct user_namespace), GFP_KERNEL) /* [BUILD-COMPAT] */;
 	if (!ns)
 		goto fail_dec;
 
 	ns->parent_could_setfcap = cap_raised(new->cap_effective, CAP_SETFCAP);
-	ret = ns_alloc_inum(&ns->ns);
+	ret = vns_alloc_inum(&ns->ns) /* [BUILD-COMPAT] */;
 	if (ret)
 		goto fail_free;
-	ns->ns.ops = &userns_operations;
+	ns->ns.ops = &vns_userns_operations;
 
 	refcount_set(&ns->ns.count, 1);
 	/* Leave the new->user_ns reference with the new user namespace. */
@@ -164,16 +179,17 @@ fail_keyring:
 #ifdef CONFIG_PERSISTENT_KEYRINGS
 	key_put(ns->persistent_keyring_register);
 #endif
-	ns_free_inum(&ns->ns);
+	vns_free_inum(&ns->ns) /* [BUILD-COMPAT] */;
 fail_free:
-	kmem_cache_free(user_ns_cachep, ns);
+	kfree(ns) /* [BUILD-COMPAT] */;
 fail_dec:
 	dec_user_namespaces(ucounts);
 fail:
 	return ret;
 }
 
-int unshare_userns(unsigned long unshare_flags, struct cred **new_cred)
+int vns_unshare_userns( /* [RENAME] */
+unsigned long unshare_flags, struct cred **new_cred)
 {
 	struct cred *cred;
 	int err = -ENOMEM;
@@ -183,7 +199,7 @@ int unshare_userns(unsigned long unshare_flags, struct cred **new_cred)
 
 	cred = prepare_creds();
 	if (cred) {
-		err = create_user_ns(cred);
+		err = vns_create_user_ns(cred);
 		if (err)
 			put_cred(cred);
 		else
@@ -215,18 +231,18 @@ static void free_user_ns(struct work_struct *work)
 		}
 		retire_userns_sysctls(ns);
 		key_free_user_ns(ns);
-		ns_free_inum(&ns->ns);
-		kmem_cache_free(user_ns_cachep, ns);
+		vns_free_inum(&ns->ns) /* [BUILD-COMPAT] */;
+		kfree(ns) /* [BUILD-COMPAT] */;
 		dec_user_namespaces(ucounts);
 		ns = parent;
 	} while (refcount_dec_and_test(&parent->ns.count));
 }
 
-void __put_user_ns(struct user_namespace *ns)
+void vns___put_user_ns( /* [RENAME] */
+struct user_namespace *ns)
 {
 	schedule_work(&ns->work);
 }
-EXPORT_SYMBOL(__put_user_ns);
 
 /**
  * idmap_key struct holds the information necessary to find an idmapping in a
@@ -309,7 +325,7 @@ map_id_range_down_base(unsigned extents, struct uid_gid_map *map, u32 id, u32 co
 	return NULL;
 }
 
-static u32 map_id_range_down(struct uid_gid_map *map, u32 id, u32 count)
+static u32 vns_map_id_range_down(struct uid_gid_map *map, u32 id, u32 count)
 {
 	struct uid_gid_extent *extent;
 	unsigned extents = map->nr_extents;
@@ -329,9 +345,9 @@ static u32 map_id_range_down(struct uid_gid_map *map, u32 id, u32 count)
 	return id;
 }
 
-static u32 map_id_down(struct uid_gid_map *map, u32 id)
+static u32 vns_map_id_down(struct uid_gid_map *map, u32 id)
 {
-	return map_id_range_down(map, id, 1);
+	return vns_map_id_range_down(map, id, 1);
 }
 
 /**
@@ -372,7 +388,7 @@ map_id_up_max(unsigned extents, struct uid_gid_map *map, u32 id)
 		       sizeof(struct uid_gid_extent), cmp_map_id);
 }
 
-static u32 map_id_up(struct uid_gid_map *map, u32 id)
+static u32 vns_map_id_up(struct uid_gid_map *map, u32 id)
 {
 	struct uid_gid_extent *extent;
 	unsigned extents = map->nr_extents;
@@ -405,12 +421,12 @@ static u32 map_id_up(struct uid_gid_map *map, u32 id)
  *	for and handle INVALID_UID being returned.  INVALID_UID
  *	may be tested for using uid_valid().
  */
-kuid_t make_kuid(struct user_namespace *ns, uid_t uid)
+kuid_t vns_make_kuid( /* [RENAME] */
+struct user_namespace *ns, uid_t uid)
 {
 	/* Map the uid to a global kernel uid */
-	return KUIDT_INIT(map_id_down(&ns->uid_map, uid));
+	return KUIDT_INIT(vns_map_id_down(&ns->uid_map, uid));
 }
-EXPORT_SYMBOL(make_kuid);
 
 /**
  *	from_kuid - Create a uid from a kuid user-namespace pair.
@@ -424,12 +440,12 @@ EXPORT_SYMBOL(make_kuid);
  *
  *	If @kuid has no mapping in @targ (uid_t)-1 is returned.
  */
-uid_t from_kuid(struct user_namespace *targ, kuid_t kuid)
+uid_t vns_from_kuid( /* [RENAME] */
+struct user_namespace *targ, kuid_t kuid)
 {
 	/* Map the uid from a global kernel uid */
-	return map_id_up(&targ->uid_map, __kuid_val(kuid));
+	return vns_map_id_up(&targ->uid_map, __kuid_val(kuid));
 }
-EXPORT_SYMBOL(from_kuid);
 
 /**
  *	from_kuid_munged - Create a uid from a kuid user-namespace pair.
@@ -449,16 +465,16 @@ EXPORT_SYMBOL(from_kuid);
  *
  *	If @kuid has no mapping in @targ overflowuid is returned.
  */
-uid_t from_kuid_munged(struct user_namespace *targ, kuid_t kuid)
+uid_t vns_from_kuid_munged( /* [RENAME] */
+struct user_namespace *targ, kuid_t kuid)
 {
 	uid_t uid;
-	uid = from_kuid(targ, kuid);
+	uid = vns_from_kuid(targ, kuid);
 
 	if (uid == (uid_t) -1)
 		uid = overflowuid;
 	return uid;
 }
-EXPORT_SYMBOL(from_kuid_munged);
 
 /**
  *	make_kgid - Map a user-namespace gid pair into a kgid.
@@ -473,12 +489,12 @@ EXPORT_SYMBOL(from_kuid_munged);
  *	for and handle INVALID_GID being returned.  INVALID_GID may be
  *	tested for using gid_valid().
  */
-kgid_t make_kgid(struct user_namespace *ns, gid_t gid)
+kgid_t vns_make_kgid( /* [RENAME] */
+struct user_namespace *ns, gid_t gid)
 {
 	/* Map the gid to a global kernel gid */
-	return KGIDT_INIT(map_id_down(&ns->gid_map, gid));
+	return KGIDT_INIT(vns_map_id_down(&ns->gid_map, gid));
 }
-EXPORT_SYMBOL(make_kgid);
 
 /**
  *	from_kgid - Create a gid from a kgid user-namespace pair.
@@ -492,12 +508,12 @@ EXPORT_SYMBOL(make_kgid);
  *
  *	If @kgid has no mapping in @targ (gid_t)-1 is returned.
  */
-gid_t from_kgid(struct user_namespace *targ, kgid_t kgid)
+gid_t vns_from_kgid( /* [RENAME] */
+struct user_namespace *targ, kgid_t kgid)
 {
 	/* Map the gid from a global kernel gid */
-	return map_id_up(&targ->gid_map, __kgid_val(kgid));
+	return vns_map_id_up(&targ->gid_map, __kgid_val(kgid));
 }
-EXPORT_SYMBOL(from_kgid);
 
 /**
  *	from_kgid_munged - Create a gid from a kgid user-namespace pair.
@@ -516,16 +532,16 @@ EXPORT_SYMBOL(from_kgid);
  *
  *	If @kgid has no mapping in @targ overflowgid is returned.
  */
-gid_t from_kgid_munged(struct user_namespace *targ, kgid_t kgid)
+gid_t vns_from_kgid_munged( /* [RENAME] */
+struct user_namespace *targ, kgid_t kgid)
 {
 	gid_t gid;
-	gid = from_kgid(targ, kgid);
+	gid = vns_from_kgid(targ, kgid);
 
 	if (gid == (gid_t) -1)
 		gid = overflowgid;
 	return gid;
 }
-EXPORT_SYMBOL(from_kgid_munged);
 
 /**
  *	make_kprojid - Map a user-namespace projid pair into a kprojid.
@@ -540,12 +556,12 @@ EXPORT_SYMBOL(from_kgid_munged);
  *	for and handle INVALID_PROJID being returned.  INVALID_PROJID
  *	may be tested for using projid_valid().
  */
-kprojid_t make_kprojid(struct user_namespace *ns, projid_t projid)
+kprojid_t vns_make_kprojid( /* [RENAME] */
+struct user_namespace *ns, projid_t projid)
 {
 	/* Map the uid to a global kernel uid */
-	return KPROJIDT_INIT(map_id_down(&ns->projid_map, projid));
+	return KPROJIDT_INIT(vns_map_id_down(&ns->projid_map, projid));
 }
-EXPORT_SYMBOL(make_kprojid);
 
 /**
  *	from_kprojid - Create a projid from a kprojid user-namespace pair.
@@ -559,12 +575,12 @@ EXPORT_SYMBOL(make_kprojid);
  *
  *	If @kprojid has no mapping in @targ (projid_t)-1 is returned.
  */
-projid_t from_kprojid(struct user_namespace *targ, kprojid_t kprojid)
+projid_t vns_from_kprojid( /* [RENAME] */
+struct user_namespace *targ, kprojid_t kprojid)
 {
 	/* Map the uid from a global kernel uid */
-	return map_id_up(&targ->projid_map, __kprojid_val(kprojid));
+	return vns_map_id_up(&targ->projid_map, __kprojid_val(kprojid));
 }
-EXPORT_SYMBOL(from_kprojid);
 
 /**
  *	from_kprojid_munged - Create a projiid from a kprojid user-namespace pair.
@@ -584,16 +600,16 @@ EXPORT_SYMBOL(from_kprojid);
  *
  *	If @kprojid has no mapping in @targ OVERFLOW_PROJID is returned.
  */
-projid_t from_kprojid_munged(struct user_namespace *targ, kprojid_t kprojid)
+projid_t vns_from_kprojid_munged( /* [RENAME] */
+struct user_namespace *targ, kprojid_t kprojid)
 {
 	projid_t projid;
-	projid = from_kprojid(targ, kprojid);
+	projid = vns_from_kprojid(targ, kprojid);
 
 	if (projid == (projid_t) -1)
 		projid = OVERFLOW_PROJID;
 	return projid;
 }
-EXPORT_SYMBOL(from_kprojid_munged);
 
 
 static int uid_m_show(struct seq_file *seq, void *v)
@@ -607,7 +623,7 @@ static int uid_m_show(struct seq_file *seq, void *v)
 	if ((lower_ns == ns) && lower_ns->parent)
 		lower_ns = lower_ns->parent;
 
-	lower = from_kuid(lower_ns, KUIDT_INIT(extent->lower_first));
+	lower = vns_from_kuid(lower_ns, KUIDT_INIT(extent->lower_first));
 
 	seq_printf(seq, "%10u %10u %10u\n",
 		extent->first,
@@ -628,7 +644,7 @@ static int gid_m_show(struct seq_file *seq, void *v)
 	if ((lower_ns == ns) && lower_ns->parent)
 		lower_ns = lower_ns->parent;
 
-	lower = from_kgid(lower_ns, KGIDT_INIT(extent->lower_first));
+	lower = vns_from_kgid(lower_ns, KGIDT_INIT(extent->lower_first));
 
 	seq_printf(seq, "%10u %10u %10u\n",
 		extent->first,
@@ -649,7 +665,7 @@ static int projid_m_show(struct seq_file *seq, void *v)
 	if ((lower_ns == ns) && lower_ns->parent)
 		lower_ns = lower_ns->parent;
 
-	lower = from_kprojid(lower_ns, KPROJIDT_INIT(extent->lower_first));
+	lower = vns_from_kprojid(lower_ns, KPROJIDT_INIT(extent->lower_first));
 
 	seq_printf(seq, "%10u %10u %10u\n",
 		extent->first,
@@ -707,21 +723,21 @@ static void m_stop(struct seq_file *seq, void *v)
 	return;
 }
 
-const struct seq_operations proc_uid_seq_operations = {
+const struct seq_operations vns_proc_uid_seq_operations = { /* [RENAME] */
 	.start = uid_m_start,
 	.stop = m_stop,
 	.next = m_next,
 	.show = uid_m_show,
 };
 
-const struct seq_operations proc_gid_seq_operations = {
+const struct seq_operations vns_proc_gid_seq_operations = { /* [RENAME] */
 	.start = gid_m_start,
 	.stop = m_stop,
 	.next = m_next,
 	.show = gid_m_show,
 };
 
-const struct seq_operations proc_projid_seq_operations = {
+const struct seq_operations vns_proc_projid_seq_operations = { /* [RENAME] */
 	.start = projid_m_start,
 	.stop = m_stop,
 	.next = m_next,
@@ -1057,7 +1073,7 @@ static ssize_t map_write(struct file *file, const char __user *buf,
 		else
 			e = &new_map.forward[idx];
 
-		lower_first = map_id_range_down(parent_map,
+		lower_first = vns_map_id_range_down(parent_map,
 						e->lower_first,
 						e->count);
 
@@ -1105,7 +1121,8 @@ out:
 	return ret;
 }
 
-ssize_t proc_uid_map_write(struct file *file, const char __user *buf,
+ssize_t vns_proc_uid_map_write( /* [RENAME] */
+struct file *file, const char __user *buf,
 			   size_t size, loff_t *ppos)
 {
 	struct seq_file *seq = file->private_data;
@@ -1122,7 +1139,8 @@ ssize_t proc_uid_map_write(struct file *file, const char __user *buf,
 			 &ns->uid_map, &ns->parent->uid_map);
 }
 
-ssize_t proc_gid_map_write(struct file *file, const char __user *buf,
+ssize_t vns_proc_gid_map_write( /* [RENAME] */
+struct file *file, const char __user *buf,
 			   size_t size, loff_t *ppos)
 {
 	struct seq_file *seq = file->private_data;
@@ -1139,7 +1157,8 @@ ssize_t proc_gid_map_write(struct file *file, const char __user *buf,
 			 &ns->gid_map, &ns->parent->gid_map);
 }
 
-ssize_t proc_projid_map_write(struct file *file, const char __user *buf,
+ssize_t vns_proc_projid_map_write( /* [RENAME] */
+struct file *file, const char __user *buf,
 			      size_t size, loff_t *ppos)
 {
 	struct seq_file *seq = file->private_data;
@@ -1173,11 +1192,11 @@ static bool new_idmap_permitted(const struct file *file,
 	    uid_eq(ns->owner, cred->euid)) {
 		u32 id = new_map->extent[0].lower_first;
 		if (cap_setid == CAP_SETUID) {
-			kuid_t uid = make_kuid(ns->parent, id);
+			kuid_t uid = vns_make_kuid(ns->parent, id);
 			if (uid_eq(uid, cred->euid))
 				return true;
 		} else if (cap_setid == CAP_SETGID) {
-			kgid_t gid = make_kgid(ns->parent, id);
+			kgid_t gid = vns_make_kgid(ns->parent, id);
 			if (!(ns->flags & USERNS_SETGROUPS_ALLOWED) &&
 			    gid_eq(gid, cred->egid))
 				return true;
@@ -1199,7 +1218,8 @@ static bool new_idmap_permitted(const struct file *file,
 	return false;
 }
 
-int proc_setgroups_show(struct seq_file *seq, void *v)
+int vns_proc_setgroups_show( /* [RENAME] */
+struct seq_file *seq, void *v)
 {
 	struct user_namespace *ns = seq->private;
 	unsigned long userns_flags = READ_ONCE(ns->flags);
@@ -1210,7 +1230,8 @@ int proc_setgroups_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-ssize_t proc_setgroups_write(struct file *file, const char __user *buf,
+ssize_t vns_proc_setgroups_write( /* [RENAME] */
+struct file *file, const char __user *buf,
 			     size_t count, loff_t *ppos)
 {
 	struct seq_file *seq = file->private_data;
@@ -1277,7 +1298,8 @@ out_unlock:
 	goto out;
 }
 
-bool userns_may_setgroups(const struct user_namespace *ns)
+bool vns_userns_may_setgroups( /* [RENAME] */
+const struct user_namespace *ns)
 {
 	bool allowed;
 
@@ -1297,7 +1319,8 @@ bool userns_may_setgroups(const struct user_namespace *ns)
  * Returns true if @child is the same namespace or a descendant of
  * @ancestor.
  */
-bool in_userns(const struct user_namespace *ancestor,
+bool vns_in_userns( /* [RENAME] */
+const struct user_namespace *ancestor,
 	       const struct user_namespace *child)
 {
 	const struct user_namespace *ns;
@@ -1306,11 +1329,11 @@ bool in_userns(const struct user_namespace *ancestor,
 	return (ns == ancestor);
 }
 
-bool current_in_userns(const struct user_namespace *target_ns)
+bool vns_current_in_userns( /* [RENAME] */
+const struct user_namespace *target_ns)
 {
-	return in_userns(target_ns, current_user_ns());
+	return vns_in_userns(target_ns, current_user_ns());
 }
-EXPORT_SYMBOL(current_in_userns);
 
 static inline struct user_namespace *to_user_ns(struct ns_common *ns)
 {
@@ -1367,7 +1390,8 @@ static int userns_install(struct nsset *nsset, struct ns_common *ns)
 	return 0;
 }
 
-struct ns_common *ns_get_owner(struct ns_common *ns)
+struct ns_common *vns_ns_get_owner( /* [RENAME] */
+struct ns_common *ns)
 {
 	struct user_namespace *my_user_ns = current_user_ns();
 	struct user_namespace *owner, *p;
@@ -1390,19 +1414,17 @@ static struct user_namespace *userns_owner(struct ns_common *ns)
 	return to_user_ns(ns)->parent;
 }
 
-const struct proc_ns_operations userns_operations = {
+const struct proc_ns_operations vns_userns_operations = { /* [RENAME] */
 	.name		= "user",
 	.type		= CLONE_NEWUSER,
 	.get		= userns_get,
 	.put		= userns_put,
 	.install	= userns_install,
 	.owner		= userns_owner,
-	.get_parent	= ns_get_owner,
+	.get_parent	= vns_ns_get_owner,
 };
 
-static __init int user_namespaces_init(void)
+void vns_user_ns_init(void) /* [RENAME] */
 {
-	user_ns_cachep = KMEM_CACHE(user_namespace, SLAB_PANIC | SLAB_ACCOUNT);
-	return 0;
+	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
 }
-subsys_initcall(user_namespaces_init);

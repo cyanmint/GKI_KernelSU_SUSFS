@@ -41,7 +41,19 @@ lkm4ctr-objs := \
 	shadow_mqueue/shadow_mqueue_io.o \
 	shadow_mqueue/shadow_mqueue_hooks.o \
 	shadow_mqueue/shadow_mqueue_mount.o \
-	shadow_cgdevices/shadow_cgdevices.o
+	shadow_cgdevices/shadow_cgdevices.o \
+	vendor_ns/kernel/utsname.o \
+	vendor_ns/kernel/nsproxy.o \
+	vendor_ns/kernel/pid_namespace.o \
+	vendor_ns/kernel/user_namespace.o \
+	vendor_ns/ipc/namespace.o \
+	vendor_ns/fs/nsfs.o \
+	vendor_ns/kernel/cgroup/namespace.o \
+	vendor_ns/kernel/time/namespace.o \
+	vendor_ns/glue/vendor_ns_module.o \
+	vendor_ns/glue/vendor_ns_syscalls.o \
+	vendor_ns/glue/vendor_ns_diag.o \
+	vendor_ns/glue/vendor_ns_compat.o
 
 ccflags-y += -I$(src)/../common
 
