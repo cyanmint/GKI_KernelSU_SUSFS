@@ -92,22 +92,22 @@ static inline void vns_zero_stashed(struct ns_common *ns)
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
-#define vns_uts_init_ref(ns) vns_init_count(&(ns)->kref.refcount, 1)
-#define vns_pid_init_ref(ns) vns_init_count(&(ns)->kref.refcount, 1)
-#define vns_pid_put_ref(ns) vns_put_count(&(ns)->kref.refcount)
-#define vns_user_init_ref(ns) vns_init_count(&(ns)->count, 1)
-#define vns_user_put_ref(ns) vns_put_count(&(ns)->count)
-#define vns_ipc_init_ref(ns) vns_init_count(&(ns)->count, 1)
-#define vns_ipc_put_ref_lock(ns, lock) refcount_dec_and_lock(&(ns)->count, (lock))
+#define vns_uts_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
+#define vns_pid_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
+#define vns_pid_put_ref(obj) vns_put_count(&(obj)->kref.refcount)
+#define vns_user_init_ref(obj) vns_init_count(&(obj)->count, 1)
+#define vns_user_put_ref(obj) vns_put_count(&(obj)->count)
+#define vns_ipc_init_ref(obj) vns_init_count(&(obj)->count, 1)
+#define vns_ipc_put_ref_lock(obj, lock) refcount_dec_and_lock(&(obj)->count, (lock))
 #define VNS_TIME_REF_INIT .kref = KREF_INIT(1),
 #else
-#define vns_uts_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
-#define vns_pid_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
-#define vns_pid_put_ref(ns) vns_put_count(&(ns)->ns.count)
-#define vns_user_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
-#define vns_user_put_ref(ns) vns_put_count(&(ns)->ns.count)
-#define vns_ipc_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
-#define vns_ipc_put_ref_lock(ns, lock) refcount_dec_and_lock(&(ns)->ns.count, (lock))
+#define vns_uts_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_pid_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_pid_put_ref(obj) vns_put_count(&(obj)->ns.count)
+#define vns_user_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_user_put_ref(obj) vns_put_count(&(obj)->ns.count)
+#define vns_ipc_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_ipc_put_ref_lock(obj, lock) refcount_dec_and_lock(&(obj)->ns.count, (lock))
 #define VNS_TIME_REF_INIT .ns.count = REFCOUNT_INIT(1),
 #endif
 

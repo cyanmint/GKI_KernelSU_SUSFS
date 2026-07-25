@@ -312,14 +312,12 @@ void retire_userns_sysctls(struct user_namespace *ns)
  * <linux/security.h> declares this as extern when CONFIG_SECURITY=y;
  * our definition satisfies in-module references and avoids modpost errors.
  */
-#ifdef CONFIG_SECURITY
 int vns_security_create_user_ns(const struct cred *cred)
 {
 	if (vns_security_create_user_ns_real)
 		return vns_security_create_user_ns_real(cred);
 	return 0; /* stub: allow all */
 }
-#endif
 
 /*
  * [BUILD-COMPAT] perf_event_namespaces (kernel/events/core.c, not exported).
@@ -341,7 +339,6 @@ void perf_event_namespaces(struct task_struct *tsk)
  * entries are absent for vendor IPC namespaces.
  * <linux/ipc_namespace.h> declares this as extern when CONFIG_POSIX_MQUEUE=y.
  */
-#ifdef CONFIG_POSIX_MQUEUE
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
 {
 	if (vns_setup_mq_sysctls_real)
@@ -607,7 +604,6 @@ void vns_retire_mq_sysctls(struct ipc_namespace *ns)
 		vns_retire_mq_sysctls_real(ns);
 	/* stub: no-op */
 }
-#endif /* CONFIG_POSIX_MQUEUE */
 
 #ifdef CONFIG_SYSVIPC
 /*
