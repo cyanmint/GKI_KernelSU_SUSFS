@@ -173,6 +173,8 @@ int vendor_ns_init(void)
 
 	vns_resolve_symbols();
 	vns_compat_resolve(); /* [BUILD-COMPAT] resolve non-exported kernel symbols */
+	if (!vns_compat_ready())
+		return -ENOENT;
 #ifdef CONFIG_CGROUPS
 	/* [BUILD-COMPAT] init_cgroup_ns can't be used in a static initializer
 	 * (not exported); patch vns_init_nsproxy at runtime once resolved. */

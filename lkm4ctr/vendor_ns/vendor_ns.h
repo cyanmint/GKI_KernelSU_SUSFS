@@ -198,6 +198,7 @@ extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif
 void vns_compat_resolve(void);
+bool vns_compat_ready(void);
 
 int vns_security_create_user_ns(const struct cred *cred);
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns);

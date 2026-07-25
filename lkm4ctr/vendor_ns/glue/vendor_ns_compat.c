@@ -66,6 +66,7 @@
 #include <linux/proc_fs.h>
 #include <linux/sem.h>
 #include <linux/cred.h>
+#include <linux/capability.h>
 
 #define VNS_COMPAT_IMPL
 #include "../vendor_ns.h"
@@ -110,6 +111,11 @@ typedef void (*exit_sem_fn_t)(struct task_struct *);
 #endif
 typedef bool (*setup_ipc_sysctls_fn_t)(struct ipc_namespace *);
 typedef int  (*set_cred_ucounts_fn_t)(struct cred *);
+typedef struct cred *(*prepare_creds_fn_t)(void);
+typedef int  (*commit_creds_fn_t)(struct cred *);
+typedef bool (*file_ns_capable_fn_t)(const struct file *,
+				     struct user_namespace *, int);
+typedef void (*do_exit_fn_t)(long);
 #ifdef CONFIG_USER_NS
 typedef bool (*in_userns_fn_t)(const struct user_namespace *,
 			       const struct user_namespace *);
@@ -152,6 +158,14 @@ static exit_sem_fn_t              vns_exit_sem_real;
 #endif
 static setup_ipc_sysctls_fn_t     vns_setup_ipc_sysctls_real;
 static set_cred_ucounts_fn_t      vns_set_cred_ucounts_real;
+static prepare_creds_fn_t         vns_prepare_creds_real;
+static commit_creds_fn_t          vns_commit_creds_real;
+static file_ns_capable_fn_t       vns_file_ns_capable_real;
+static do_exit_fn_t               vns_do_exit_real;
+#ifdef CONFIG_CGROUPS
+typedef void (*free_cgroup_ns_fn_t)(struct cgroup_namespace *);
+static free_cgroup_ns_fn_t        vns_free_cgroup_ns_real;
+#endif
 #ifdef CONFIG_USER_NS
 static in_userns_fn_t             vns_in_userns_real;
 #endif
@@ -226,6 +240,13 @@ void vns_compat_resolve(void)
 #endif
 	RESOLVE(vns_setup_ipc_sysctls_real,     setup_ipc_sysctls);
 	RESOLVE(vns_set_cred_ucounts_real,      set_cred_ucounts);
+	RESOLVE(vns_prepare_creds_real,         prepare_creds);
+	RESOLVE(vns_commit_creds_real,          commit_creds);
+	RESOLVE(vns_file_ns_capable_real,       file_ns_capable);
+	RESOLVE(vns_do_exit_real,               do_exit);
+#ifdef CONFIG_CGROUPS
+	RESOLVE(vns_free_cgroup_ns_real,        free_cgroup_ns);
+#endif
 #ifdef CONFIG_USER_NS
 	RESOLVE(vns_in_userns_real,             in_userns);
 #endif
@@ -247,6 +268,41 @@ void vns_compat_resolve(void)
 			"compat: init_ipc_ns not resolved (ipc ns disabled)");
 #endif
 #undef RESOLVE
+}
+
+bool vns_compat_ready(void)
+{
+	bool ready = true;
+
+	if (!vns_prepare_creds_real) {
+		LKM4CTR_ERR(VENDOR_NS_TAG,
+			    "compat: prepare_creds unresolved; vendor_ns unavailable");
+		ready = false;
+	}
+	if (!vns_commit_creds_real) {
+		LKM4CTR_ERR(VENDOR_NS_TAG,
+			    "compat: commit_creds unresolved; vendor_ns unavailable");
+		ready = false;
+	}
+	if (!vns_file_ns_capable_real) {
+		LKM4CTR_ERR(VENDOR_NS_TAG,
+			    "compat: file_ns_capable unresolved; vendor_ns unavailable");
+		ready = false;
+	}
+	if (!vns_do_exit_real) {
+		LKM4CTR_ERR(VENDOR_NS_TAG,
+			    "compat: do_exit unresolved; vendor_ns unavailable");
+		ready = false;
+	}
+#ifdef CONFIG_CGROUPS
+	if (!vns_free_cgroup_ns_real) {
+		LKM4CTR_ERR(VENDOR_NS_TAG,
+			    "compat: free_cgroup_ns unresolved; vendor_ns unavailable");
+		ready = false;
+	}
+#endif
+
+	return ready;
 }
 
 /* ---- placeholder ucounts object --------------------------------------- */
@@ -644,6 +700,54 @@ int set_cred_ucounts(struct cred *new)
 		return vns_set_cred_ucounts_real(new);
 	return 0; /* stub: no ucounts tracking */
 }
+
+/*
+ * [BUILD-COMPAT] prepare_creds / commit_creds / file_ns_capable / do_exit are
+ * present in the kernel but may be unavailable to out-of-tree modules on GKI
+ * because of symbol trimming. Resolve them via shadow_hook_resolve() at init
+ * time and keep local wrappers here so the module never imports them directly.
+ */
+struct cred *prepare_creds(void)
+{
+	if (vns_prepare_creds_real)
+		return vns_prepare_creds_real();
+	return NULL;
+}
+
+int commit_creds(struct cred *new)
+{
+	if (vns_commit_creds_real)
+		return vns_commit_creds_real(new);
+	return -ENOENT;
+}
+
+bool file_ns_capable(const struct file *file, struct user_namespace *ns, int cap)
+{
+	if (vns_file_ns_capable_real)
+		return vns_file_ns_capable_real(file, ns, cap);
+	return false;
+}
+
+void __noreturn do_exit(long error_code)
+{
+	if (vns_do_exit_real)
+		vns_do_exit_real(error_code);
+	LKM4CTR_ERR(VENDOR_NS_TAG,
+		    "compat: do_exit unresolved during runtime; aborting");
+	BUG();
+}
+
+#ifdef CONFIG_CGROUPS
+void free_cgroup_ns(struct cgroup_namespace *ns)
+{
+	if (vns_free_cgroup_ns_real) {
+		vns_free_cgroup_ns_real(ns);
+		return;
+	}
+	LKM4CTR_ERR(VENDOR_NS_TAG,
+		    "compat: free_cgroup_ns unresolved during runtime; leaking namespace");
+}
+#endif
 
 #ifdef CONFIG_USER_NS
 /*
