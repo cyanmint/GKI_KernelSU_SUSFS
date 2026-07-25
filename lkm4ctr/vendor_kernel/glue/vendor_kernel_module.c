@@ -192,9 +192,7 @@ int vendor_kernel_init(void)
 		vns_init_nsproxy.cgroup_ns = vns_init_cgroup_ns_ptr;
 #endif
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
-	/* [BUILD-COMPAT] init_ipc_ns is not exported; patch at runtime. */
-	if (vns_init_ipc_ns_ptr)
-		vns_init_nsproxy.ipc_ns = vns_init_ipc_ns_ptr;
+	vns_init_nsproxy.ipc_ns = &init_ipc_ns;
 #endif
 	/* [BUILD-COMPAT] vendored init helpers do not create slab caches out of tree. */
 	vns_uts_ns_init();

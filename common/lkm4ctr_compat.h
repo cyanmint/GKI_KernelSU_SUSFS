@@ -21,7 +21,12 @@
 
 #include <linux/file.h>
 #include <linux/fs.h>
+#include <linux/mm.h>
+#include <linux/namei.h>
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#include <linux/mnt_idmapping.h>
+#endif
 
 #ifndef fd_file
 #define fd_file(f) ((f).file)
@@ -39,9 +44,104 @@
  */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 #define lkm4ctr_inode_init_ts(inode) simple_inode_init_ts(inode)
+#define lkm4ctr_inode_update_ts(inode)					\
+	do {								\
+		struct timespec64 _ts = current_time(inode);		\
+		inode_set_atime_to_ts((inode), _ts);			\
+		inode_set_mtime_to_ts((inode), _ts);			\
+		inode_set_ctime_to_ts((inode), _ts);			\
+	} while (0)
 #else
 #define lkm4ctr_inode_init_ts(inode) \
 	((inode)->i_atime = (inode)->i_mtime = (inode)->i_ctime = current_time(inode))
+#define lkm4ctr_inode_update_ts(inode) lkm4ctr_inode_init_ts(inode)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+static inline int lkm4ctr_inode_permission(struct inode *inode, int mask)
+{
+	return inode_permission(&nop_mnt_idmap, inode, mask);
+}
+
+static inline int lkm4ctr_vfs_unlink(struct inode *dir, struct dentry *dentry,
+				     struct inode **delegated_inode)
+{
+	return vfs_unlink(&nop_mnt_idmap, dir, dentry, delegated_inode);
+}
+
+static inline struct dentry *lkm4ctr_lookup_one_len(const char *name,
+						    struct dentry *base, int len)
+{
+	struct qstr qstr = QSTR_INIT(name, len);
+
+	return lookup_one(&nop_mnt_idmap, &qstr, base);
+}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static inline int lkm4ctr_inode_permission(struct inode *inode, int mask)
+{
+	return inode_permission(&init_user_ns, inode, mask);
+}
+
+static inline int lkm4ctr_vfs_unlink(struct inode *dir, struct dentry *dentry,
+				     struct inode **delegated_inode)
+{
+	return vfs_unlink(&init_user_ns, dir, dentry, delegated_inode);
+}
+
+static inline struct dentry *lkm4ctr_lookup_one_len(const char *name,
+						    struct dentry *base, int len)
+{
+	return lookup_one_len(name, base, len);
+}
+#else
+static inline int lkm4ctr_inode_permission(struct inode *inode, int mask)
+{
+	return inode_permission(inode, mask);
+}
+
+static inline int lkm4ctr_vfs_unlink(struct inode *dir, struct dentry *dentry,
+				     struct inode **delegated_inode)
+{
+	return vfs_unlink(dir, dentry, delegated_inode);
+}
+
+static inline struct dentry *lkm4ctr_lookup_one_len(const char *name,
+						    struct dentry *base, int len)
+{
+	return lookup_one_len(name, base, len);
+}
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+static inline int lkm4ctr_vfs_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	return vfs_mmap(file, vma);
+}
+#else
+static inline int lkm4ctr_vfs_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	return call_mmap(file, vma);
+}
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+static inline unsigned long lkm4ctr_do_mmap(struct file *file, unsigned long addr,
+					    unsigned long len, unsigned long prot,
+					    unsigned long flags, unsigned long pgoff,
+					    unsigned long *populate,
+					    struct list_head *uf)
+{
+	return do_mmap(file, addr, len, prot, flags, 0, pgoff, populate, uf);
+}
+#else
+static inline unsigned long lkm4ctr_do_mmap(struct file *file, unsigned long addr,
+					    unsigned long len, unsigned long prot,
+					    unsigned long flags, unsigned long pgoff,
+					    unsigned long *populate,
+					    struct list_head *uf)
+{
+	return do_mmap(file, addr, len, prot, flags, pgoff, populate, uf);
+}
 #endif
 
 #endif /* _LKM4CTR_COMPAT_H */

@@ -41,6 +41,7 @@
 #include <linux/sched/user.h>
 
 #include "../vendor_kernel.h"
+#include "lkm4ctr_compat.h"
 #include <net/sock.h>
 #include "util.h"
 
@@ -55,7 +56,6 @@
 #define mq_getsetattr_time32 vns_mq_getsetattr_time32
 #define mq_timedsend_time32 vns_mq_timedsend_time32
 #define mq_timedreceive_time32 vns_mq_timedreceive_time32
-#define init_mqueue_fs vns_init_mqueue_fs
 
 struct mqueue_fs_context {
 	struct ipc_namespace	*ipc_ns;
@@ -316,7 +316,7 @@ static struct inode *mqueue_get_inode(struct super_block *sb,
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	inode->i_mtime = inode->i_ctime = inode->i_atime = current_time(inode);
+	lkm4ctr_inode_update_ts(inode);
 
 	if (S_ISREG(mode)) {
 		struct mqueue_inode_info *info;
@@ -610,7 +610,7 @@ static int mqueue_create_attr(struct dentry *dentry, umode_t mode, void *arg)
 
 	put_ipc_ns(ipc_ns);
 	dir->i_size += DIRENT_SIZE;
-	dir->i_ctime = dir->i_mtime = dir->i_atime = current_time(dir);
+	lkm4ctr_inode_update_ts(dir);
 
 	d_instantiate(dentry, inode);
 	dget(dentry);
@@ -622,9 +622,24 @@ out_unlock:
 	return error;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+static int mqueue_create(struct mnt_idmap *idmap, struct inode *dir,
+			 struct dentry *dentry, umode_t mode, bool excl)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
 static int mqueue_create(struct user_namespace *mnt_userns, struct inode *dir,
 			 struct dentry *dentry, umode_t mode, bool excl)
+#else
+static int mqueue_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			 bool excl)
+#endif
 {
+	(void)dir;
+	(void)excl;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+	(void)idmap;
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	(void)mnt_userns;
+#endif
 	return mqueue_create_attr(dentry, mode, NULL);
 }
 
@@ -632,7 +647,7 @@ static int mqueue_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = d_inode(dentry);
 
-	dir->i_ctime = dir->i_mtime = dir->i_atime = current_time(dir);
+	lkm4ctr_inode_update_ts(dir);
 	dir->i_size -= DIRENT_SIZE;
 	drop_nlink(inode);
 	dput(dentry);
@@ -670,7 +685,7 @@ static ssize_t mqueue_read_file(struct file *filp, char __user *u_data,
 	if (ret <= 0)
 		return ret;
 
-	file_inode(filp)->i_atime = file_inode(filp)->i_ctime = current_time(file_inode(filp));
+	lkm4ctr_inode_update_ts(file_inode(filp));
 	return ret;
 }
 
@@ -901,7 +916,7 @@ static int prepare_open(struct dentry *dentry, int oflag, int ro,
 	if ((oflag & O_ACCMODE) == (O_RDWR | O_WRONLY))
 		return -EINVAL;
 	acc = oflag2acc[oflag & O_ACCMODE];
-	return inode_permission(&init_user_ns, d_inode(dentry), acc);
+	return lkm4ctr_inode_permission(d_inode(dentry), acc);
 }
 
 static int do_mq_open(const char __user *u_name, int oflag, umode_t mode,
@@ -925,7 +940,7 @@ static int do_mq_open(const char __user *u_name, int oflag, umode_t mode,
 
 	ro = mnt_want_write(mnt);	/* we'll drop it in any case */
 	inode_lock(d_inode(root));
-	path.dentry = lookup_one_len(name->name, root, strlen(name->name));
+	path.dentry = lkm4ctr_lookup_one_len(name->name, root, strlen(name->name));
 	if (IS_ERR(path.dentry)) {
 		error = PTR_ERR(path.dentry);
 		goto out_putfd;
@@ -991,7 +1006,7 @@ SYSCALL_DEFINE1(mq_unlink, const char __user *, u_name)
 	if (err)
 		goto out_name;
 	inode_lock_nested(d_inode(mnt->mnt_root), I_MUTEX_PARENT);
-	dentry = lookup_one_len(name->name, mnt->mnt_root,
+	dentry = lkm4ctr_lookup_one_len(name->name, mnt->mnt_root,
 				strlen(name->name));
 	if (IS_ERR(dentry)) {
 		err = PTR_ERR(dentry);
@@ -1003,7 +1018,7 @@ SYSCALL_DEFINE1(mq_unlink, const char __user *, u_name)
 		err = -ENOENT;
 	} else {
 		ihold(inode);
-		err = vfs_unlink(&init_user_ns, d_inode(dentry->d_parent),
+		err = lkm4ctr_vfs_unlink(d_inode(dentry->d_parent),
 				 dentry, NULL);
 	}
 	dput(dentry);
@@ -1036,7 +1051,7 @@ long vns_mq_unlink(const char __user *u_name)
 	if (err)
 		goto out_name;
 	inode_lock_nested(d_inode(mnt->mnt_root), I_MUTEX_PARENT);
-	dentry = lookup_one_len(name->name, mnt->mnt_root, strlen(name->name));
+	dentry = lkm4ctr_lookup_one_len(name->name, mnt->mnt_root, strlen(name->name));
 	if (IS_ERR(dentry)) {
 		err = PTR_ERR(dentry);
 		goto out_unlock;
@@ -1047,7 +1062,7 @@ long vns_mq_unlink(const char __user *u_name)
 		err = -ENOENT;
 	} else {
 		ihold(inode);
-		err = vfs_unlink(&init_user_ns, d_inode(dentry->d_parent), dentry,
+		err = lkm4ctr_vfs_unlink(d_inode(dentry->d_parent), dentry,
 				 NULL);
 	}
 	dput(dentry);
@@ -1150,20 +1165,20 @@ static int do_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr,
 	audit_mq_sendrecv(mqdes, msg_len, msg_prio, ts);
 
 	f = fdget(mqdes);
-	if (unlikely(!f.file)) {
+	if (unlikely(fd_empty(f))) {
 		ret = -EBADF;
 		goto out;
 	}
 
-	inode = file_inode(f.file);
-	if (unlikely(f.file->f_op != &mqueue_file_operations)) {
+	inode = file_inode(fd_file(f));
+	if (unlikely(fd_file(f)->f_op != &mqueue_file_operations)) {
 		ret = -EBADF;
 		goto out_fput;
 	}
 	info = MQUEUE_I(inode);
-	audit_file(f.file);
+	audit_file(fd_file(f));
 
-	if (unlikely(!(f.file->f_mode & FMODE_WRITE))) {
+	if (unlikely(!(fd_file(f)->f_mode & FMODE_WRITE))) {
 		ret = -EBADF;
 		goto out_fput;
 	}
@@ -1203,7 +1218,7 @@ static int do_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr,
 	}
 
 	if (info->attr.mq_curmsgs == info->attr.mq_maxmsg) {
-		if (f.file->f_flags & O_NONBLOCK) {
+		if (fd_file(f)->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 		} else {
 			wait.task = current;
@@ -1229,8 +1244,7 @@ static int do_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr,
 				goto out_unlock;
 			__do_notify(info);
 		}
-		inode->i_atime = inode->i_mtime = inode->i_ctime =
-				current_time(inode);
+		lkm4ctr_inode_update_ts(inode);
 	}
 out_unlock:
 	spin_unlock(&info->lock);
@@ -1265,20 +1279,20 @@ static int do_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr,
 	audit_mq_sendrecv(mqdes, msg_len, 0, ts);
 
 	f = fdget(mqdes);
-	if (unlikely(!f.file)) {
+	if (unlikely(fd_empty(f))) {
 		ret = -EBADF;
 		goto out;
 	}
 
-	inode = file_inode(f.file);
-	if (unlikely(f.file->f_op != &mqueue_file_operations)) {
+	inode = file_inode(fd_file(f));
+	if (unlikely(fd_file(f)->f_op != &mqueue_file_operations)) {
 		ret = -EBADF;
 		goto out_fput;
 	}
 	info = MQUEUE_I(inode);
-	audit_file(f.file);
+	audit_file(fd_file(f));
 
-	if (unlikely(!(f.file->f_mode & FMODE_READ))) {
+	if (unlikely(!(fd_file(f)->f_mode & FMODE_READ))) {
 		ret = -EBADF;
 		goto out_fput;
 	}
@@ -1308,7 +1322,7 @@ static int do_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr,
 	}
 
 	if (info->attr.mq_curmsgs == 0) {
-		if (f.file->f_flags & O_NONBLOCK) {
+		if (fd_file(f)->f_flags & O_NONBLOCK) {
 			spin_unlock(&info->lock);
 			ret = -EAGAIN;
 		} else {
@@ -1324,8 +1338,7 @@ static int do_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr,
 
 		msg_ptr = msg_get(info);
 
-		inode->i_atime = inode->i_mtime = inode->i_ctime =
-				current_time(inode);
+		lkm4ctr_inode_update_ts(inode);
 
 		/* There is now free space in queue. */
 		pipelined_receive(&wake_q, info);
@@ -1455,11 +1468,15 @@ static int do_mq_notify(mqd_t mqdes, const struct sigevent *notification)
 			/* and attach it to the socket */
 retry:
 			f = fdget(notification->sigev_signo);
-			if (!f.file) {
+			if (fd_empty(f)) {
 				ret = -EBADF;
 				goto out;
 			}
-			sock = netlink_getsockbyfilp(f.file);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+			sock = netlink_getsockbyfd(notification->sigev_signo);
+#else
+			sock = netlink_getsockbyfilp(fd_file(f));
+#endif
 			fdput(f);
 			if (IS_ERR(sock)) {
 				ret = PTR_ERR(sock);
@@ -1478,13 +1495,13 @@ retry:
 	}
 
 	f = fdget(mqdes);
-	if (!f.file) {
+	if (fd_empty(f)) {
 		ret = -EBADF;
 		goto out;
 	}
 
-	inode = file_inode(f.file);
-	if (unlikely(f.file->f_op != &mqueue_file_operations)) {
+	inode = file_inode(fd_file(f));
+	if (unlikely(fd_file(f)->f_op != &mqueue_file_operations)) {
 		ret = -EBADF;
 		goto out_fput;
 	}
@@ -1495,7 +1512,7 @@ retry:
 	if (notification == NULL) {
 		if (info->notify_owner == task_tgid(current)) {
 			remove_notification(info);
-			inode->i_atime = inode->i_ctime = current_time(inode);
+			lkm4ctr_inode_update_ts(inode);
 		}
 	} else if (info->notify_owner != NULL) {
 		ret = -EBUSY;
@@ -1521,7 +1538,7 @@ retry:
 
 		info->notify_owner = get_pid(task_tgid(current));
 		info->notify_user_ns = get_user_ns(current_user_ns());
-		inode->i_atime = inode->i_ctime = current_time(inode);
+		lkm4ctr_inode_update_ts(inode);
 	}
 	spin_unlock(&info->lock);
 out_fput:
@@ -1570,33 +1587,33 @@ static int do_mq_getsetattr(int mqdes, struct mq_attr *new, struct mq_attr *old)
 		return -EINVAL;
 
 	f = fdget(mqdes);
-	if (!f.file)
+	if (fd_empty(f))
 		return -EBADF;
 
-	if (unlikely(f.file->f_op != &mqueue_file_operations)) {
+	if (unlikely(fd_file(f)->f_op != &mqueue_file_operations)) {
 		fdput(f);
 		return -EBADF;
 	}
 
-	inode = file_inode(f.file);
+	inode = file_inode(fd_file(f));
 	info = MQUEUE_I(inode);
 
 	spin_lock(&info->lock);
 
 	if (old) {
 		*old = info->attr;
-		old->mq_flags = f.file->f_flags & O_NONBLOCK;
+		old->mq_flags = fd_file(f)->f_flags & O_NONBLOCK;
 	}
 	if (new) {
 		audit_mq_getsetattr(mqdes, new);
-		spin_lock(&f.file->f_lock);
+		spin_lock(&fd_file(f)->f_lock);
 		if (new->mq_flags & O_NONBLOCK)
-			f.file->f_flags |= O_NONBLOCK;
+			fd_file(f)->f_flags |= O_NONBLOCK;
 		else
-			f.file->f_flags &= ~O_NONBLOCK;
-		spin_unlock(&f.file->f_lock);
+			fd_file(f)->f_flags &= ~O_NONBLOCK;
+		spin_unlock(&fd_file(f)->f_lock);
 
-		inode->i_atime = inode->i_ctime = current_time(inode);
+		lkm4ctr_inode_update_ts(inode);
 	}
 
 	spin_unlock(&info->lock);
@@ -1885,7 +1902,9 @@ out_kmem:
 	return error;
 }
 
+#ifndef MODULE
 device_initcall(init_mqueue_fs);
+#endif
 
 int vns_mqueue_fs_init(void)
 {

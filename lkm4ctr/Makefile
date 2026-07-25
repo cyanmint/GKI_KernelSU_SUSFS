@@ -46,6 +46,8 @@ lkm4ctr-objs := \
 	vendor_kernel/kernel/nsproxy.o \
 	vendor_kernel/kernel/pid_namespace.o \
 	vendor_kernel/kernel/user_namespace.o \
+	vendor_kernel/ipc/msgutil.o \
+	vendor_kernel/ipc/util.o \
 	vendor_kernel/ipc/msg.o \
 	vendor_kernel/ipc/sem.o \
 	vendor_kernel/ipc/shm.o \
@@ -58,6 +60,8 @@ lkm4ctr-objs := \
 	vendor_kernel/glue/vendor_kernel_syscalls.o \
 	vendor_kernel/glue/vendor_kernel_diag.o \
 	vendor_kernel/glue/vendor_kernel_compat.o
+
+OBJECT_FILES_NON_STANDARD_vendor_kernel/kernel/pid_namespace.o := y
 
 ccflags-y += -I$(src)/../common
 

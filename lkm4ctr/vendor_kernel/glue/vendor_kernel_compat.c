@@ -350,16 +350,6 @@ bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
 }
 
 /*
- * [BUILD-COMPAT] mq_lock (ipc/mqueue.c, not exported).
- * Spinlock protecting the mqueue VFS reference-count transition from 1→0.
- * Our ipc/namespace.c uses it in vns_put_ipc_ns() (vendored free_ipc_ns).
- * This is our MODULE-LOCAL mq_lock — it protects vendor_kernel ipc namespace
- * refcount drops only; it is entirely separate from the real kernel mq_lock.
- * Declared as extern in <linux/ipc_namespace.h> when CONFIG_POSIX_MQUEUE=y.
- */
-DEFINE_SPINLOCK(mq_lock);
-
-/*
  * [BUILD-COMPAT] from_mnt_ns (fs/namespace.c, not exported).
  * Returns the ns_common embedded inside a mnt_namespace.  Used in
  * nsproxy.c's validate_nsset() when checking CLONE_NEWNS during setns.

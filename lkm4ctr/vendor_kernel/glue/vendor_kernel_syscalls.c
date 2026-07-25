@@ -5,6 +5,7 @@
  */
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/mman.h>
 #include <linux/uaccess.h>
 #include <linux/capability.h>
 #include <linux/sched/task.h>

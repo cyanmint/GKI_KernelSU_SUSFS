@@ -48,6 +48,7 @@
 #include <linux/uaccess.h>
 
 #include "../vendor_kernel.h"
+#include "lkm4ctr_compat.h"
 #include "util.h"
 
 #define shmget vns_shmget
@@ -157,6 +158,7 @@ void shm_exit_ns(struct ipc_namespace *ns)
 }
 #endif
 
+#ifndef MODULE
 static int __init ipc_ns_init(void)
 {
 	shm_init_ns(&init_ipc_ns);
@@ -164,6 +166,7 @@ static int __init ipc_ns_init(void)
 }
 
 pure_initcall(ipc_ns_init);
+#endif
 
 void __init shm_init(void)
 {
@@ -587,14 +590,22 @@ static int shm_set_policy(struct vm_area_struct *vma, struct mempolicy *new)
 }
 
 static struct mempolicy *shm_get_policy(struct vm_area_struct *vma,
-					unsigned long addr)
+					unsigned long addr
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+					, unsigned long *ilx
+#endif
+					)
 {
 	struct file *file = vma->vm_file;
 	struct shm_file_data *sfd = shm_file_data(file);
 	struct mempolicy *pol = NULL;
 
 	if (sfd->vm_ops->get_policy)
-		pol = sfd->vm_ops->get_policy(vma, addr);
+		pol = sfd->vm_ops->get_policy(vma, addr
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
+					      , ilx
+#endif
+					      );
 	else if (vma->vm_policy)
 		pol = vma->vm_policy;
 
@@ -616,7 +627,7 @@ static int shm_mmap(struct file *file, struct vm_area_struct *vma)
 	if (ret)
 		return ret;
 
-	ret = call_mmap(sfd->file, vma);
+	ret = lkm4ctr_vfs_mmap(sfd->file, vma);
 	if (ret) {
 		__shm_close(sfd);
 		return ret;
@@ -1680,7 +1691,8 @@ long do_shmat(int shmid, char __user *shmaddr, int shmflg,
 			goto invalid;
 	}
 
-	addr = do_mmap(file, addr, size, prot, flags, 0, &populate, NULL);
+	addr = lkm4ctr_do_mmap(file, addr, size, prot, flags, 0, &populate,
+			       NULL);
 	*raddr = addr;
 	err = 0;
 	if (IS_ERR_VALUE(addr))

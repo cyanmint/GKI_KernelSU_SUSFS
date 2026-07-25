@@ -7,6 +7,7 @@
 #include <linux/hashtable.h>
 
 #include "../vendor_kernel.h"
+#include "../ipc/util.h"
 
 size_t vendor_kernel_diag_snprintf(char *buf, size_t buflen)
 {
