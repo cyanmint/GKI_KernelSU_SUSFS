@@ -84,9 +84,6 @@ typedef void (*retire_userns_sysctls_fn_t)(struct user_namespace *);
 typedef int  (*security_create_user_ns_fn_t)(const struct cred *);
 typedef void (*perf_event_namespaces_fn_t)(struct task_struct *);
 typedef bool (*setup_mq_sysctls_fn_t)(struct ipc_namespace *);
-typedef void (*mq_clear_sbinfo_fn_t)(struct ipc_namespace *);
-typedef void (*mq_put_mnt_fn_t)(struct ipc_namespace *);
-typedef int  (*msg_init_ns_fn_t)(struct ipc_namespace *);
 typedef struct ns_common *(*from_mnt_ns_fn_t)(struct mnt_namespace *);
 typedef struct pid *(*pidfd_pid_fn_t)(const struct file *);
 typedef void (*set_fs_root_fn_t)(struct fs_struct *, const struct path *);
@@ -98,16 +95,9 @@ typedef bool (*current_chrooted_fn_t)(void);
 typedef void (*disable_pid_allocation_fn_t)(struct pid_namespace *);
 typedef bool (*proc_ns_file_fn_t)(const struct file *);
 typedef void (*retire_ipc_sysctls_fn_t)(struct ipc_namespace *);
-#ifdef CONFIG_POSIX_MQUEUE
 typedef void (*retire_mq_sysctls_fn_t)(struct ipc_namespace *);
-#endif
 #ifdef CONFIG_KEYS
 typedef void (*key_free_user_ns_fn_t)(struct user_namespace *);
-#endif
-#ifdef CONFIG_SYSVIPC
-typedef void (*sem_init_ns_fn_t)(struct ipc_namespace *);
-typedef void (*shm_init_ns_fn_t)(struct ipc_namespace *);
-typedef void (*exit_sem_fn_t)(struct task_struct *);
 #endif
 typedef bool (*setup_ipc_sysctls_fn_t)(struct ipc_namespace *);
 typedef int  (*set_cred_ucounts_fn_t)(struct cred *);
@@ -116,9 +106,6 @@ typedef int  (*commit_creds_fn_t)(struct cred *);
 typedef bool (*file_ns_capable_fn_t)(const struct file *,
 				     struct user_namespace *, int);
 typedef void (*do_exit_fn_t)(long);
-#ifdef CONFIG_POSIX_MQUEUE
-typedef int  (*mq_init_ns_fn_t)(struct ipc_namespace *);
-#endif
 
 static inc_ucount_fn_t            vns_inc_ucount_real;
 static dec_ucount_fn_t            vns_dec_ucount_real;
@@ -127,9 +114,6 @@ static retire_userns_sysctls_fn_t vns_retire_userns_sysctls_real;
 static security_create_user_ns_fn_t vns_security_create_user_ns_real;
 static perf_event_namespaces_fn_t vns_perf_event_namespaces_real;
 static setup_mq_sysctls_fn_t      vns_setup_mq_sysctls_real;
-static mq_clear_sbinfo_fn_t       vns_mq_clear_sbinfo_real;
-static mq_put_mnt_fn_t            vns_mq_put_mnt_real;
-static msg_init_ns_fn_t           vns_msg_init_ns_real;
 static from_mnt_ns_fn_t           vns_from_mnt_ns_real;
 static pidfd_pid_fn_t             vns_pidfd_pid_real;
 static set_fs_root_fn_t           vns_set_fs_root_real;
@@ -141,16 +125,9 @@ static current_chrooted_fn_t      vns_current_chrooted_real;
 static disable_pid_allocation_fn_t vns_disable_pid_allocation_real;
 static proc_ns_file_fn_t          vns_proc_ns_file_real;
 static retire_ipc_sysctls_fn_t    vns_retire_ipc_sysctls_real;
-#ifdef CONFIG_POSIX_MQUEUE
 static retire_mq_sysctls_fn_t     vns_retire_mq_sysctls_real;
-#endif
 #ifdef CONFIG_KEYS
 static key_free_user_ns_fn_t      vns_key_free_user_ns_real;
-#endif
-#ifdef CONFIG_SYSVIPC
-static sem_init_ns_fn_t           vns_sem_init_ns_real;
-static shm_init_ns_fn_t           vns_shm_init_ns_real;
-static exit_sem_fn_t              vns_exit_sem_real;
 #endif
 static setup_ipc_sysctls_fn_t     vns_setup_ipc_sysctls_real;
 static set_cred_ucounts_fn_t      vns_set_cred_ucounts_real;
@@ -158,9 +135,6 @@ static prepare_creds_fn_t         vns_prepare_creds_real;
 static commit_creds_fn_t          vns_commit_creds_real;
 static file_ns_capable_fn_t       vns_file_ns_capable_real;
 static do_exit_fn_t               vns_do_exit_real;
-#ifdef CONFIG_POSIX_MQUEUE
-static mq_init_ns_fn_t            vns_mq_init_ns_real;
-#endif
 
 /*
  * [BUILD-COMPAT] tasklist_lock (kernel/fork.c, not exported).
@@ -176,10 +150,11 @@ DEFINE_RWLOCK(tasklist_lock);
 struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 #endif /* CONFIG_CGROUPS */
 
-/* Resolved pointer to the kernel's init_ipc_ns data object. */
-#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+/* Resolved pointer to the *real* kernel's init_ipc_ns data object (best-effort;
+ * NULL on vendor_kernel's primary CONFIG_SYSVIPC=n && CONFIG_POSIX_MQUEUE=n
+ * target, where the vendor-owned vns_default_ipc_ns singleton is used instead).
+ * Declared unconditionally so mqueue/sysvipc support is always compiled. */
 struct ipc_namespace *vns_init_ipc_ns_ptr;
-#endif /* CONFIG_POSIX_MQUEUE || CONFIG_SYSVIPC */
 
 /*
  * [BUILD-COMPAT] Module-owned kmem_cache pointers for the four namespace-
@@ -248,9 +223,6 @@ void vns_compat_resolve(void)
 	RESOLVE(vns_security_create_user_ns_real, security_create_user_ns);
 	RESOLVE(vns_perf_event_namespaces_real, perf_event_namespaces);
 	RESOLVE(vns_setup_mq_sysctls_real,      setup_mq_sysctls);
-	RESOLVE(vns_mq_clear_sbinfo_real,       mq_clear_sbinfo);
-	RESOLVE(vns_mq_put_mnt_real,            mq_put_mnt);
-	RESOLVE(vns_msg_init_ns_real,           msg_init_ns);
 	RESOLVE(vns_from_mnt_ns_real,           from_mnt_ns);
 	RESOLVE(vns_pidfd_pid_real,             pidfd_pid);
 	RESOLVE(vns_set_fs_root_real,           set_fs_root);
@@ -262,16 +234,9 @@ void vns_compat_resolve(void)
 	RESOLVE(vns_disable_pid_allocation_real, disable_pid_allocation);
 	RESOLVE(vns_proc_ns_file_real,          proc_ns_file);
 	RESOLVE(vns_retire_ipc_sysctls_real,    retire_ipc_sysctls);
-#ifdef CONFIG_POSIX_MQUEUE
 	RESOLVE(vns_retire_mq_sysctls_real,     retire_mq_sysctls);
-#endif
 #ifdef CONFIG_KEYS
 	RESOLVE(vns_key_free_user_ns_real,      key_free_user_ns);
-#endif
-#ifdef CONFIG_SYSVIPC
-	RESOLVE(vns_sem_init_ns_real,           sem_init_ns);
-	RESOLVE(vns_shm_init_ns_real,           shm_init_ns);
-	RESOLVE(vns_exit_sem_real,              exit_sem);
 #endif
 	RESOLVE(vns_setup_ipc_sysctls_real,     setup_ipc_sysctls);
 	RESOLVE(vns_set_cred_ucounts_real,      set_cred_ucounts);
@@ -279,9 +244,6 @@ void vns_compat_resolve(void)
 	RESOLVE(vns_commit_creds_real,          commit_creds);
 	RESOLVE(vns_file_ns_capable_real,       file_ns_capable);
 	RESOLVE(vns_do_exit_real,               do_exit);
-#ifdef CONFIG_POSIX_MQUEUE
-	RESOLVE(vns_mq_init_ns_real,            mq_init_ns);
-#endif
 #ifdef CONFIG_CGROUPS
 	vns_init_cgroup_ns_ptr = (struct cgroup_namespace *)(uintptr_t)
 		shadow_hook_resolve("init_cgroup_ns");
@@ -289,13 +251,17 @@ void vns_compat_resolve(void)
 		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
 			"compat: init_cgroup_ns not resolved (cgroup ns disabled)");
 #endif
-#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+	/*
+	 * Best-effort resolve of the *real* kernel's init_ipc_ns. Only
+	 * succeeds on a kernel that ships sysvipc/mqueue and exposes the
+	 * symbol; NULL on vendor_kernel's primary target, where
+	 * vns_default_ipc_ns is used instead (see vendor_kernel_init()).
+	 */
 	vns_init_ipc_ns_ptr = (struct ipc_namespace *)(uintptr_t)
 		shadow_hook_resolve("init_ipc_ns");
 	if (!vns_init_ipc_ns_ptr)
 		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: init_ipc_ns not resolved (ipc ns disabled)");
-#endif
+			"compat: init_ipc_ns not resolved; using vendor-owned vns_default_ipc_ns");
 	/*
 	 * [BUILD-COMPAT] uts_ns_cache/nsproxy_cachep/pid_ns_cachep/
 	 * user_ns_cachep are NOT resolved here anymore. They are private
@@ -448,35 +414,10 @@ void vns_perf_event_namespaces(struct task_struct *tsk)
  */
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
 {
-#ifdef CONFIG_POSIX_MQUEUE
 	if (vns_setup_mq_sysctls_real)
 		return vns_setup_mq_sysctls_real(ns);
-#endif
 	return true; /* stub */
 }
-
-void vns_mq_clear_sbinfo(struct ipc_namespace *ns)
-{
-	if (vns_mq_clear_sbinfo_real)
-		vns_mq_clear_sbinfo_real(ns);
-}
-
-void vns_mq_put_mnt(struct ipc_namespace *ns)
-{
-	if (vns_mq_put_mnt_real)
-		vns_mq_put_mnt_real(ns);
-}
-
-DEFINE_SPINLOCK(mq_lock);
-
-#ifdef CONFIG_SYSVIPC
-int vns_msg_init_ns(struct ipc_namespace *ns)
-{
-	if (vns_msg_init_ns_real)
-		return vns_msg_init_ns_real(ns);
-	return 0;
-}
-#endif
 
 /*
  * [BUILD-COMPAT] from_mnt_ns (fs/namespace.c, not exported).
@@ -669,32 +610,10 @@ void vns_retire_ipc_sysctls(struct ipc_namespace *ns)
  */
 void vns_retire_mq_sysctls(struct ipc_namespace *ns)
 {
-#ifdef CONFIG_POSIX_MQUEUE
 	if (vns_retire_mq_sysctls_real)
 		vns_retire_mq_sysctls_real(ns);
-#endif
 	/* stub: no-op */
 }
-
-#ifdef CONFIG_SYSVIPC
-void vns_sem_init_ns(struct ipc_namespace *ns)
-{
-	if (vns_sem_init_ns_real)
-		vns_sem_init_ns_real(ns);
-}
-
-void vns_shm_init_ns(struct ipc_namespace *ns)
-{
-	if (vns_shm_init_ns_real)
-		vns_shm_init_ns_real(ns);
-}
-
-void vns_exit_sem(struct task_struct *tsk)
-{
-	if (vns_exit_sem_real)
-		vns_exit_sem_real(tsk);
-}
-#endif
 
 /*
  * [BUILD-COMPAT] setup_ipc_sysctls (ipc/sysctls.c, not exported).
@@ -756,15 +675,6 @@ void __noreturn vns_do_exit(long error_code)
 		    "compat: do_exit unresolved during runtime; aborting");
 	BUG();
 }
-
-#ifdef CONFIG_POSIX_MQUEUE
-int vns_mq_init_ns(struct ipc_namespace *ns)
-{
-	if (vns_mq_init_ns_real)
-		return vns_mq_init_ns_real(ns);
-	return 0;
-}
-#endif
 
 #ifdef CONFIG_CGROUPS
 /*

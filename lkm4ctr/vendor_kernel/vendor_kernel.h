@@ -296,9 +296,32 @@ extern struct ucounts vns_ucounts_stub;
 #ifdef CONFIG_CGROUPS
 extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 #endif
-#if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
+/*
+ * vns_init_ipc_ns_ptr is the best-effort resolved pointer to the *real*
+ * kernel's init_ipc_ns data object (resolved via shadow_hook_resolve() in
+ * glue/vendor_kernel_compat.c). It is only non-NULL on a target kernel that
+ * genuinely ships sysvipc/mqueue (CONFIG_SYSVIPC=y or CONFIG_POSIX_MQUEUE=y)
+ * AND exposes it through kallsyms. On vendor_kernel's primary target
+ * (CONFIG_SYSVIPC=n && CONFIG_POSIX_MQUEUE=n) it is NULL and the vendor-owned
+ * vns_default_ipc_ns singleton is used instead (see glue/vendor_kernel_module.c
+ * and ipc/namespace.c). Declared unconditionally so mqueue/sysvipc support is
+ * always compiled regardless of the target kernel's CONFIG_SYSVIPC/
+ * CONFIG_POSIX_MQUEUE (mirroring the UTS_NS/PID_NS/USER_NS self-containment).
+ */
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
-#endif
+/*
+ * vns_default_ipc_ns is vendor_kernel's own module-owned default ipc
+ * namespace (defined in ipc/msgutil.c as the vendored init_ipc_ns object,
+ * renamed via the #define below). It is fully initialized and its refcount
+ * pinned at vendor_kernel_init() time (see vns_ipc_default_init()) so it can
+ * serve as the fall-through ipc namespace for every task that never called
+ * unshare(CLONE_NEWIPC), even on a kernel whose own init_nsproxy.ipc_ns is
+ * NULL (CONFIG_IPC_NS=n).
+ */
+extern struct ipc_namespace vns_default_ipc_ns;
+int vns_ipc_default_init(void);
+void vns_ipc_default_exit(void);
+struct ipc_namespace *vns_ipc_active_default(void);
 /*
  * Module-owned kmem_cache pointers (created via kmem_cache_create() in
  * vns_uts_ns_init()/vns_nsproxy_cache_init()/vns_pid_ns_init()/
@@ -325,11 +348,9 @@ void vns_perf_event_namespaces(struct task_struct *tsk);
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns);
 void vns_mq_clear_sbinfo(struct ipc_namespace *ns);
 void vns_mq_put_mnt(struct ipc_namespace *ns);
-#ifdef CONFIG_SYSVIPC
 int vns_msg_init_ns(struct ipc_namespace *ns);
 void vns_free_ipcs(struct ipc_namespace *ns, struct ipc_ids *ids,
 		 void (*free)(struct ipc_namespace *, struct kern_ipc_perm *));
-#endif
 struct ns_common *vns_from_mnt_ns(struct mnt_namespace *mnt_ns);
 struct pid *vns_pidfd_pid(const struct file *file);
 void vns_set_fs_root(struct fs_struct *fs, const struct path *path);
@@ -349,12 +370,9 @@ int vns_commit_creds(struct cred *new);
 bool vns_file_ns_capable(const struct file *file, struct user_namespace *ns,
 			 int cap);
 void __noreturn vns_do_exit(long error_code);
-#ifdef CONFIG_SYSVIPC
 void vns_sem_init_ns(struct ipc_namespace *ns);
 void vns_shm_init_ns(struct ipc_namespace *ns);
 void vns_exit_sem(struct task_struct *tsk);
-#endif
-#ifdef CONFIG_POSIX_MQUEUE
 int vns_mq_init_ns(struct ipc_namespace *ns);
 int vns_mqueue_fs_init(void);
 void vns_mqueue_fs_exit(void);
@@ -370,8 +388,6 @@ long vns_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr, size_t msg_len,
 long vns_mq_notify(mqd_t mqdes, const struct sigevent __user *u_notification);
 long vns_mq_getsetattr(mqd_t mqdes, const struct mq_attr __user *u_mqstat,
 		      struct mq_attr __user *u_omqstat);
-#endif
-#ifdef CONFIG_SYSVIPC
 long vns_ksys_msgget(key_t key, int msgflg);
 long vns_msgctl(int msqid, int cmd, struct msqid_ds __user *buf);
 long vns_ksys_msgsnd(int msqid, struct msgbuf __user *msgp, size_t msgsz,
@@ -387,7 +403,6 @@ long vns_ksys_shmget(key_t key, size_t size, int shmflg);
 long vns_shmctl(int shmid, int cmd, struct shmid_ds __user *buf);
 long vns_shmat(int shmid, char __user *shmaddr, int shmflg);
 long vns_ksys_shmdt(char __user *shmaddr);
-#endif
 
 #ifndef VNS_COMPAT_IMPL
 #define inc_ucount vns_inc_ucount
@@ -399,9 +414,8 @@ long vns_ksys_shmdt(char __user *shmaddr);
 #define setup_mq_sysctls vns_setup_mq_sysctls
 #define mq_clear_sbinfo vns_mq_clear_sbinfo
 #define mq_put_mnt vns_mq_put_mnt
-#ifdef CONFIG_SYSVIPC
 #define msg_init_ns vns_msg_init_ns
-#endif
+#define init_ipc_ns vns_default_ipc_ns
 #define from_mnt_ns vns_from_mnt_ns
 #define pidfd_pid vns_pidfd_pid
 #define set_fs_root vns_set_fs_root
@@ -413,11 +427,9 @@ long vns_ksys_shmdt(char __user *shmaddr);
 #define disable_pid_allocation vns_disable_pid_allocation
 #define proc_ns_file vns_proc_ns_file
 #define retire_mq_sysctls vns_retire_mq_sysctls
-#ifdef CONFIG_SYSVIPC
 #define sem_init_ns vns_sem_init_ns
 #define shm_init_ns vns_shm_init_ns
 #define exit_sem vns_exit_sem
-#endif
 #define setup_ipc_sysctls vns_setup_ipc_sysctls
 #define retire_ipc_sysctls vns_retire_ipc_sysctls
 #define set_cred_ucounts vns_set_cred_ucounts
@@ -428,9 +440,7 @@ long vns_ksys_shmdt(char __user *shmaddr);
 #ifdef CONFIG_USER_NS
 #define in_userns vns_in_userns
 #endif
-#ifdef CONFIG_POSIX_MQUEUE
 #define mq_init_ns vns_mq_init_ns
-#endif
 #ifdef CONFIG_CGROUPS
 #define free_cgroup_ns vns_free_cgroup_ns
 #endif

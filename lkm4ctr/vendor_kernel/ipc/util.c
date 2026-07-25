@@ -77,28 +77,13 @@ struct ipc_proc_iface {
 	int (*show)(struct seq_file *, void *);
 };
 
-/**
- * ipc_init - initialise ipc subsystem
- *
- * The various sysv ipc resources (semaphores, messages and shared
- * memory) are initialised.
- *
- * A callback routine is registered into the memory hotplug notifier
- * chain: since msgmni scales to lowmem this callback routine will be
- * called upon successful memory add / remove to recompute msmgni.
- */
-static int __init ipc_init(void)
-{
-	proc_mkdir("sysvipc", NULL);
-	sem_init();
-	msg_init();
-	shm_init();
-
-	return 0;
-}
-#ifndef MODULE
-device_initcall(ipc_init);
-#endif
+/* [RENAME] The upstream ipc_init()/device_initcall(ipc_init) global
+ * initcall is removed: vendor_kernel sets up the default ipc_namespace
+ * explicitly from vendor_kernel_init() (see vns_ipc_default_init()), and a
+ * static unreferenced __init function would only draw an unused-function
+ * warning here. The per-subsystem sem_init()/msg_init()/shm_init() and the
+ * /proc/sysvipc registration helpers remain vendored (dead but harmless,
+ * referencing only in-module symbols) for source-diff fidelity. */
 
 static const struct rhashtable_params ipc_kht_params = {
 	.head_offset		= offsetof(struct kern_ipc_perm, khtnode),

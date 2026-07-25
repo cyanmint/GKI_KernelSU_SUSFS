@@ -48,7 +48,6 @@
 #include <linux/uaccess.h>
 
 #include "../vendor_kernel.h"
-#include "lkm4ctr_compat.h"
 #include "util.h"
 
 #undef SYSCALL_METADATA
@@ -875,11 +874,6 @@ long ksys_shmget(key_t key, size_t size, int shmflg)
 	return ipcget(ns, &shm_ids(ns), &shm_ops, &shm_params);
 }
 
-SYSCALL_DEFINE3(shmget, key_t, key, size_t, size, int, shmflg)
-{
-	return ksys_shmget(key, size, shmflg);
-}
-
 static inline unsigned long copy_shmid_to_user(void __user *buf, struct shmid64_ds *in, int version)
 {
 	switch (version) {
@@ -1324,11 +1318,6 @@ static long ksys_shmctl(int shmid, int cmd, struct shmid_ds __user *buf, int ver
 	}
 }
 
-SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, struct shmid_ds __user *, buf)
-{
-	return ksys_shmctl(shmid, cmd, buf, IPC_64);
-}
-
 long vns_shmctl(int shmid, int cmd, struct shmid_ds __user *buf)
 {
 	return ksys_shmctl(shmid, cmd, buf, IPC_64);
@@ -1342,10 +1331,6 @@ long ksys_old_shmctl(int shmid, int cmd, struct shmid_ds __user *buf)
 	return ksys_shmctl(shmid, cmd, buf, version);
 }
 
-SYSCALL_DEFINE3(old_shmctl, int, shmid, int, cmd, struct shmid_ds __user *, buf)
-{
-	return ksys_old_shmctl(shmid, cmd, buf);
-}
 #endif
 
 #ifdef CONFIG_COMPAT
@@ -1525,11 +1510,6 @@ static long compat_ksys_shmctl(int shmid, int cmd, void __user *uptr, int versio
 	return err;
 }
 
-COMPAT_SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, void __user *, uptr)
-{
-	return compat_ksys_shmctl(shmid, cmd, uptr, IPC_64);
-}
-
 #ifdef CONFIG_ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 long compat_ksys_old_shmctl(int shmid, int cmd, void __user *uptr)
 {
@@ -1538,10 +1518,6 @@ long compat_ksys_old_shmctl(int shmid, int cmd, void __user *uptr)
 	return compat_ksys_shmctl(shmid, cmd, uptr, version);
 }
 
-COMPAT_SYSCALL_DEFINE3(old_shmctl, int, shmid, int, cmd, void __user *, uptr)
-{
-	return compat_ksys_old_shmctl(shmid, cmd, uptr);
-}
 #endif
 #endif
 
@@ -1727,18 +1703,6 @@ out:
 	return err;
 }
 
-SYSCALL_DEFINE3(shmat, int, shmid, char __user *, shmaddr, int, shmflg)
-{
-	unsigned long ret;
-	long err;
-
-	err = do_shmat(shmid, shmaddr, shmflg, &ret, SHMLBA);
-	if (err)
-		return err;
-	force_successful_syscall_return();
-	return (long)ret;
-}
-
 long vns_shmat(int shmid, char __user *shmaddr, int shmflg)
 {
 	unsigned long ret;
@@ -1756,17 +1720,6 @@ long vns_shmat(int shmid, char __user *shmaddr, int shmflg)
 #define COMPAT_SHMLBA	SHMLBA
 #endif
 
-COMPAT_SYSCALL_DEFINE3(shmat, int, shmid, compat_uptr_t, shmaddr, int, shmflg)
-{
-	unsigned long ret;
-	long err;
-
-	err = do_shmat(shmid, compat_ptr(shmaddr), shmflg, &ret, COMPAT_SHMLBA);
-	if (err)
-		return err;
-	force_successful_syscall_return();
-	return (long)ret;
-}
 #endif
 
 /*
@@ -1877,11 +1830,6 @@ long ksys_shmdt(char __user *shmaddr)
 
 	mmap_write_unlock(mm);
 	return retval;
-}
-
-SYSCALL_DEFINE1(shmdt, char __user *, shmaddr)
-{
-	return ksys_shmdt(shmaddr);
 }
 
 #ifdef CONFIG_PROC_FS

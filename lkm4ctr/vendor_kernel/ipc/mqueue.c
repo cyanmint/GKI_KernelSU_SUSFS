@@ -41,7 +41,10 @@
 #include <linux/sched/user.h>
 
 #include "../vendor_kernel.h"
-#include "lkm4ctr_compat.h"
+/* [BUILD-COMPAT] LKM4CTR ring-buffer logging (see common/lkm4ctr_log.h);
+ * replaces upstream pr_warn/pr_info so all output goes through the module's
+ * own log sink, matching the rest of vendor_kernel/. */
+#include "lkm4ctr_log.h"
 #include <net/sock.h>
 #include "util.h"
 
@@ -277,18 +280,27 @@ try_again:
 	parent = info->msg_tree_rightmost;
 	if (!parent) {
 		if (info->attr.mq_curmsgs) {
-			pr_warn_once("Inconsistency in POSIX message queue, "
-				     "no tree element, but supposedly messages "
-				     "should exist!\n");
+			/* [BUILD-COMPAT] pr_warn_once -> LKM4CTR_WARN with a
+			 * local once-guard to preserve upstream "once" semantics. */
+			static bool warned_no_tree;
+			if (!warned_no_tree) {
+				warned_no_tree = true;
+				LKM4CTR_WARN("vendor_kernel",
+					"Inconsistency in POSIX message queue, no tree element, but supposedly messages should exist!");
+			}
 			info->attr.mq_curmsgs = 0;
 		}
 		return NULL;
 	}
 	leaf = rb_entry(parent, struct posix_msg_tree_node, rb_node);
 	if (unlikely(list_empty(&leaf->msg_list))) {
-		pr_warn_once("Inconsistency in POSIX message queue, "
-			     "empty leaf node but we haven't implemented "
-			     "lazy leaf delete!\n");
+		/* [BUILD-COMPAT] pr_warn_once -> LKM4CTR_WARN with once-guard. */
+		static bool warned_empty_leaf;
+		if (!warned_empty_leaf) {
+			warned_empty_leaf = true;
+			LKM4CTR_WARN("vendor_kernel",
+				"Inconsistency in POSIX message queue, empty leaf node but we haven't implemented lazy leaf delete!");
+		}
 		msg_tree_erase(leaf, info);
 		goto try_again;
 	} else {
@@ -971,16 +983,6 @@ out_putname:
 	return fd;
 }
 
-SYSCALL_DEFINE4(mq_open, const char __user *, u_name, int, oflag, umode_t, mode,
-		struct mq_attr __user *, u_attr)
-{
-	struct mq_attr attr;
-	if (u_attr && copy_from_user(&attr, u_attr, sizeof(struct mq_attr)))
-		return -EFAULT;
-
-	return do_mq_open(u_name, oflag, mode, u_attr ? &attr : NULL);
-}
-
 long vns_mq_open(const char __user *u_name, int oflag, umode_t mode,
 		struct mq_attr __user *u_attr)
 {
@@ -989,51 +991,6 @@ long vns_mq_open(const char __user *u_name, int oflag, umode_t mode,
 	if (u_attr && copy_from_user(&attr, u_attr, sizeof(struct mq_attr)))
 		return -EFAULT;
 	return do_mq_open(u_name, oflag, mode, u_attr ? &attr : NULL);
-}
-
-SYSCALL_DEFINE1(mq_unlink, const char __user *, u_name)
-{
-	int err;
-	struct filename *name;
-	struct dentry *dentry;
-	struct inode *inode = NULL;
-	struct ipc_namespace *ipc_ns = vns_current_ipc_ns();
-	struct vfsmount *mnt = ipc_ns->mq_mnt;
-
-	name = getname(u_name);
-	if (IS_ERR(name))
-		return PTR_ERR(name);
-
-	audit_inode_parent_hidden(name, mnt->mnt_root);
-	err = mnt_want_write(mnt);
-	if (err)
-		goto out_name;
-	inode_lock_nested(d_inode(mnt->mnt_root), I_MUTEX_PARENT);
-	dentry = lkm4ctr_lookup_one_len(name->name, mnt->mnt_root,
-				strlen(name->name));
-	if (IS_ERR(dentry)) {
-		err = PTR_ERR(dentry);
-		goto out_unlock;
-	}
-
-	inode = d_inode(dentry);
-	if (!inode) {
-		err = -ENOENT;
-	} else {
-		ihold(inode);
-		err = lkm4ctr_vfs_unlink(d_inode(dentry->d_parent),
-				 dentry, NULL);
-	}
-	dput(dentry);
-
-out_unlock:
-	inode_unlock(d_inode(mnt->mnt_root));
-	iput(inode);
-	mnt_drop_write(mnt);
-out_name:
-	putname(name);
-
-	return err;
 }
 
 long vns_mq_unlink(const char __user *u_name)
@@ -1364,20 +1321,6 @@ out:
 	return ret;
 }
 
-SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqdes, const char __user *, u_msg_ptr,
-		size_t, msg_len, unsigned int, msg_prio,
-		const struct __kernel_timespec __user *, u_abs_timeout)
-{
-	struct timespec64 ts, *p = NULL;
-	if (u_abs_timeout) {
-		int res = prepare_timeout(u_abs_timeout, &ts);
-		if (res)
-			return res;
-		p = &ts;
-	}
-	return do_mq_timedsend(mqdes, u_msg_ptr, msg_len, msg_prio, p);
-}
-
 long vns_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr, size_t msg_len,
 		     unsigned int msg_prio,
 		     const struct __kernel_timespec __user *u_abs_timeout)
@@ -1392,20 +1335,6 @@ long vns_mq_timedsend(mqd_t mqdes, const char __user *u_msg_ptr, size_t msg_len,
 		p = &ts;
 	}
 	return do_mq_timedsend(mqdes, u_msg_ptr, msg_len, msg_prio, p);
-}
-
-SYSCALL_DEFINE5(mq_timedreceive, mqd_t, mqdes, char __user *, u_msg_ptr,
-		size_t, msg_len, unsigned int __user *, u_msg_prio,
-		const struct __kernel_timespec __user *, u_abs_timeout)
-{
-	struct timespec64 ts, *p = NULL;
-	if (u_abs_timeout) {
-		int res = prepare_timeout(u_abs_timeout, &ts);
-		if (res)
-			return res;
-		p = &ts;
-	}
-	return do_mq_timedreceive(mqdes, u_msg_ptr, msg_len, u_msg_prio, p);
 }
 
 long vns_mq_timedreceive(mqd_t mqdes, char __user *u_msg_ptr, size_t msg_len,
@@ -1556,18 +1485,6 @@ free_skb:
 	return ret;
 }
 
-SYSCALL_DEFINE2(mq_notify, mqd_t, mqdes,
-		const struct sigevent __user *, u_notification)
-{
-	struct sigevent n, *p = NULL;
-	if (u_notification) {
-		if (copy_from_user(&n, u_notification, sizeof(struct sigevent)))
-			return -EFAULT;
-		p = &n;
-	}
-	return do_mq_notify(mqdes, p);
-}
-
 long vns_mq_notify(mqd_t mqdes, const struct sigevent __user *u_notification)
 {
 	struct sigevent n, *p = NULL;
@@ -1621,31 +1538,6 @@ static int do_mq_getsetattr(int mqdes, struct mq_attr *new, struct mq_attr *old)
 
 	spin_unlock(&info->lock);
 	fdput(f);
-	return 0;
-}
-
-SYSCALL_DEFINE3(mq_getsetattr, mqd_t, mqdes,
-		const struct mq_attr __user *, u_mqstat,
-		struct mq_attr __user *, u_omqstat)
-{
-	int ret;
-	struct mq_attr mqstat, omqstat;
-	struct mq_attr *new = NULL, *old = NULL;
-
-	if (u_mqstat) {
-		new = &mqstat;
-		if (copy_from_user(new, u_mqstat, sizeof(struct mq_attr)))
-			return -EFAULT;
-	}
-	if (u_omqstat)
-		old = &omqstat;
-
-	ret = do_mq_getsetattr(mqdes, new, old);
-	if (ret || !old)
-		return ret;
-
-	if (copy_to_user(u_omqstat, old, sizeof(struct mq_attr)))
-		return -EFAULT;
 	return 0;
 }
 
@@ -1713,57 +1605,6 @@ static inline int put_compat_mq_attr(const struct mq_attr *attr,
 	return 0;
 }
 
-COMPAT_SYSCALL_DEFINE4(mq_open, const char __user *, u_name,
-		       int, oflag, compat_mode_t, mode,
-		       struct compat_mq_attr __user *, u_attr)
-{
-	struct mq_attr attr, *p = NULL;
-	if (u_attr && oflag & O_CREAT) {
-		p = &attr;
-		if (get_compat_mq_attr(&attr, u_attr))
-			return -EFAULT;
-	}
-	return do_mq_open(u_name, oflag, mode, p);
-}
-
-COMPAT_SYSCALL_DEFINE2(mq_notify, mqd_t, mqdes,
-		       const struct compat_sigevent __user *, u_notification)
-{
-	struct sigevent n, *p = NULL;
-	if (u_notification) {
-		if (get_compat_sigevent(&n, u_notification))
-			return -EFAULT;
-		if (n.sigev_notify == SIGEV_THREAD)
-			n.sigev_value.sival_ptr = compat_ptr(n.sigev_value.sival_int);
-		p = &n;
-	}
-	return do_mq_notify(mqdes, p);
-}
-
-COMPAT_SYSCALL_DEFINE3(mq_getsetattr, mqd_t, mqdes,
-		       const struct compat_mq_attr __user *, u_mqstat,
-		       struct compat_mq_attr __user *, u_omqstat)
-{
-	int ret;
-	struct mq_attr mqstat, omqstat;
-	struct mq_attr *new = NULL, *old = NULL;
-
-	if (u_mqstat) {
-		new = &mqstat;
-		if (get_compat_mq_attr(new, u_mqstat))
-			return -EFAULT;
-	}
-	if (u_omqstat)
-		old = &omqstat;
-
-	ret = do_mq_getsetattr(mqdes, new, old);
-	if (ret || !old)
-		return ret;
-
-	if (put_compat_mq_attr(old, u_omqstat))
-		return -EFAULT;
-	return 0;
-}
 #endif
 
 #ifdef CONFIG_COMPAT_32BIT_TIME
@@ -1777,35 +1618,6 @@ static int compat_prepare_timeout(const struct old_timespec32 __user *p,
 	return 0;
 }
 
-SYSCALL_DEFINE5(mq_timedsend_time32, mqd_t, mqdes,
-		const char __user *, u_msg_ptr,
-		unsigned int, msg_len, unsigned int, msg_prio,
-		const struct old_timespec32 __user *, u_abs_timeout)
-{
-	struct timespec64 ts, *p = NULL;
-	if (u_abs_timeout) {
-		int res = compat_prepare_timeout(u_abs_timeout, &ts);
-		if (res)
-			return res;
-		p = &ts;
-	}
-	return do_mq_timedsend(mqdes, u_msg_ptr, msg_len, msg_prio, p);
-}
-
-SYSCALL_DEFINE5(mq_timedreceive_time32, mqd_t, mqdes,
-		char __user *, u_msg_ptr,
-		unsigned int, msg_len, unsigned int __user *, u_msg_prio,
-		const struct old_timespec32 __user *, u_abs_timeout)
-{
-	struct timespec64 ts, *p = NULL;
-	if (u_abs_timeout) {
-		int res = compat_prepare_timeout(u_abs_timeout, &ts);
-		if (res)
-			return res;
-		p = &ts;
-	}
-	return do_mq_timedreceive(mqdes, u_msg_ptr, msg_len, u_msg_prio, p);
-}
 #endif
 
 static const struct inode_operations mqueue_dir_inode_operations = {
@@ -1868,7 +1680,9 @@ void mq_put_mnt(struct ipc_namespace *ns)
 	kern_unmount(ns->mq_mnt);
 }
 
-static int __init init_mqueue_fs(void)
+/* [RENAME] init_mqueue_fs -> reachable from vns_mqueue_fs_init(); __init
+ * dropped so a non-init caller referencing it is not a section mismatch. */
+static int init_mqueue_fs(void)
 {
 	int error;
 
@@ -1879,7 +1693,7 @@ static int __init init_mqueue_fs(void)
 		return -ENOMEM;
 
 	if (!setup_mq_sysctls(&init_ipc_ns)) {
-		pr_warn("sysctl registration failed\n");
+		LKM4CTR_WARN("vendor_kernel", "mqueue sysctl registration failed");
 		error = -ENOMEM;
 		goto out_kmem;
 	}
@@ -1904,10 +1718,6 @@ out_kmem:
 	kmem_cache_destroy(mqueue_inode_cachep);
 	return error;
 }
-
-#ifndef MODULE
-device_initcall(init_mqueue_fs);
-#endif
 
 int vns_mqueue_fs_init(void)
 {
