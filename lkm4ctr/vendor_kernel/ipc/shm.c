@@ -49,6 +49,9 @@
 
 #include "../vendor_kernel.h"
 #include "util.h"
+/* [BUILD-COMPAT] VFS/mm helper shims that paper over kernel-version API drift
+ * (do_mmap()/vfs_mmap() argument changes); see common/lkm4ctr_compat.h. */
+#include "lkm4ctr_compat.h"
 
 #undef SYSCALL_METADATA
 #define SYSCALL_METADATA(sname, nb, ...)

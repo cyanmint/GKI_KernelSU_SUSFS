@@ -252,16 +252,21 @@ void vns_compat_resolve(void)
 			"compat: init_cgroup_ns not resolved (cgroup ns disabled)");
 #endif
 	/*
-	 * Best-effort resolve of the *real* kernel's init_ipc_ns. Only
-	 * succeeds on a kernel that ships sysvipc/mqueue and exposes the
-	 * symbol; NULL on vendor_kernel's primary target, where
-	 * vns_default_ipc_ns is used instead (see vendor_kernel_init()).
+	 * Best-effort resolve of the *real* kernel's init_ipc_ns. This is now
+	 * used for bookkeeping ONLY -- specifically so vns_task_ipc_ns() can
+	 * recognise and reject it (vns_ipc_ns_is_vendored()), guaranteeing the
+	 * shadow SysV/mqueue handlers never operate on the running kernel's own
+	 * ipc state. It is NEVER substituted for the vendored default: the
+	 * module always uses vns_default_ipc_ns (see vendor_kernel_init()),
+	 * regardless of whether this resolve succeeds. Succeeds only on a kernel
+	 * that ships sysvipc/mqueue and exposes the symbol; NULL (the common
+	 * case, and vendor_kernel's primary target) is perfectly fine.
 	 */
 	vns_init_ipc_ns_ptr = (struct ipc_namespace *)(uintptr_t)
 		shadow_hook_resolve("init_ipc_ns");
 	if (!vns_init_ipc_ns_ptr)
-		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: init_ipc_ns not resolved; using vendor-owned vns_default_ipc_ns");
+		LKM4CTR_INFO(VENDOR_KERNEL_TAG,
+			"compat: real init_ipc_ns not resolved (expected on CONFIG_SYSVIPC=n/CONFIG_POSIX_MQUEUE=n); vendor-owned vns_default_ipc_ns is authoritative either way");
 	/*
 	 * [BUILD-COMPAT] uts_ns_cache/nsproxy_cachep/pid_ns_cachep/
 	 * user_ns_cachep are NOT resolved here anymore. They are private

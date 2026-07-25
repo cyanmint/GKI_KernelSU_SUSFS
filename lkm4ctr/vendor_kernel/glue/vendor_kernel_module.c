@@ -67,13 +67,50 @@ struct nsproxy *vns_current_nsproxy(void)
 	return t ? t->nsproxy : NULL;
 }
 
+/*
+ * vns_ipc_ns_is_vendored() - true iff @ns is an ipc_namespace vendor_kernel is
+ * allowed to operate its shadow SysV/mqueue handlers against.
+ *
+ * The only ipc_namespace a hooked task can legitimately carry are: the
+ * module-owned vendored default (&vns_default_ipc_ns), or one built by our own
+ * unshare/setns/clone install path via vns_copy_ipcs()/create_ipc_ns() (which,
+ * because CLONE_NEWIPC is handled entirely by the vendored path, is always a
+ * vendored object). The one pointer we must reject is the running kernel's own
+ * real init_ipc_ns (vns_init_ipc_ns_ptr, resolved only for cosmetic
+ * bookkeeping): a task that unshared a *non*-IPC namespace on a kernel that
+ * itself ships CONFIG_SYSVIPC/CONFIG_POSIX_MQUEUE would inherit that real
+ * init_ipc_ns by reference, and the vendored handlers must never touch its
+ * real, kernel-owned message-queue / SysV state. NULL is likewise rejected.
+ */
+static bool vns_ipc_ns_is_vendored(struct ipc_namespace *ns)
+{
+	if (!ns)
+		return false;
+	if (vns_init_ipc_ns_ptr && ns == vns_init_ipc_ns_ptr)
+		return false;
+	return true;
+}
+
 struct ipc_namespace *vns_task_ipc_ns(struct task_struct *task)
 {
 	struct vns_task *t = vns_task_find(task_tgid_nr(task));
+	struct ipc_namespace *ns;
 
-	if (t && t->nsproxy && t->nsproxy->ipc_ns)
-		return t->nsproxy->ipc_ns;
-	return task->nsproxy->ipc_ns;
+	ns = (t && t->nsproxy) ? t->nsproxy->ipc_ns : NULL;
+	if (vns_ipc_ns_is_vendored(ns))
+		return ns;
+	ns = task->nsproxy ? task->nsproxy->ipc_ns : NULL;
+	if (vns_ipc_ns_is_vendored(ns))
+		return ns;
+	/*
+	 * The task has no vendored ipc_namespace of its own: either its nsproxy
+	 * carries no ipc_ns (e.g. CONFIG_IPC_NS=n, so init_nsproxy.ipc_ns is
+	 * NULL and the task never unshare(CLONE_NEWIPC)'d), or it carries the
+	 * running kernel's real init_ipc_ns (rejected above). Fall back to
+	 * vendor_kernel's own fully-initialised, module-owned default so the
+	 * SysV/mqueue handlers always act on vendored state exclusively.
+	 */
+	return vns_ipc_active_default();
 }
 
 int vns_registry_set_nsproxy(pid_t tgid, struct nsproxy *nsproxy)
@@ -191,6 +228,7 @@ int vendor_kernel_init(void)
 
 	vns_resolve_symbols();
 	vns_compat_resolve(); /* [BUILD-COMPAT] resolve non-exported kernel symbols */
+	vns_ipc_compat_resolve(); /* [BUILD-COMPAT] resolve non-exported ipc/mm/security/audit symbols */
 	if (!vns_compat_ready())
 		return -ENOENT;
 #ifdef CONFIG_CGROUPS
@@ -200,9 +238,15 @@ int vendor_kernel_init(void)
 		vns_init_nsproxy.cgroup_ns = vns_init_cgroup_ns_ptr;
 #endif
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
-	/* [BUILD-COMPAT] init_ipc_ns is not exported; patch at runtime. */
-	if (vns_init_ipc_ns_ptr)
-		vns_init_nsproxy.ipc_ns = vns_init_ipc_ns_ptr;
+	/*
+	 * [BUILD-COMPAT] vns_init_ipc_ns_ptr (the running kernel's real,
+	 * non-exported init_ipc_ns) is resolved for cosmetic bookkeeping only
+	 * and is deliberately NOT installed on vns_init_nsproxy.ipc_ns here:
+	 * vendor_kernel's IPC subsystem must depend exclusively on the vendored
+	 * vns_default_ipc_ns, never on the real kernel's ipc_namespace object.
+	 * vns_init_nsproxy.ipc_ns is instead pointed at the vendored default
+	 * below, once vns_ipc_default_init() has fully built it.
+	 */
 #endif
 	/* [BUILD-COMPAT] vendored init helpers create vendor_kernel's own
 	 * module-owned slab caches instead of resolving the real kernel's. */
@@ -218,16 +262,48 @@ int vendor_kernel_init(void)
 		return -ENOMEM;
 	}
 
+	/*
+	 * Build vendor_kernel's own default ipc_namespace (mqueuefs + SysV
+	 * msg/sem/shm IDRs) before any IPC syscall hook is live, so that every
+	 * task that never unshare(CLONE_NEWIPC)'d has a valid namespace to
+	 * operate against via vns_current_ipc_ns(). This is built
+	 * unconditionally from the vendored vns_* mqueue/sysvipc code, never
+	 * from (nor gated on) the running kernel's own init_ipc_ns, so the
+	 * shadowed handlers only ever touch vendored ipc state.
+	 */
+	hooked = vns_ipc_default_init();
+	if (hooked) {
+		LKM4CTR_ERR("vendor_kernel", "failed to init default ipc namespace (%d)", hooked);
+		return hooked;
+	}
+	/*
+	 * Point the pinned default nsproxy at the vendored default ipc_ns (never
+	 * the real kernel's) so copy_ipcs()/setns() and the exit-safety sentinel
+	 * see a valid, vendored source ns even on CONFIG_IPC_NS=n.
+	 */
+	vns_init_nsproxy.ipc_ns = vns_ipc_active_default();
+
 	/* [BUILD-COMPAT] must succeed before any hooks are live: without it,
 	 * an exiting task's module-owned nsproxy could be freed by the real
 	 * kernel's own exit path against the real, mismatched kmem_cache. */
 	hooked = vns_exit_hook_init();
-	if (hooked)
+	if (hooked) {
+		vns_ipc_default_exit();
 		return hooked;
+	}
 
 	hooked = shadow_hook_install_all(vendor_kernel_core_hooks, "vendor_kernel");
 	if (hooked < 0) {
 		vns_exit_hook_exit();
+		vns_ipc_default_exit();
+		return hooked;
+	}
+
+	hooked = shadow_hook_install_all(vendor_kernel_ipc_hooks, "vendor_kernel_ipc");
+	if (hooked < 0) {
+		shadow_hook_remove_all(vendor_kernel_core_hooks);
+		vns_exit_hook_exit();
+		vns_ipc_default_exit();
 		return hooked;
 	}
 
@@ -244,8 +320,10 @@ void vendor_kernel_exit(void)
 	if (!vendor_kernel_enabled)
 		return;
 	vendor_kernel_enabled = false;
+	shadow_hook_remove_all(vendor_kernel_ipc_hooks);
 	shadow_hook_remove_all(vendor_kernel_core_hooks);
 	vns_exit_hook_exit();
+	vns_ipc_default_exit();
 	vns_nsproxy_deferred_flush();
 	vns_registry_clear_all();
 	LKM4CTR_INFO("vendor_kernel", "unloaded");

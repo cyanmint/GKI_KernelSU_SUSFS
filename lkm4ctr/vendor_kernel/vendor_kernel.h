@@ -290,6 +290,7 @@ static inline struct ipc_namespace *vns_current_ipc_ns(void)
 }
 
 extern struct shadow_hook *vendor_kernel_core_hooks[];
+extern struct shadow_hook *vendor_kernel_ipc_hooks[];
 
 /* compat layer (glue/vendor_kernel_compat.c) */
 extern struct ucounts vns_ucounts_stub;
@@ -342,6 +343,7 @@ void vns_dec_ucount(struct ucounts *ucounts, enum ucount_type type);
 bool vns_setup_userns_sysctls(struct user_namespace *ns);
 void vns_retire_userns_sysctls(struct user_namespace *ns);
 void vns_compat_resolve(void);
+void vns_ipc_compat_resolve(void);
 bool vns_compat_ready(void);
 int vns_security_create_user_ns(const struct cred *cred);
 void vns_perf_event_namespaces(struct task_struct *tsk);

@@ -45,6 +45,10 @@
  * replaces upstream pr_warn/pr_info so all output goes through the module's
  * own log sink, matching the rest of vendor_kernel/. */
 #include "lkm4ctr_log.h"
+/* [BUILD-COMPAT] VFS helper shims for kernel-version API drift
+ * (inode_update_ts()/inode_permission()/lookup_one_len()/vfs_unlink()
+ * argument changes); see common/lkm4ctr_compat.h. */
+#include "lkm4ctr_compat.h"
 #include <net/sock.h>
 #include "util.h"
 
