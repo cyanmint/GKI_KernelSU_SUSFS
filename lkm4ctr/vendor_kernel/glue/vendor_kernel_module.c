@@ -168,7 +168,6 @@ static void vns_resolve_symbols(void)
 
 int vendor_kernel_init(void)
 {
-	int ret;
 	int hooked;
 
 	if (vendor_kernel_enabled)
@@ -192,26 +191,19 @@ int vendor_kernel_init(void)
 		vns_init_nsproxy.cgroup_ns = vns_init_cgroup_ns_ptr;
 #endif
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
-	vns_init_nsproxy.ipc_ns = &init_ipc_ns;
+	/* [BUILD-COMPAT] init_ipc_ns is not exported; patch at runtime. */
+	if (vns_init_ipc_ns_ptr)
+		vns_init_nsproxy.ipc_ns = vns_init_ipc_ns_ptr;
 #endif
 	/* [BUILD-COMPAT] vendored init helpers do not create slab caches out of tree. */
 	vns_uts_ns_init();
 	vns_pid_ns_init();
 	vns_user_ns_init();
 	vns_nsfs_init();
-#ifdef CONFIG_POSIX_MQUEUE
-	ret = vns_mqueue_fs_init();
-	if (ret)
-		return ret;
-#endif
 
 	hooked = shadow_hook_install_all(vendor_kernel_core_hooks, "vendor_kernel");
-	if (hooked < 0) {
-#ifdef CONFIG_POSIX_MQUEUE
-		vns_mqueue_fs_exit();
-#endif
+	if (hooked < 0)
 		return hooked;
-	}
 
 	vendor_kernel_enabled = true;
 	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
@@ -224,9 +216,6 @@ void vendor_kernel_exit(void)
 		return;
 	vendor_kernel_enabled = false;
 	shadow_hook_remove_all(vendor_kernel_core_hooks);
-#ifdef CONFIG_POSIX_MQUEUE
-	vns_mqueue_fs_exit();
-#endif
 	vns_registry_clear_all();
 	LKM4CTR_INFO("vendor_kernel", "unloaded");
 }

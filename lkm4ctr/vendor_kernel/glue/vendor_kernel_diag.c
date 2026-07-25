@@ -7,7 +7,6 @@
 #include <linux/hashtable.h>
 
 #include "../vendor_kernel.h"
-#include "../ipc/util.h"
 
 size_t vendor_kernel_diag_snprintf(char *buf, size_t buflen)
 {
@@ -30,17 +29,7 @@ size_t vendor_kernel_diag_snprintf(char *buf, size_t buflen)
 			 vendor_kernel_registry.stat_clone);
 	hash_for_each(vendor_kernel_registry.tasks, bkt, t, node)
 		pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
-				 "tgid=%d nsproxy=%px ipc_ns=%px msg_ids=%d sem_ids=%d shm_ids=%d mq_queues=%u\n",
-				 t->tgid, t->nsproxy,
-				 t->nsproxy ? t->nsproxy->ipc_ns : NULL,
-				 t->nsproxy && t->nsproxy->ipc_ns ?
-				 t->nsproxy->ipc_ns->ids[IPC_MSG_IDS].in_use : -1,
-				 t->nsproxy && t->nsproxy->ipc_ns ?
-				 t->nsproxy->ipc_ns->ids[IPC_SEM_IDS].in_use : -1,
-				 t->nsproxy && t->nsproxy->ipc_ns ?
-				 t->nsproxy->ipc_ns->ids[IPC_SHM_IDS].in_use : -1,
-				 t->nsproxy && t->nsproxy->ipc_ns ?
-				 t->nsproxy->ipc_ns->mq_queues_count : 0);
+				 "tgid=%d nsproxy=%px\n", t->tgid, t->nsproxy);
 	spin_unlock_irqrestore(&vendor_kernel_registry.lock, flags);
 	return pos;
 }
