@@ -60,7 +60,17 @@
 #include <linux/fs_context.h>
 #include <linux/ipc.h>
 #include <linux/hrtimer.h>
+#include <linux/version.h>
+/*
+ * <linux/maple_tree.h> only exists from the 6.1 kernel onward (it replaced
+ * the earlier rbtree-based VMA tracking); older GKI KMIs (android12-5.10,
+ * android13-5.10, android13-5.15, android14-5.15) have no such header at
+ * all. Only pull it in where mas_pause() (guarded the same way below) is
+ * actually used.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 #include <linux/maple_tree.h>
+#endif
 #include <linux/mount.h>
 #include <linux/msg.h>
 #include <linux/path.h>
@@ -815,10 +825,22 @@ struct ucounts *get_ucounts(struct ucounts *ucounts)
 
 /* ---- ipc/accounting/time ----------------------------------------------- */
 
+/*
+ * <linux/ipc_namespace.h> only declares put_ipc_ns() `extern` under
+ * CONFIG_IPC_NS; when it is unset (a supported vendor_kernel configuration -
+ * see README.md, "CONFIG_IPC_NS=n") the header instead provides its own
+ * `static inline` no-op definition, which would collide with an
+ * unconditional definition here. Only provide the real accounting version
+ * when CONFIG_IPC_NS is enabled; otherwise every call site picks up the
+ * header's inline no-op, matching upstream kernel behavior for a
+ * single/global ipc namespace.
+ */
+#if defined(CONFIG_IPC_NS)
 void put_ipc_ns(struct ipc_namespace *ns)
 {
 	vns_put_ipc_ns(ns);
 }
+#endif
 
 s64 __percpu_counter_sum(struct percpu_counter *fbc)
 {
