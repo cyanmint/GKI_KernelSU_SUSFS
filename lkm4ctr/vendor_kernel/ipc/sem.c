@@ -81,6 +81,7 @@
 #include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/seq_file.h>
+#include <linux/workqueue.h>
 #include <linux/rwsem.h>
 #include <linux/nsproxy.h>
 #include <linux/ipc_namespace.h>
@@ -184,6 +185,116 @@ struct sem_undo_list {
 	spinlock_t		lock;
 	struct list_head	list_proc;
 };
+
+#if !defined(CONFIG_SYSVIPC)
+#define VNS_SYSV_TASK_HASH_BITS 8
+
+struct vns_sysvsem_state {
+	struct task_struct	*task;
+	struct sem_undo_list	*undo_list;
+	struct ipc_namespace	*exit_ns;
+	struct pid		*exit_pid;
+	struct hlist_node	node;
+	struct work_struct	exit_work;
+};
+
+static DEFINE_HASHTABLE(vns_sysvsem_state_hash, VNS_SYSV_TASK_HASH_BITS);
+static DEFINE_SPINLOCK(vns_sysvsem_state_lock);
+
+static void vns_sysvsem_exit_work(struct work_struct *work);
+
+static struct vns_sysvsem_state *
+vns_sysvsem_state_lookup_locked(struct task_struct *task)
+{
+	struct vns_sysvsem_state *state;
+
+	hash_for_each_possible(vns_sysvsem_state_hash, state, node,
+			       (unsigned long)task) {
+		if (state->task == task)
+			return state;
+	}
+	return NULL;
+}
+
+static struct vns_sysvsem_state *
+vns_sysvsem_state_get(struct task_struct *task, bool create, gfp_t gfp)
+{
+	struct vns_sysvsem_state *state, *new_state = NULL;
+	unsigned long flags;
+
+	if (create) {
+		new_state = kzalloc(sizeof(*new_state), gfp);
+		if (!new_state)
+			return NULL;
+		get_task_struct(task);
+		new_state->task = task;
+		INIT_WORK(&new_state->exit_work, vns_sysvsem_exit_work);
+	}
+
+	spin_lock_irqsave(&vns_sysvsem_state_lock, flags);
+	state = vns_sysvsem_state_lookup_locked(task);
+	if (!state && new_state) {
+		hash_add(vns_sysvsem_state_hash, &new_state->node,
+			 (unsigned long)task);
+		state = new_state;
+		new_state = NULL;
+	}
+	spin_unlock_irqrestore(&vns_sysvsem_state_lock, flags);
+
+	if (new_state) {
+		put_task_struct(new_state->task);
+		kfree(new_state);
+	}
+	return state;
+}
+
+static struct sem_undo_list *vns_task_undo_list(struct task_struct *task)
+{
+	struct vns_sysvsem_state *state = vns_sysvsem_state_get(task, false, 0);
+
+	return state ? state->undo_list : NULL;
+}
+
+static int vns_task_undo_list_set(struct task_struct *task,
+				  struct sem_undo_list *undo_list,
+				  gfp_t gfp)
+{
+	struct vns_sysvsem_state *state;
+	unsigned long flags;
+
+	if (!undo_list) {
+		spin_lock_irqsave(&vns_sysvsem_state_lock, flags);
+		state = vns_sysvsem_state_lookup_locked(task);
+		if (state)
+			hash_del(&state->node);
+		spin_unlock_irqrestore(&vns_sysvsem_state_lock, flags);
+		if (state) {
+			put_task_struct(state->task);
+			kfree(state);
+		}
+		return 0;
+	}
+
+	state = vns_sysvsem_state_get(task, true, gfp);
+	if (!state)
+		return -ENOMEM;
+	state->undo_list = undo_list;
+	return 0;
+}
+
+static struct vns_sysvsem_state *vns_task_undo_state_detach(struct task_struct *task)
+{
+	struct vns_sysvsem_state *state;
+	unsigned long flags;
+
+	spin_lock_irqsave(&vns_sysvsem_state_lock, flags);
+	state = vns_sysvsem_state_lookup_locked(task);
+	if (state)
+		hash_del(&state->node);
+	spin_unlock_irqrestore(&vns_sysvsem_state_lock, flags);
+	return state;
+}
+#endif
 
 
 #define sem_ids(ns)	((ns)->ids[IPC_SEM_IDS])
@@ -1853,7 +1964,11 @@ static inline int get_undo_list(struct sem_undo_list **undo_listp)
 {
 	struct sem_undo_list *undo_list;
 
+#if defined(CONFIG_SYSVIPC)
 	undo_list = current->sysvsem.undo_list;
+#else
+	undo_list = vns_task_undo_list(current);
+#endif
 	if (!undo_list) {
 		undo_list = kzalloc(sizeof(*undo_list), GFP_KERNEL_ACCOUNT);
 		if (undo_list == NULL)
@@ -1862,7 +1977,14 @@ static inline int get_undo_list(struct sem_undo_list **undo_listp)
 		refcount_set(&undo_list->refcnt, 1);
 		INIT_LIST_HEAD(&undo_list->list_proc);
 
+#if defined(CONFIG_SYSVIPC)
 		current->sysvsem.undo_list = undo_list;
+#else
+		if (vns_task_undo_list_set(current, undo_list, GFP_KERNEL_ACCOUNT)) {
+			kfree(undo_list);
+			return -ENOMEM;
+		}
+#endif
 	}
 	*undo_listp = undo_list;
 	return 0;
@@ -2299,9 +2421,22 @@ int copy_semundo(unsigned long clone_flags, struct task_struct *tsk)
 		if (error)
 			return error;
 		refcount_inc(&undo_list->refcnt);
+#if defined(CONFIG_SYSVIPC)
 		tsk->sysvsem.undo_list = undo_list;
+#else
+		error = vns_task_undo_list_set(tsk, undo_list, GFP_KERNEL);
+		if (error) {
+			if (refcount_dec_and_test(&undo_list->refcnt))
+				kfree(undo_list);
+			return error;
+		}
+#endif
 	} else
+#if defined(CONFIG_SYSVIPC)
 		tsk->sysvsem.undo_list = NULL;
+#else
+		vns_task_undo_list_set(tsk, NULL, GFP_KERNEL);
+#endif
 
 	return 0;
 }
@@ -2318,15 +2453,10 @@ int copy_semundo(unsigned long clone_flags, struct task_struct *tsk)
  * The current implementation does not do so. The POSIX standard
  * and SVID should be consulted to determine what behavior is mandated.
  */
-void exit_sem(struct task_struct *tsk)
+static void vns_exit_sem_undo_list(struct ipc_namespace *ns,
+				   struct sem_undo_list *ulp,
+				   struct pid *pid)
 {
-	struct sem_undo_list *ulp;
-
-	ulp = tsk->sysvsem.undo_list;
-	if (!ulp)
-		return;
-	tsk->sysvsem.undo_list = NULL;
-
 	if (!refcount_dec_and_test(&ulp->refcnt))
 		return;
 
@@ -2363,7 +2493,7 @@ void exit_sem(struct task_struct *tsk)
 			continue;
 		}
 
-		sma = sem_obtain_object_check(vns_task_ipc_ns(tsk), semid);
+		sma = sem_obtain_object_check(ns, semid);
 		/* exit_sem raced with IPC_RMID, nothing to do */
 		if (IS_ERR(sma)) {
 			rcu_read_unlock();
@@ -2417,7 +2547,7 @@ void exit_sem(struct task_struct *tsk)
 					semaphore->semval = 0;
 				if (semaphore->semval > SEMVMX)
 					semaphore->semval = SEMVMX;
-				ipc_update_pid(&semaphore->sempid, task_tgid(current));
+				ipc_update_pid(&semaphore->sempid, pid);
 			}
 		}
 		/* maybe some queued-up processes were waiting for this */
@@ -2430,6 +2560,66 @@ void exit_sem(struct task_struct *tsk)
 	}
 	kfree(ulp);
 }
+
+void exit_sem(struct task_struct *tsk)
+{
+	struct sem_undo_list *ulp;
+	struct ipc_namespace *ns;
+	struct pid *pid;
+
+#if defined(CONFIG_SYSVIPC)
+	ulp = tsk->sysvsem.undo_list;
+	if (!ulp)
+		return;
+	tsk->sysvsem.undo_list = NULL;
+#else
+	ulp = vns_task_undo_list(tsk);
+	if (!ulp)
+		return;
+	vns_task_undo_list_set(tsk, NULL, GFP_KERNEL);
+#endif
+	ns = get_ipc_ns(vns_task_ipc_ns(tsk));
+	pid = get_pid(task_tgid(tsk));
+	vns_exit_sem_undo_list(ns, ulp, pid);
+	put_pid(pid);
+	put_ipc_ns(ns);
+}
+
+#if !defined(CONFIG_SYSVIPC)
+static void vns_sysvsem_exit_work(struct work_struct *work)
+{
+	struct vns_sysvsem_state *state =
+		container_of(work, struct vns_sysvsem_state, exit_work);
+
+	if (state->undo_list)
+		vns_exit_sem_undo_list(state->exit_ns, state->undo_list,
+				       state->exit_pid);
+	put_pid(state->exit_pid);
+	put_ipc_ns(state->exit_ns);
+	put_task_struct(state->task);
+	kfree(state);
+}
+
+void vns_prepare_exit_sem(struct task_struct *tsk)
+{
+	struct vns_sysvsem_state *state = vns_task_undo_state_detach(tsk);
+
+	if (!state || !state->undo_list) {
+		if (state) {
+			put_task_struct(state->task);
+			kfree(state);
+		}
+		return;
+	}
+	state->exit_ns = get_ipc_ns(vns_task_ipc_ns(tsk));
+	state->exit_pid = get_pid(task_tgid(tsk));
+	schedule_work(&state->exit_work);
+}
+#else
+void vns_prepare_exit_sem(struct task_struct *tsk)
+{
+}
+#endif
 
 #ifdef CONFIG_PROC_FS
 static int sysvipc_sem_proc_show(struct seq_file *s, void *it)

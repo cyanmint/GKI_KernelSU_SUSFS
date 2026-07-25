@@ -373,8 +373,11 @@ bool vns_file_ns_capable(const struct file *file, struct user_namespace *ns,
 			 int cap);
 void __noreturn vns_do_exit(long error_code);
 void vns_sem_init_ns(struct ipc_namespace *ns);
+void vns_sem_exit_ns(struct ipc_namespace *ns);
 void vns_shm_init_ns(struct ipc_namespace *ns);
+void vns_shm_exit_ns(struct ipc_namespace *ns);
 void vns_exit_sem(struct task_struct *tsk);
+void vns_prepare_exit_sem(struct task_struct *tsk);
 int vns_mq_init_ns(struct ipc_namespace *ns);
 int vns_mqueue_fs_init(void);
 void vns_mqueue_fs_exit(void);
@@ -396,15 +399,21 @@ long vns_ksys_msgsnd(int msqid, struct msgbuf __user *msgp, size_t msgsz,
 		    int msgflg);
 long vns_ksys_msgrcv(int msqid, struct msgbuf __user *msgp, size_t msgsz,
 		    long msgtyp, int msgflg);
+int vns_copy_semundo(unsigned long clone_flags, struct task_struct *tsk);
+void vns_msg_exit_ns(struct ipc_namespace *ns);
 long vns_ksys_semget(key_t key, int nsems, int semflg);
 long vns_semctl(int semid, int semnum, int cmd, unsigned long arg);
 long vns_ksys_semtimedop(int semid, struct sembuf __user *tsops,
 			unsigned int nsops,
 			const struct __kernel_timespec __user *timeout);
 long vns_ksys_shmget(key_t key, size_t size, int shmflg);
+void vns_shm_destroy_orphaned(struct ipc_namespace *ns);
 long vns_shmctl(int shmid, int cmd, struct shmid_ds __user *buf);
 long vns_shmat(int shmid, char __user *shmaddr, int shmflg);
 long vns_ksys_shmdt(char __user *shmaddr);
+void vns_exit_shm(struct task_struct *task);
+void vns_prepare_exit_shm(struct task_struct *task);
+bool vns_is_file_shm_hugepages(struct file *file);
 
 #ifndef VNS_COMPAT_IMPL
 #define inc_ucount vns_inc_ucount
@@ -430,8 +439,11 @@ long vns_ksys_shmdt(char __user *shmaddr);
 #define proc_ns_file vns_proc_ns_file
 #define retire_mq_sysctls vns_retire_mq_sysctls
 #define sem_init_ns vns_sem_init_ns
+#define sem_exit_ns vns_sem_exit_ns
 #define shm_init_ns vns_shm_init_ns
+#define shm_exit_ns vns_shm_exit_ns
 #define exit_sem vns_exit_sem
+#define copy_semundo vns_copy_semundo
 #define setup_ipc_sysctls vns_setup_ipc_sysctls
 #define retire_ipc_sysctls vns_retire_ipc_sysctls
 #define set_cred_ucounts vns_set_cred_ucounts
@@ -439,6 +451,10 @@ long vns_ksys_shmdt(char __user *shmaddr);
 #define commit_creds vns_commit_creds
 #define file_ns_capable vns_file_ns_capable
 #define do_exit vns_do_exit
+#define msg_exit_ns vns_msg_exit_ns
+#define shm_destroy_orphaned vns_shm_destroy_orphaned
+#define exit_shm vns_exit_shm
+#define is_file_shm_hugepages vns_is_file_shm_hugepages
 #ifdef CONFIG_USER_NS
 #define in_userns vns_in_userns
 #endif

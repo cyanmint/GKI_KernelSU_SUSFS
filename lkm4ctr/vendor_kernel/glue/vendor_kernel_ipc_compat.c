@@ -49,6 +49,7 @@
 #include <linux/msg.h>
 #include <linux/sem.h>
 #include <linux/mqueue.h>
+#include <linux/namei.h>
 
 #include "../vendor_kernel.h"
 #include "../ipc/util.h"
@@ -64,9 +65,11 @@
  * is absent. They only bound the ipc id space; the defaults are correct for
  * the non-extended layout.
  */
+#ifdef CONFIG_SYSVIPC_SYSCTL
 int ipc_mni = IPCMNI;
 int ipc_mni_shift = IPCMNI_SHIFT;
 int ipc_min_cycle = RADIX_TREE_MAP_SIZE;
+#endif
 
 /*
  * sysctl_overcommit_memory (mm/util.c, not exported) - only read by shm.c to
@@ -88,20 +91,43 @@ unsigned int default_hstate_idx;
 /* ---- resolved function pointers --------------------------------------- */
 
 /* mm */
-typedef unsigned long (*do_mmap_fn_t)(struct file *, unsigned long, unsigned long,
-	unsigned long, unsigned long, vm_flags_t, unsigned long,
-	unsigned long *, struct list_head *);
 typedef int (*do_munmap_fn_t)(struct mm_struct *, unsigned long, size_t,
 	struct list_head *);
 typedef int (*mm_populate_fn_t)(unsigned long, unsigned long, int);
 typedef int (*security_mmap_file_fn_t)(struct file *, unsigned long, unsigned long);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+typedef unsigned long (*do_mmap_fn_t)(struct file *, unsigned long,
+	unsigned long, unsigned long, unsigned long, unsigned long,
+	unsigned long *, struct list_head *);
+#else
+typedef unsigned long (*do_mmap_fn_t)(struct file *, unsigned long,
+	unsigned long, unsigned long, unsigned long, vm_flags_t,
+	unsigned long, unsigned long *, struct list_head *);
+#endif
+#if defined(CONFIG_HUGETLBFS)
 typedef struct file *(*hugetlb_file_setup_fn_t)(const char *, size_t, vm_flags_t,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+	struct ucounts **,
+#endif
 	int, int);
+#endif
+#if defined(CONFIG_HUGETLB_PAGE)
 typedef struct hstate *(*size_to_hstate_fn_t)(unsigned long);
-typedef int (*shmem_lock_fn_t)(struct file *, int, struct ucounts *);
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+typedef struct user_struct vns_shmem_lock_owner_t;
+#else
+typedef struct ucounts vns_shmem_lock_owner_t;
+#endif
+typedef int (*shmem_lock_fn_t)(struct file *, int, vns_shmem_lock_owner_t *);
 typedef void (*shmem_unlock_mapping_fn_t)(struct address_space *);
 typedef struct file *(*alloc_file_clone_fn_t)(struct file *, int,
 	const struct file_operations *);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+typedef struct filename *(*getname_flags_fn_t)(const char __user *, int, int *);
+#else
+typedef struct filename *(*getname_flags_fn_t)(const char __user *, int);
+#endif
 
 /* signal / wake_q */
 typedef int (*do_send_sig_info_fn_t)(int, struct kernel_siginfo *,
@@ -111,12 +137,18 @@ typedef void (*wake_q_add_safe_fn_t)(struct wake_q_head *, struct task_struct *)
 typedef void (*wake_up_q_fn_t)(struct wake_q_head *);
 
 /* ucounts */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 typedef void (*put_ucounts_fn_t)(struct ucounts *);
-typedef long (*inc_rlimit_ucounts_fn_t)(struct ucounts *, enum rlimit_type, long);
-typedef bool (*dec_rlimit_ucounts_fn_t)(struct ucounts *, enum rlimit_type, long);
-
-/* vfs / path */
-typedef struct filename *(*getname_flags_fn_t)(const char __user *, int);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
+typedef enum ucount_type vns_rlimit_ucount_type_t;
+#else
+typedef enum rlimit_type vns_rlimit_ucount_type_t;
+#endif
+typedef long (*inc_rlimit_ucounts_fn_t)(struct ucounts *,
+					vns_rlimit_ucount_type_t, long);
+typedef bool (*dec_rlimit_ucounts_fn_t)(struct ucounts *,
+					vns_rlimit_ucount_type_t, long);
+#endif
 
 /* netlink (mq_notify) */
 typedef struct sock *(*netlink_getsockbyfd_fn_t)(int);
@@ -160,23 +192,29 @@ typedef int (*sec_shm_associate_fn_t)(struct kern_ipc_perm *, int);
 typedef int (*sec_shm_shmctl_fn_t)(struct kern_ipc_perm *, int);
 typedef int (*sec_shm_shmat_fn_t)(struct kern_ipc_perm *, char __user *, int);
 
-static do_mmap_fn_t             r_do_mmap;
 static do_munmap_fn_t           r_do_munmap;
 static mm_populate_fn_t         r_mm_populate;
 static security_mmap_file_fn_t  r_security_mmap_file;
+static do_mmap_fn_t             r_do_mmap;
+#if defined(CONFIG_HUGETLBFS)
 static hugetlb_file_setup_fn_t  r_hugetlb_file_setup;
+#endif
+#if defined(CONFIG_HUGETLB_PAGE)
 static size_to_hstate_fn_t      r_size_to_hstate;
+#endif
 static shmem_lock_fn_t          r_shmem_lock;
 static shmem_unlock_mapping_fn_t r_shmem_unlock_mapping;
 static alloc_file_clone_fn_t    r_alloc_file_clone;
+static getname_flags_fn_t       r_getname_flags;
 static do_send_sig_info_fn_t    r_do_send_sig_info;
 static wake_q_add_fn_t          r_wake_q_add;
 static wake_q_add_safe_fn_t     r_wake_q_add_safe;
 static wake_up_q_fn_t           r_wake_up_q;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 static put_ucounts_fn_t         r_put_ucounts;
 static inc_rlimit_ucounts_fn_t  r_inc_rlimit_ucounts;
 static dec_rlimit_ucounts_fn_t  r_dec_rlimit_ucounts;
-static getname_flags_fn_t       r_getname_flags;
+#endif
 static netlink_getsockbyfd_fn_t r_netlink_getsockbyfd;
 static netlink_attachskb_fn_t   r_netlink_attachskb;
 static netlink_detachskb_fn_t   r_netlink_detachskb;
@@ -219,23 +257,29 @@ void vns_ipc_compat_resolve(void)
 				"ipc compat: " #sym " not resolved (stub active)"); \
 	} while (0)
 
-	R(r_do_mmap, do_mmap);
 	R(r_do_munmap, do_munmap);
 	R(r_mm_populate, __mm_populate);
 	R(r_security_mmap_file, security_mmap_file);
+	R(r_do_mmap, do_mmap);
+#if defined(CONFIG_HUGETLBFS)
 	R(r_hugetlb_file_setup, hugetlb_file_setup);
+#endif
+#if defined(CONFIG_HUGETLB_PAGE)
 	R(r_size_to_hstate, size_to_hstate);
+#endif
 	R(r_shmem_lock, shmem_lock);
 	R(r_shmem_unlock_mapping, shmem_unlock_mapping);
 	R(r_alloc_file_clone, alloc_file_clone);
+	R(r_getname_flags, getname_flags);
 	R(r_do_send_sig_info, do_send_sig_info);
 	R(r_wake_q_add, wake_q_add);
 	R(r_wake_q_add_safe, wake_q_add_safe);
 	R(r_wake_up_q, wake_up_q);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 	R(r_put_ucounts, put_ucounts);
 	R(r_inc_rlimit_ucounts, inc_rlimit_ucounts);
 	R(r_dec_rlimit_ucounts, dec_rlimit_ucounts);
-	R(r_getname_flags, getname_flags);
+#endif
 	R(r_netlink_getsockbyfd, netlink_getsockbyfd);
 	R(r_netlink_attachskb, netlink_attachskb);
 	R(r_netlink_detachskb, netlink_detachskb);
@@ -272,18 +316,6 @@ void vns_ipc_compat_resolve(void)
 
 /* ---- mm ---------------------------------------------------------------- */
 
-unsigned long do_mmap(struct file *file, unsigned long addr, unsigned long len,
-	unsigned long prot, unsigned long flags, vm_flags_t vm_flags,
-	unsigned long pgoff, unsigned long *populate, struct list_head *uf)
-{
-	if (r_do_mmap)
-		return r_do_mmap(file, addr, len, prot, flags, vm_flags, pgoff,
-				 populate, uf);
-	if (populate)
-		*populate = 0;
-	return -ENOSYS;
-}
-
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	      struct list_head *uf)
 {
@@ -306,26 +338,60 @@ int security_mmap_file(struct file *file, unsigned long prot, unsigned long flag
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+unsigned long do_mmap(struct file *file, unsigned long addr, unsigned long len,
+		      unsigned long prot, unsigned long flags,
+		      unsigned long pgoff, unsigned long *populate,
+		      struct list_head *uf)
+{
+	if (r_do_mmap)
+		return r_do_mmap(file, addr, len, prot, flags, pgoff, populate, uf);
+	return -ENOSYS;
+}
+#else
+unsigned long do_mmap(struct file *file, unsigned long addr, unsigned long len,
+		      unsigned long prot, unsigned long flags,
+		      vm_flags_t vm_flags, unsigned long pgoff,
+		      unsigned long *populate, struct list_head *uf)
+{
+	if (r_do_mmap)
+		return r_do_mmap(file, addr, len, prot, flags, vm_flags, pgoff,
+				 populate, uf);
+	return -ENOSYS;
+}
+#endif
+
+#if defined(CONFIG_HUGETLBFS)
 struct file *hugetlb_file_setup(const char *name, size_t size, vm_flags_t acct,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+				struct ucounts **ucounts,
+#endif
 				int creat_flags, int page_size_log)
 {
 	if (r_hugetlb_file_setup)
-		return r_hugetlb_file_setup(name, size, acct, creat_flags,
+		return r_hugetlb_file_setup(name, size, acct,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+					    ucounts,
+#endif
+					    creat_flags,
 					    page_size_log);
 	return ERR_PTR(-ENOSYS);
 }
+#endif
 
+#if defined(CONFIG_HUGETLB_PAGE)
 struct hstate *size_to_hstate(unsigned long size)
 {
 	if (r_size_to_hstate)
 		return r_size_to_hstate(size);
 	return NULL;
 }
+#endif
 
-int shmem_lock(struct file *file, int lock, struct ucounts *ucounts)
+int shmem_lock(struct file *file, int lock, vns_shmem_lock_owner_t *owner)
 {
 	if (r_shmem_lock)
-		return r_shmem_lock(file, lock, ucounts);
+		return r_shmem_lock(file, lock, owner);
 	return 0;
 }
 
@@ -342,6 +408,22 @@ struct file *alloc_file_clone(struct file *base, int flags,
 		return r_alloc_file_clone(base, flags, fops);
 	return ERR_PTR(-ENOSYS);
 }
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+struct filename *getname_flags(const char __user *filename, int flags, int *empty)
+{
+	if (r_getname_flags)
+		return r_getname_flags(filename, flags, empty);
+	return ERR_PTR(-ENOSYS);
+}
+#else
+struct filename *getname_flags(const char __user *filename, int flags)
+{
+	if (r_getname_flags)
+		return r_getname_flags(filename, flags);
+	return ERR_PTR(-ENOSYS);
+}
+#endif
 
 /* ---- signal / wake_q --------------------------------------------------- */
 
@@ -378,6 +460,7 @@ void wake_up_q(struct wake_q_head *head)
 		r_wake_up_q(head);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 /* ---- ucounts ----------------------------------------------------------- */
 
 void put_ucounts(struct ucounts *ucounts)
@@ -386,28 +469,22 @@ void put_ucounts(struct ucounts *ucounts)
 		r_put_ucounts(ucounts);
 }
 
-long inc_rlimit_ucounts(struct ucounts *ucounts, enum rlimit_type type, long v)
+long inc_rlimit_ucounts(struct ucounts *ucounts, vns_rlimit_ucount_type_t type,
+			long v)
 {
 	if (r_inc_rlimit_ucounts)
 		return r_inc_rlimit_ucounts(ucounts, type, v);
 	return LONG_MAX; /* stub: pretend headroom, no enforcement */
 }
 
-bool dec_rlimit_ucounts(struct ucounts *ucounts, enum rlimit_type type, long v)
+bool dec_rlimit_ucounts(struct ucounts *ucounts, vns_rlimit_ucount_type_t type,
+			long v)
 {
 	if (r_dec_rlimit_ucounts)
 		return r_dec_rlimit_ucounts(ucounts, type, v);
 	return false;
 }
-
-/* ---- vfs / path -------------------------------------------------------- */
-
-struct filename *getname_flags(const char __user *filename, int flags)
-{
-	if (r_getname_flags)
-		return r_getname_flags(filename, flags);
-	return ERR_PTR(-ENOSYS);
-}
+#endif
 
 /* ---- netlink (mq_notify) ----------------------------------------------- */
 
@@ -415,6 +492,24 @@ struct sock *netlink_getsockbyfd(int fd)
 {
 	if (r_netlink_getsockbyfd)
 		return r_netlink_getsockbyfd(fd);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+	{
+		struct fd f = fdget(fd);
+		struct sock *sock;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+		if (fd_empty(f))
+			return ERR_PTR(-EBADF);
+		sock = netlink_getsockbyfilp(fd_file(f));
+#else
+		if (!f.file)
+			return ERR_PTR(-EBADF);
+		sock = netlink_getsockbyfilp(f.file);
+#endif
+		fdput(f);
+		return sock;
+	}
+#endif
 	return ERR_PTR(-ENOSYS);
 }
 

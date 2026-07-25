@@ -64,6 +64,98 @@
 #define msg_init vns_msg_init
 #define free_ipcs vns_free_ipcs
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+static inline void vns_msg_hdrs_add(struct ipc_namespace *ns, unsigned long delta)
+{
+	percpu_counter_add_local(&ns->percpu_msg_hdrs, delta);
+}
+
+static inline void vns_msg_hdrs_sub(struct ipc_namespace *ns, unsigned long delta)
+{
+	percpu_counter_sub_local(&ns->percpu_msg_hdrs, delta);
+}
+
+static inline void vns_msg_bytes_add(struct ipc_namespace *ns, unsigned long delta)
+{
+	percpu_counter_add_local(&ns->percpu_msg_bytes, delta);
+}
+
+static inline void vns_msg_bytes_sub(struct ipc_namespace *ns, unsigned long delta)
+{
+	percpu_counter_sub_local(&ns->percpu_msg_bytes, delta);
+}
+
+static inline int vns_msg_hdrs_sum(struct ipc_namespace *ns)
+{
+	return min_t(int, percpu_counter_sum(&ns->percpu_msg_hdrs), INT_MAX);
+}
+
+static inline int vns_msg_bytes_sum(struct ipc_namespace *ns)
+{
+	return min_t(int, percpu_counter_sum(&ns->percpu_msg_bytes), INT_MAX);
+}
+
+static inline int vns_msg_accounting_init(struct ipc_namespace *ns)
+{
+	int ret;
+
+	ret = percpu_counter_init(&ns->percpu_msg_bytes, 0, GFP_KERNEL);
+	if (ret)
+		return ret;
+	ret = percpu_counter_init(&ns->percpu_msg_hdrs, 0, GFP_KERNEL);
+	if (ret)
+		percpu_counter_destroy(&ns->percpu_msg_bytes);
+	return ret;
+}
+
+static inline void vns_msg_accounting_destroy(struct ipc_namespace *ns)
+{
+	percpu_counter_destroy(&ns->percpu_msg_bytes);
+	percpu_counter_destroy(&ns->percpu_msg_hdrs);
+}
+#else
+static inline void vns_msg_hdrs_add(struct ipc_namespace *ns, unsigned long delta)
+{
+	atomic_add(delta, &ns->msg_hdrs);
+}
+
+static inline void vns_msg_hdrs_sub(struct ipc_namespace *ns, unsigned long delta)
+{
+	atomic_sub(delta, &ns->msg_hdrs);
+}
+
+static inline void vns_msg_bytes_add(struct ipc_namespace *ns, unsigned long delta)
+{
+	atomic_add(delta, &ns->msg_bytes);
+}
+
+static inline void vns_msg_bytes_sub(struct ipc_namespace *ns, unsigned long delta)
+{
+	atomic_sub(delta, &ns->msg_bytes);
+}
+
+static inline int vns_msg_hdrs_sum(struct ipc_namespace *ns)
+{
+	return atomic_read(&ns->msg_hdrs);
+}
+
+static inline int vns_msg_bytes_sum(struct ipc_namespace *ns)
+{
+	return atomic_read(&ns->msg_bytes);
+}
+
+static inline int vns_msg_accounting_init(struct ipc_namespace *ns)
+{
+	atomic_set(&ns->msg_bytes, 0);
+	atomic_set(&ns->msg_hdrs, 0);
+	return 0;
+}
+
+static inline void vns_msg_accounting_destroy(struct ipc_namespace *ns)
+{
+}
+#endif
+
 /* one msq_queue structure for each present queue on the system */
 struct msg_queue {
 	struct kern_ipc_perm q_perm;
@@ -305,10 +397,10 @@ static void freeque(struct ipc_namespace *ns, struct kern_ipc_perm *ipcp)
 	rcu_read_unlock();
 
 	list_for_each_entry_safe(msg, t, &msq->q_messages, m_list) {
-		percpu_counter_sub_local(&ns->percpu_msg_hdrs, 1);
+		vns_msg_hdrs_sub(ns, 1);
 		free_msg(msg);
 	}
-	percpu_counter_sub_local(&ns->percpu_msg_bytes, msq->q_cbytes);
+	vns_msg_bytes_sub(ns, msq->q_cbytes);
 	ipc_update_pid(&msq->q_lspid, NULL);
 	ipc_update_pid(&msq->q_lrpid, NULL);
 	ipc_rcu_putref(&msq->q_perm, msg_rcu_free);
@@ -508,19 +600,15 @@ static int msgctl_info(struct ipc_namespace *ns, int msqid,
 	msginfo->msgmax = ns->msg_ctlmax;
 	msginfo->msgmnb = ns->msg_ctlmnb;
 	msginfo->msgssz = MSGSSZ;
-	msginfo->msgseg = MSGSEG;
+	msginfo->msgseg = (typeof(msginfo->msgseg))MSGSEG;
 	down_read(&msg_ids(ns).rwsem);
 	if (cmd == MSG_INFO)
 		msginfo->msgpool = msg_ids(ns).in_use;
 	max_idx = ipc_get_maxidx(&msg_ids(ns));
 	up_read(&msg_ids(ns).rwsem);
 	if (cmd == MSG_INFO) {
-		msginfo->msgmap = min_t(int,
-				     percpu_counter_sum(&ns->percpu_msg_hdrs),
-				     INT_MAX);
-		msginfo->msgtql = min_t(int,
-		                     percpu_counter_sum(&ns->percpu_msg_bytes),
-				     INT_MAX);
+		msginfo->msgmap = vns_msg_hdrs_sum(ns);
+		msginfo->msgtql = vns_msg_bytes_sum(ns);
 	} else {
 		msginfo->msgmap = MSGMAP;
 		msginfo->msgpool = MSGPOOL;
@@ -942,8 +1030,8 @@ static long do_msgsnd(int msqid, long mtype, void __user *mtext,
 		list_add_tail(&msg->m_list, &msq->q_messages);
 		msq->q_cbytes += msgsz;
 		msq->q_qnum++;
-		percpu_counter_add_local(&ns->percpu_msg_bytes, msgsz);
-		percpu_counter_add_local(&ns->percpu_msg_hdrs, 1);
+		vns_msg_bytes_add(ns, msgsz);
+		vns_msg_hdrs_add(ns, 1);
 	}
 
 	err = 0;
@@ -1155,8 +1243,8 @@ static long do_msgrcv(int msqid, void __user *buf, size_t bufsz, long msgtyp, in
 			msq->q_rtime = ktime_get_real_seconds();
 			ipc_update_pid(&msq->q_lrpid, task_tgid(current));
 			msq->q_cbytes -= msg->m_ts;
-			percpu_counter_sub_local(&ns->percpu_msg_bytes, msg->m_ts);
-			percpu_counter_sub_local(&ns->percpu_msg_hdrs, 1);
+			vns_msg_bytes_sub(ns, msg->m_ts);
+			vns_msg_hdrs_sub(ns, 1);
 			ss_wakeup(msq, &wake_q, false);
 
 			goto out_unlock0;
@@ -1289,18 +1377,13 @@ int msg_init_ns(struct ipc_namespace *ns)
 	ns->msg_ctlmnb = MSGMNB;
 	ns->msg_ctlmni = MSGMNI;
 
-	ret = percpu_counter_init(&ns->percpu_msg_bytes, 0, GFP_KERNEL);
+	ret = vns_msg_accounting_init(ns);
 	if (ret)
-		goto fail_msg_bytes;
-	ret = percpu_counter_init(&ns->percpu_msg_hdrs, 0, GFP_KERNEL);
-	if (ret)
-		goto fail_msg_hdrs;
+		goto fail_msg_accounting;
 	ipc_init_ids(&ns->ids[IPC_MSG_IDS]);
 	return 0;
 
-fail_msg_hdrs:
-	percpu_counter_destroy(&ns->percpu_msg_bytes);
-fail_msg_bytes:
+fail_msg_accounting:
 	return ret;
 }
 
@@ -1310,8 +1393,7 @@ void msg_exit_ns(struct ipc_namespace *ns)
 	free_ipcs(ns, &msg_ids(ns), freeque);
 	idr_destroy(&ns->ids[IPC_MSG_IDS].ipcs_idr);
 	rhashtable_destroy(&ns->ids[IPC_MSG_IDS].key_ht);
-	percpu_counter_destroy(&ns->percpu_msg_bytes);
-	percpu_counter_destroy(&ns->percpu_msg_hdrs);
+	vns_msg_accounting_destroy(ns);
 }
 #endif
 

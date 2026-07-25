@@ -54,6 +54,7 @@
 #include <linux/capability.h>
 #include <linux/highuid.h>
 #include <linux/security.h>
+#include <linux/version.h>
 #include <linux/rcupdate.h>
 #include <linux/workqueue.h>
 #include <linux/seq_file.h>
@@ -884,6 +885,15 @@ static const struct seq_operations sysvipc_proc_seqops = {
 	.show  = sysvipc_proc_show,
 };
 
+static inline void *vns_proc_entry_data(const struct inode *inode)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+	return pde_data(inode);
+#else
+	return PDE_DATA(inode);
+#endif
+}
+
 static int sysvipc_proc_open(struct inode *inode, struct file *file)
 {
 	struct ipc_proc_iter *iter;
@@ -892,7 +902,7 @@ static int sysvipc_proc_open(struct inode *inode, struct file *file)
 	if (!iter)
 		return -ENOMEM;
 
-	iter->iface = pde_data(inode);
+	iter->iface = vns_proc_entry_data(inode);
 	iter->ns    = get_ipc_ns(current->nsproxy->ipc_ns);
 	iter->pid_ns = get_pid_ns(task_active_pid_ns(current));
 

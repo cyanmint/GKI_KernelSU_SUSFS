@@ -67,6 +67,26 @@
 #define mq_timedsend_time32 vns_mq_timedsend_time32
 #define mq_timedreceive_time32 vns_mq_timedreceive_time32
 
+struct sock *netlink_getsockbyfd(int fd);
+
+#ifndef DFLT_QUEUESMAX
+#define DFLT_QUEUESMAX		      256
+#define MIN_MSGMAX			1
+#define DFLT_MSG		       10U
+#define DFLT_MSGMAX		       10
+#define HARD_MSGMAX		    65536
+#define MIN_MSGSIZEMAX		      128
+#define DFLT_MSGSIZE		     8192U
+#define DFLT_MSGSIZEMAX		     8192
+#define HARD_MSGSIZEMAX	    (16 * 1024 * 1024)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+typedef struct user_struct vns_mq_account_owner_t;
+#else
+typedef struct ucounts vns_mq_account_owner_t;
+#endif
+
 struct mqueue_fs_context {
 	struct ipc_namespace	*ipc_ns;
 	bool			 newns;	/* Set if newly created ipc namespace */
@@ -169,7 +189,7 @@ struct mqueue_inode_info {
 	struct pid *notify_owner;
 	u32 notify_self_exec_id;
 	struct user_namespace *notify_user_ns;
-	struct ucounts *ucounts;	/* user who created, for accounting */
+	vns_mq_account_owner_t *ucounts;	/* user who created, for accounting */
 	struct sock *notify_sock;
 	struct sk_buff *notify_cookie;
 
@@ -402,6 +422,26 @@ static struct inode *mqueue_get_inode(struct super_block *sb,
 		if (mq_bytes + mq_treesize < mq_bytes)
 			goto out_inode;
 		mq_bytes += mq_treesize;
+		#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+		{
+		#if defined(CONFIG_POSIX_MQUEUE)
+					struct user_struct *u = current_user();
+
+					spin_lock(&mq_lock);
+			if (u->mq_bytes + mq_bytes < u->mq_bytes ||
+			    u->mq_bytes + mq_bytes > rlimit(RLIMIT_MSGQUEUE)) {
+				spin_unlock(&mq_lock);
+				ret = -EMFILE;
+				goto out_inode;
+			}
+			u->mq_bytes += mq_bytes;
+			spin_unlock(&mq_lock);
+			info->ucounts = get_uid(u);
+#else
+			info->ucounts = NULL;
+#endif
+		}
+		#else
 		info->ucounts = get_ucounts(current_ucounts());
 		if (info->ucounts) {
 			long msgqueue;
@@ -419,6 +459,7 @@ static struct inode *mqueue_get_inode(struct super_block *sb,
 			}
 			spin_unlock(&mq_lock);
 		}
+		#endif
 	} else if (S_ISDIR(mode)) {
 		inc_nlink(inode);
 		/* Some things misbehave if size == 0 on a directory */
@@ -531,7 +572,11 @@ static struct inode *mqueue_alloc_inode(struct super_block *sb)
 {
 	struct mqueue_inode_info *ei;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
+	ei = kmem_cache_alloc(mqueue_inode_cachep, GFP_KERNEL);
+#else
 	ei = alloc_inode_sb(sb, mqueue_inode_cachep, GFP_KERNEL);
+#endif
 	if (!ei)
 		return NULL;
 	return &ei->vfs_inode;
@@ -579,7 +624,13 @@ static void mqueue_evict_inode(struct inode *inode)
 					  info->attr.mq_msgsize);
 
 		spin_lock(&mq_lock);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+#if defined(CONFIG_POSIX_MQUEUE)
+		info->ucounts->mq_bytes -= mq_bytes;
+#endif
+#else
 		dec_rlimit_ucounts(info->ucounts, UCOUNT_RLIMIT_MSGQUEUE, mq_bytes);
+#endif
 		/*
 		 * get_ns_from_inode() ensures that the
 		 * (ipc_ns = sb->s_fs_info) is either a valid ipc_ns
@@ -589,7 +640,13 @@ static void mqueue_evict_inode(struct inode *inode)
 		if (ipc_ns)
 			ipc_ns->mq_queues_count--;
 		spin_unlock(&mq_lock);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+#if defined(CONFIG_POSIX_MQUEUE)
+		free_uid(info->ucounts);
+#endif
+#else
 		put_ucounts(info->ucounts);
+#endif
 		info->ucounts = NULL;
 	}
 	if (ipc_ns)
@@ -1408,11 +1465,7 @@ retry:
 				ret = -EBADF;
 				goto out;
 			}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 			sock = netlink_getsockbyfd(notification->sigev_signo);
-#else
-			sock = netlink_getsockbyfilp(fd_file(f));
-#endif
 			fdput(f);
 			if (IS_ERR(sock)) {
 				ret = PTR_ERR(sock);
@@ -1612,8 +1665,9 @@ static inline int put_compat_mq_attr(const struct mq_attr *attr,
 #endif
 
 #ifdef CONFIG_COMPAT_32BIT_TIME
-static int compat_prepare_timeout(const struct old_timespec32 __user *p,
-				   struct timespec64 *ts)
+static __maybe_unused int compat_prepare_timeout(
+		const struct old_timespec32 __user *p,
+		struct timespec64 *ts)
 {
 	if (get_old_timespec32(ts, p))
 		return -EFAULT;

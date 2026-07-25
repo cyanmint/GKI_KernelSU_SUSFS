@@ -835,6 +835,11 @@ void vns_task_exit_cleanup(struct task_struct *tsk) /* [BUILD-COMPAT] */
 		}
 	}
 
+#if !defined(CONFIG_SYSVIPC)
+	vns_prepare_exit_sem(tsk);
+	vns_prepare_exit_shm(tsk);
+#endif
+
 	task_lock(tsk);
 	ns = tsk->nsproxy;
 	if (!ns || !vns_nsproxy_set_contains(ns)) {
