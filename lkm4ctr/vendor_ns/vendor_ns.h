@@ -204,6 +204,7 @@ bool vns_setup_mq_sysctls(struct ipc_namespace *ns);
 void vns_retire_mq_sysctls(struct ipc_namespace *ns);
 bool vns_setup_ipc_sysctls(struct ipc_namespace *ns);
 void vns_retire_ipc_sysctls(struct ipc_namespace *ns);
+int set_cred_ucounts(struct cred *new);
 
 #ifndef VNS_COMPAT_IMPL
 #define security_create_user_ns vns_security_create_user_ns
