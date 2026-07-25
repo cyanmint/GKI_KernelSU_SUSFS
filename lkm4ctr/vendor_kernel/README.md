@@ -15,6 +15,34 @@ Once vendored namespaces are installed on the real `task_struct->nsproxy`/`cred-
 
 To fix this, the 4 real cache pointers are resolved at init time via `shadow_hook_resolve()` (same mechanism already used for `init_cgroup_ns`/`init_ipc_ns`) into `vns_uts_ns_cache`/`vns_nsproxy_cachep`/`vns_pid_ns_cachep`/`vns_user_ns_cachep` (`glue/vendor_kernel_compat.c`), and `create_uts_ns()`/`create_nsproxy()`/`create_pid_namespace()`/`alloc_user_ns` in the corresponding vendored files now allocate/free through `kmem_cache_alloc()`/`kmem_cache_zalloc()`/`kmem_cache_free()` against these real caches instead of `kzalloc()`/`kfree()`, matching upstream's alloc-vs-zalloc semantics exactly. `vns_compat_ready()` fails closed (module init aborts) if any of the 4 caches cannot be resolved. `ipc_namespace`, `cgroup_namespace`, and `time_namespace` are unaffected — upstream itself allocates those with plain `kzalloc()`/`kmalloc()` + `kfree()`, so there is no cache mismatch to fix. The per-level `struct pid` slab cache (`ns->pid_cachep`, created via `create_pid_cachep()`) was already a real, self-consistent `kmem_cache_create()`-based cache and needed no change.
 
+## Required kernel Kconfig options
+
+`vendor_kernel` resolves several of the running kernel's namespace-private
+symbols (e.g. `pid_ns_cachep`, `init_ipc_ns`) by name at module load time via
+`shadow_hook_resolve()`. For any namespace type whose backing `CONFIG_*_NS`
+option is not built into the running kernel, the corresponding kernel object
+never exists to resolve, and `unshare(2)`/`clone(2)`/`setns(2)` for that
+namespace type either falls back to bookkeeping-only behaviour or fails with
+`-EINVAL` (this is the root cause of `ns_pid`/`ns_ipc` unshare test failures
+seen on kernels that ship with `CONFIG_PID_NS=n`/`CONFIG_IPC_NS=n`, even
+though `vendor_kernel` itself loads and activates successfully). The running
+kernel therefore must be built with:
+
+- `CONFIG_NAMESPACES=y`
+- `CONFIG_UTS_NS=y`
+- `CONFIG_IPC_NS=y` (also requires `CONFIG_SYSVIPC=y` and/or `CONFIG_POSIX_MQUEUE=y`, since `IPC_NS depends on (SYSVIPC || POSIX_MQUEUE)`)
+- `CONFIG_PID_NS=y`
+- `CONFIG_USER_NS=y`
+- `CONFIG_NET_NS=y`
+- `CONFIG_CGROUPS=y`
+- `CONFIG_TIME_NS=y`
+
+`lkm4ctr/Kconfig`'s `LKM4CTR_VENDOR_KERNEL` option now `select`s all of the
+above, so any future in-tree build sourcing that file will force them on
+automatically; this out-of-tree module build cannot itself change the
+target kernel's `.config`, so the running vendor kernel's defconfig must
+still enable these options directly.
+
 ## Known remaining gaps
 
 - POSIX message queues (`ipc/mqueue.c`) and SysV IPC (`ipc/msg.c`, `ipc/sem.c`, `ipc/shm.c`, `ipc/util.c`) are vendored sources but are not yet wired into `lkm4ctr/Makefile` or hooked to their syscalls; `mq_open()`/`msgget()`/etc. still resolve to `sys_ni_syscall()` on kernels built without `CONFIG_POSIX_MQUEUE`/`CONFIG_SYSVIPC`. Wiring these up needs dedicated syscall-hook glue (mirroring `vendor_kernel_syscalls.c`) plus Makefile changes.

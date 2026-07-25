@@ -45,7 +45,31 @@ config LKM4CTR_LOG_DMESG
 config LKM4CTR_VENDOR_KERNEL
 	bool "vendor_kernel: Vendored kernel namespace subsystem"
 	depends on LKM4CTR
+	select NAMESPACES
+	select UTS_NS
+	select IPC_NS
+	select PID_NS
+	select USER_NS
+	select NET_NS
+	select CGROUPS
+	select TIME_NS
+	select SYSVIPC
+	select POSIX_MQUEUE
 	help
 	  Vendor the entire Linux kernel namespace subsystem as a parallel
 	  in-module implementation. Hooks all namespace syscalls unconditionally.
 	  Mutually exclusive with shadow_ns at runtime.
+
+	  vendor_kernel resolves several running kernel's namespace-private
+	  symbols (e.g. pid_ns_cachep, init_ipc_ns) by name at module load
+	  time and silently falls back to bookkeeping-only/no-op behaviour,
+	  or fails specific unshare(2)/clone(2)/setns(2) namespace types with
+	  -EINVAL, for any namespace type whose backing CONFIG_*_NS option is
+	  not built into the running kernel. The selects above ensure that,
+	  once this file is sourced by a real kernel tree, enabling
+	  LKM4CTR_VENDOR_KERNEL always forces CONFIG_NAMESPACES, CONFIG_UTS_NS,
+	  CONFIG_IPC_NS, CONFIG_PID_NS, CONFIG_USER_NS, CONFIG_NET_NS,
+	  CONFIG_CGROUPS, CONFIG_TIME_NS, CONFIG_SYSVIPC and
+	  CONFIG_POSIX_MQUEUE to y, so every namespace type it vendors is
+	  actually available on the target kernel and unshare(2)/clone(2)
+	  for PID/IPC namespaces (among others) do not spuriously fail.
