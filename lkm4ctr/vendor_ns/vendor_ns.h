@@ -88,7 +88,7 @@ static inline bool vns_count_dec_and_test(void *count, bool is_refcount)
 
 static inline void vns_zero_stashed(struct ns_common *ns)
 {
-	atomic_long_set(&ns->stashed, 0);
+	memset(&ns->stashed, 0, sizeof(ns->stashed));
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
