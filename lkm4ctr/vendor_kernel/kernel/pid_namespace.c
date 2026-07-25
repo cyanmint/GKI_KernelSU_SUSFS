@@ -171,15 +171,26 @@ unsigned long flags,
 	 * module-owned pid_namespace objects there therefore lets the real
 	 * kernel allocate a task whose task_active_pid_ns() is that fake
 	 * namespace; when that task is the namespace-local pid 1 and exits, the
-	 * real do_exit()->find_child_reaper() path reaches the target kernel's
-	 * CONFIG_PID_NS=n zap_pid_ns_processes() inline stub, which is an
-	 * unconditional BUG(). If the running kernel genuinely lacks its own
-	 * pid namespace core (copy_pid_ns() absent), degrade CLONE_NEWPID to a
-	 * no-op here instead of ever handing the real kernel a fake pidns.
+	 * real kernel's own copy_process() (kernel/fork.c, unconditional of
+	 * CONFIG_PID_NS) has already set pid_ns->child_reaper = that task, so
+	 * the real do_exit()->find_child_reaper() path (kernel/exit.c) is
+	 * about to call the target's own zap_pid_ns_processes(), which on a
+	 * CONFIG_PID_NS=n build is an unconditional BUG() stub
+	 * (include/linux/pid_namespace.h). Rather than degrade CLONE_NEWPID
+	 * to no-op bookkeeping here and lose real pid namespace isolation
+	 * entirely, always create the module-owned pid_namespace below --
+	 * alloc_pid()/task_active_pid_ns() themselves are unconditional of
+	 * CONFIG_PID_NS, so per-namespace pid virtualization keeps working
+	 * for real regardless. The BUG() is instead defused right before it
+	 * would fire, in vns_task_exit_cleanup() (kernel/nsproxy.c), the same
+	 * do_exit() exit-safety kprobe this module already installs -- see
+	 * that function's comment, and vns_zap_pid_ns_processes() below, for
+	 * the shadow_ns-style reduced-scope cascade (SIGKILL everyone else in
+	 * the namespace, then stop admitting new members; orphan
+	 * reparenting/reaping is left to the host's own genuine parent chain,
+	 * exactly like shadow_ns's documented zap_pid_ns_processes()
+	 * fallback in shadow_ns/shadow_ns_pid.c).
 	 */
-	if (!vns_pidns_runtime_supported)
-		return vns_get_pid_ns(old_ns);
-
 	if (!(flags & CLONE_NEWPID))
 		return vns_get_pid_ns(old_ns); /* [BUILD-COMPAT] */
 	if (task_active_pid_ns(current) != old_ns)
@@ -218,8 +229,36 @@ void vns_put_pid_ns(struct pid_namespace *ns) /* [RENAME] */
 
 void vns_zap_pid_ns_processes(struct pid_namespace *pid_ns) /* [RENAME] */
 {
-	/* [BUILD-COMPAT] out-of-tree vendor_kernel does not vendor pidns teardown internals. */
+	struct task_struct *task;
+	struct pid *pid;
+	int nr;
+
+	/* Don't allow any more processes into the pid namespace. */
 	disable_pid_allocation(pid_ns);
+
+	/*
+	 * [BUILD-COMPAT] The real zap_pid_ns_processes() (kernel/pid_namespace.c)
+	 * also blocks in a kernel_wait4() loop to reap every zombie left
+	 * behind, which requires sleeping and therefore cannot run from
+	 * vns_task_exit_cleanup()'s do_exit() kprobe pre_handler (atomic
+	 * context; see the comment there). Only the safe, non-blocking half
+	 * of the real cascade is reproduced here -- SIGKILL every other task
+	 * this namespace's idr still tracks -- exactly like shadow_ns's own
+	 * reduced-scope zap fallback (shadow_ns/shadow_ns_pid.c: "SIGKILL
+	 * everyone else in the namespace, then stop admitting new members").
+	 * Orphan reparenting/reaping is deliberately left to the host's own
+	 * genuine parent chain, same documented limitation as shadow_ns.
+	 */
+	rcu_read_lock();
+	read_lock(&tasklist_lock);
+	nr = 2;
+	idr_for_each_entry_continue(&pid_ns->idr, pid, nr) {
+		task = pid_task(pid, PIDTYPE_PID);
+		if (task && task != current && !__fatal_signal_pending(task))
+			send_sig(SIGKILL, task, 1);
+	}
+	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
 }
 
 #ifdef CONFIG_CHECKPOINT_RESTORE
@@ -347,9 +386,6 @@ static int pidns_install(struct nsset *nsset, struct ns_common *ns)
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct pid_namespace *active = task_active_pid_ns(current);
 	struct pid_namespace *ancestor, *new = to_pid_ns(ns);
-
-	if (!vns_pidns_runtime_supported)
-		return 0;
 
 	if (!ns_capable(new->user_ns, CAP_SYS_ADMIN) ||
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))

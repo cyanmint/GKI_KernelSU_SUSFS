@@ -802,6 +802,39 @@ void vns_task_exit_cleanup(struct task_struct *tsk) /* [BUILD-COMPAT] */
 {
 	struct nsproxy *ns;
 
+	if (!vns_pidns_runtime_supported) {
+		struct pid_namespace *pid_ns = task_active_pid_ns(tsk);
+
+		/*
+		 * [BUILD-COMPAT] task_active_pid_ns() is derived from
+		 * tsk->thread_pid, fixed at fork time, and is untouched by
+		 * the tsk->nsproxy swap further down. If tsk is the last
+		 * live thread of one of vendor_kernel's own module-owned pid
+		 * namespaces (kernel/pid_namespace.c:vns_copy_pid_ns()) and
+		 * also that namespace's pid 1, the real kernel's own
+		 * copy_process() (kernel/fork.c, unconditional of
+		 * CONFIG_PID_NS) has already set pid_ns->child_reaper == tsk.
+		 * Left untouched, the real
+		 * do_exit()->forget_original_parent()->find_child_reaper()
+		 * path (kernel/exit.c) is about to see that and call this
+		 * target kernel's own zap_pid_ns_processes(), an
+		 * unconditional BUG() stub on a CONFIG_PID_NS=n build
+		 * (include/linux/pid_namespace.h). Run the safe half of that
+		 * cascade ourselves right now and then hand the namespace off
+		 * to the real init task as its child_reaper, so the real
+		 * find_child_reaper() takes its "reaper != father" fast path
+		 * moments later in this same do_exit() call instead of ever
+		 * reaching the broken stub. See vns_zap_pid_ns_processes()
+		 * (kernel/pid_namespace.c) for the shadow_ns-style
+		 * reduced-scope cascade this runs.
+		 */
+		if (pid_ns && pid_ns != &init_pid_ns &&
+		    pid_ns->child_reaper == tsk) {
+			vns_zap_pid_ns_processes(pid_ns);
+			pid_ns->child_reaper = init_pid_ns.child_reaper;
+		}
+	}
+
 	task_lock(tsk);
 	ns = tsk->nsproxy;
 	if (!ns || !vns_nsproxy_set_contains(ns)) {

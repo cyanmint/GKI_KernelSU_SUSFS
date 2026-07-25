@@ -235,7 +235,7 @@ int vendor_kernel_init(void)
 	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
 	if (!vns_pidns_runtime_supported)
 		LKM4CTR_INFO("vendor_kernel",
-			     "running kernel lacks real pid namespace core; CLONE_NEWPID/setns(pid) requests are left as no-op bookkeeping to avoid the CONFIG_PID_NS=n zap_pid_ns_processes() BUG");
+			     "running kernel lacks real pid namespace core; CLONE_NEWPID/setns(pid) still perform real pid namespace isolation, with the CONFIG_PID_NS=n zap_pid_ns_processes() BUG defused at exit time (see vns_task_exit_cleanup)");
 	return 0;
 }
 
