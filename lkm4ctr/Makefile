@@ -42,18 +42,22 @@ lkm4ctr-objs := \
 	shadow_mqueue/shadow_mqueue_hooks.o \
 	shadow_mqueue/shadow_mqueue_mount.o \
 	shadow_cgdevices/shadow_cgdevices.o \
-	vendor_ns/kernel/utsname.o \
-	vendor_ns/kernel/nsproxy.o \
-	vendor_ns/kernel/pid_namespace.o \
-	vendor_ns/kernel/user_namespace.o \
-	vendor_ns/ipc/namespace.o \
-	vendor_ns/fs/nsfs.o \
-	vendor_ns/kernel/cgroup/namespace.o \
-	vendor_ns/kernel/time/namespace.o \
-	vendor_ns/glue/vendor_ns_module.o \
-	vendor_ns/glue/vendor_ns_syscalls.o \
-	vendor_ns/glue/vendor_ns_diag.o \
-	vendor_ns/glue/vendor_ns_compat.o
+	vendor_kernel/kernel/utsname.o \
+	vendor_kernel/kernel/nsproxy.o \
+	vendor_kernel/kernel/pid_namespace.o \
+	vendor_kernel/kernel/user_namespace.o \
+	vendor_kernel/ipc/msg.o \
+	vendor_kernel/ipc/sem.o \
+	vendor_kernel/ipc/shm.o \
+	vendor_kernel/ipc/mqueue.o \
+	vendor_kernel/ipc/namespace.o \
+	vendor_kernel/fs/nsfs.o \
+	vendor_kernel/kernel/cgroup/namespace.o \
+	vendor_kernel/kernel/time/namespace.o \
+	vendor_kernel/glue/vendor_kernel_module.o \
+	vendor_kernel/glue/vendor_kernel_syscalls.o \
+	vendor_kernel/glue/vendor_kernel_diag.o \
+	vendor_kernel/glue/vendor_kernel_compat.o
 
 ccflags-y += -I$(src)/../common
 

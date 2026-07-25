@@ -1,0 +1,40 @@
+# vendor_kernel
+
+vendor_kernel is a parallel, vendored copy of the kernel namespace subsystem for `lkm4ctr`. Unlike `shadow_ns`, it hooks namespace syscalls unconditionally and tracks a vendored `struct nsproxy *` per task-group (`tgid -> vns_task`).
+
+## Vendoring rules
+
+- upstream sources were copied from `kernel-common` `android14-6.1` (kernel `6.1.124`)
+- all non-static global symbols are renamed with a `vns_` prefix
+- slab-cache users are converted to `kzalloc`/`kfree` so the code can build out-of-tree
+- inode-number allocation uses `vns_alloc_inum()` / `vns_free_inum()`
+- diagfs statistics are emitted through `vendor_kernel_diag_snprintf()`
+
+## Vendored files
+
+- `kernel/utsname.c`
+- `kernel/nsproxy.c`
+- `kernel/pid_namespace.c`
+- `kernel/user_namespace.c`
+- `ipc/namespace.c`
+- `fs/nsfs.c`
+- `kernel/cgroup/namespace.c`
+- `kernel/time/namespace.c`
+
+## Helper files
+
+- `vendor_kernel.h` - shared internal declarations
+- `glue/vendor_kernel_module.c` - lifecycle, symbol resolution, registry
+- `glue/vendor_kernel_syscalls.c` - syscall hooks
+- `glue/vendor_kernel_diag.c` - diagfs renderer
+- `include/uapi/vendor_kernel.h` - minimal UAPI marker header
+
+## Diffing against upstream
+
+Run:
+
+```sh
+./vendor_kernel_diff.sh [path-to-kernel-common]
+```
+
+With no argument it defaults to `$RUNNER_TEMP/kernel-common`.

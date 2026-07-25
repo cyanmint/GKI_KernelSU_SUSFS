@@ -204,13 +204,13 @@ jobs:
             --depth=1 \
             "$RUNNER_TEMP/kernel-common"
 
-      - name: Diff vendor_ns against kernel-common
+      - name: Diff vendor_kernel against kernel-common
         run: |
           set -euo pipefail
           DIFF_OUT="$RUNNER_TEMP/vendor-ns.diff"
-          sh lkm4ctr/vendor_ns/vendor_ns_diff.sh "$RUNNER_TEMP/kernel-common" | tee "$DIFF_OUT"
+          sh lkm4ctr/vendor_kernel/vendor_kernel_diff.sh "$RUNNER_TEMP/kernel-common" | tee "$DIFF_OUT"
           {
-            echo "## vendor_ns vs kernel-common (android14-6.1)"
+            echo "## vendor_kernel vs kernel-common (android14-6.1)"
             echo
             echo '```diff'
             cat "$DIFF_OUT"

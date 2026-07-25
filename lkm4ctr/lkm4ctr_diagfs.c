@@ -166,7 +166,7 @@
 
 #include "shadow_hook.h"
 #include "shadow_ns/shadow_ns_internal.h"
-#include "vendor_ns/vendor_ns.h"
+#include "vendor_kernel/vendor_kernel.h"
 #include "lkm4ctr_log.h"
 #include "lkm4ctr_compat.h"
 
@@ -256,9 +256,9 @@ extern size_t shadow_sysvipc_diag_snprintf(char *buf, size_t buflen);
 
 extern int shadow_ns_init(void);
 extern void shadow_ns_exit(void);
-extern int vendor_ns_init(void);
-extern void vendor_ns_exit(void);
-extern size_t vendor_ns_diag_snprintf(char *buf, size_t buflen);
+extern int vendor_kernel_init(void);
+extern void vendor_kernel_exit(void);
+extern size_t vendor_kernel_diag_snprintf(char *buf, size_t buflen);
 extern int shadow_sysvipc_init(void);
 extern void shadow_sysvipc_exit(void);
 extern int shadow_mqueue_init(void);
@@ -334,7 +334,7 @@ struct lkm4ctr_diagfs_ns_type {
 static struct lkm4ctr_diagfs_module lkm4ctr_diagfs_modules[] = {
 	{ "hijack", 		"shadow_hijack", 	false, false, shadow_hijack_init,	shadow_hijack_exit,	LKM4CTR_STATE_ACTIVE },
 	{ "ns", 		"shadow_ns", 		true,  true,  shadow_ns_init,		shadow_ns_exit,		LKM4CTR_STATE_UNLOADED },
-	{ "vendor_ns", 		"vendor_ns", 		true,  true,  vendor_ns_init,		vendor_ns_exit,	LKM4CTR_STATE_UNLOADED },
+	{ "vendor_kernel", 		"vendor_kernel", 		true,  true,  vendor_kernel_init,		vendor_kernel_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "sysvipc", 		"shadow_sysvipc", 	true,  false, shadow_sysvipc_init,	shadow_sysvipc_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "mqueue", 		"shadow_mqueue", 	true,  false, shadow_mqueue_init,	shadow_mqueue_exit,	LKM4CTR_STATE_UNLOADED },
 	{ "cgroupdevices", 	"shadow_cgdevices", 	true,  false, shadow_cgdevices_init,	shadow_cgdevices_exit,	LKM4CTR_STATE_UNLOADED },
@@ -663,8 +663,8 @@ static size_t lkm4ctr_diagfs_hooks_snprintf(const struct lkm4ctr_diagfs_info *in
 static size_t lkm4ctr_diagfs_namespaces_snprintf(const struct lkm4ctr_diagfs_info *info,
 						 char *buf, size_t buflen)
 {
-	if (!strcmp(info->tag, "vendor_ns"))
-		return vendor_ns_diag_snprintf(buf, buflen);
+	if (!strcmp(info->tag, "vendor_kernel"))
+		return vendor_kernel_diag_snprintf(buf, buflen);
 	if (info->has_ns_type)
 		return shadow_ns_diag_snprintf_type(info->ns_type, buf, buflen);
 	return shadow_ns_diag_snprintf(buf, buflen);
@@ -700,8 +700,8 @@ static size_t lkm4ctr_diagfs_global_resources_snprintf(const struct lkm4ctr_diag
 	pos += shadow_ns_diag_snprintf(buf + pos,
 				      pos < buflen ? buflen - pos : 0);
 	pos += scnprintf(buf + pos, pos < buflen ? buflen - pos : 0,
-			 "vendor_ns:\n");
-	pos += vendor_ns_diag_snprintf(buf + pos,
+			 "vendor_kernel:\n");
+	pos += vendor_kernel_diag_snprintf(buf + pos,
 				      pos < buflen ? buflen - pos : 0);
 	return pos;
 }
@@ -709,14 +709,16 @@ static size_t lkm4ctr_diagfs_global_resources_snprintf(const struct lkm4ctr_diag
 static size_t lkm4ctr_diagfs_mqueue_msg_snprintf(const struct lkm4ctr_diagfs_info *info,
 						 char *buf, size_t buflen)
 {
-	(void)info;
+	if (!strcmp(info->tag, "vendor_kernel"))
+		return vendor_kernel_diag_snprintf(buf, buflen);
 	return shadow_mqueue_diag_snprintf(buf, buflen);
 }
 
 static size_t lkm4ctr_diagfs_sysvipc_resources_snprintf(const struct lkm4ctr_diagfs_info *info,
 							char *buf, size_t buflen)
 {
-	(void)info;
+	if (!strcmp(info->tag, "vendor_kernel"))
+		return vendor_kernel_diag_snprintf(buf, buflen);
 	return shadow_sysvipc_diag_snprintf(buf, buflen);
 }
 
@@ -1034,9 +1036,14 @@ static int lkm4ctr_diagfs_module_load(struct lkm4ctr_diagfs_module *mod,
 		return 0;
 	}
 	if ((!strcmp(mod->tag, "shadow_ns") &&
-	     lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("vendor_ns")) != LKM4CTR_STATE_UNLOADED) ||
-	    (!strcmp(mod->tag, "vendor_ns") &&
-	     lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("shadow_ns")) != LKM4CTR_STATE_UNLOADED)) {
+	     lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("vendor_kernel")) != LKM4CTR_STATE_UNLOADED) ||
+	    (!strcmp(mod->tag, "vendor_kernel") &&
+	     (lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("shadow_ns")) != LKM4CTR_STATE_UNLOADED ||
+	      lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("shadow_mqueue")) != LKM4CTR_STATE_UNLOADED ||
+	      lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("shadow_sysvipc")) != LKM4CTR_STATE_UNLOADED)) ||
+	    ((!strcmp(mod->tag, "shadow_mqueue") ||
+	      !strcmp(mod->tag, "shadow_sysvipc")) &&
+	     lkm4ctr_diagfs_module_stable_state(lkm4ctr_diagfs_find_module("vendor_kernel")) != LKM4CTR_STATE_UNLOADED)) {
 		mutex_unlock(&lkm4ctr_unload_lock);
 		return -EBUSY;
 	}
@@ -1981,10 +1988,21 @@ static int lkm4ctr_diagfs_fill_module_dir(struct super_block *sb,
 		return 0;
 	}
 
-	if (!strcmp(mod->tag, "vendor_ns"))
-		return lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
+	if (!strcmp(mod->tag, "vendor_kernel")) {
+		ret = lkm4ctr_diagfs_create_checked(sb, dir, "namespaces", 0444,
 					    LKM4CTR_DIAG_NAMESPACES,
 					    mod->tag, false, false, 0);
+		if (ret)
+			return ret;
+		ret = lkm4ctr_diagfs_create_checked(sb, dir, "msg", 0444,
+					    LKM4CTR_DIAG_MQUEUE_MSG,
+					    mod->tag, false, false, 0);
+		if (ret)
+			return ret;
+		return lkm4ctr_diagfs_create_checked(sb, dir, "resources", 0444,
+					    LKM4CTR_DIAG_SYSVIPC_RESOURCES,
+					    mod->tag, false, false, 0);
+	}
 
 	if (!strcmp(mod->tag, "shadow_mqueue"))
 		return lkm4ctr_diagfs_create_checked(sb, dir, "msg", 0444,
