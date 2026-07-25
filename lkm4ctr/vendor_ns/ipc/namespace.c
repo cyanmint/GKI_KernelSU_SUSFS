@@ -67,7 +67,7 @@ static struct ipc_namespace *create_ipc_ns(struct user_namespace *user_ns,
 	/* [RENAME] vendored proc-ns ops are prefixed. */
 	ns->ns.ops = &vns_ipcns_operations;
 
-	refcount_set(&ns->ns.count, 1);
+	vns_ipc_init_ref(ns);
 	ns->user_ns = get_user_ns(user_ns);
 	ns->ucounts = ucounts;
 
@@ -199,7 +199,7 @@ static DECLARE_WORK(free_ipc_work, free_ipc);
  */
 void vns_put_ipc_ns(struct ipc_namespace *ns) /* [RENAME] */
 {
-	if (refcount_dec_and_lock(&ns->ns.count, &mq_lock)) {
+	if (vns_ipc_put_ref_lock(ns, &mq_lock)) {
 		mq_clear_sbinfo(ns);
 		spin_unlock(&mq_lock);
 

@@ -8,6 +8,8 @@
 
 #include <linux/types.h>
 #include <linux/atomic.h>
+#include <linux/version.h>
+#include <linux/kref.h>
 #include <linux/hashtable.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
@@ -83,6 +85,31 @@ static inline bool vns_count_dec_and_test(void *count, bool is_refcount)
 
 #define vns_put_count(ptr) \
 	vns_count_dec_and_test((void *)(ptr), VNS_COUNT_TYPE_IS_REFCOUNT(ptr))
+
+static inline void vns_zero_stashed(struct ns_common *ns)
+{
+	atomic_long_set(&ns->stashed, 0);
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+#define vns_uts_init_ref(ns) vns_init_count(&(ns)->kref.refcount, 1)
+#define vns_pid_init_ref(ns) vns_init_count(&(ns)->kref.refcount, 1)
+#define vns_pid_put_ref(ns) vns_put_count(&(ns)->kref.refcount)
+#define vns_user_init_ref(ns) vns_init_count(&(ns)->count, 1)
+#define vns_user_put_ref(ns) vns_put_count(&(ns)->count)
+#define vns_ipc_init_ref(ns) vns_init_count(&(ns)->count, 1)
+#define vns_ipc_put_ref_lock(ns, lock) refcount_dec_and_lock(&(ns)->count, (lock))
+#define VNS_TIME_REF_INIT .kref = KREF_INIT(1),
+#else
+#define vns_uts_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
+#define vns_pid_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
+#define vns_pid_put_ref(ns) vns_put_count(&(ns)->ns.count)
+#define vns_user_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
+#define vns_user_put_ref(ns) vns_put_count(&(ns)->ns.count)
+#define vns_ipc_init_ref(ns) vns_init_count(&(ns)->ns.count, 1)
+#define vns_ipc_put_ref_lock(ns, lock) refcount_dec_and_lock(&(ns)->ns.count, (lock))
+#define VNS_TIME_REF_INIT .ns.count = REFCOUNT_INIT(1),
+#endif
 
 int vns_alloc_inum(struct ns_common *ns);
 void vns_free_inum(struct ns_common *ns);
@@ -171,6 +198,20 @@ extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif
 void vns_compat_resolve(void);
+
+int vns_security_create_user_ns(const struct cred *cred);
+bool vns_setup_mq_sysctls(struct ipc_namespace *ns);
+void vns_retire_mq_sysctls(struct ipc_namespace *ns);
+bool vns_setup_ipc_sysctls(struct ipc_namespace *ns);
+void vns_retire_ipc_sysctls(struct ipc_namespace *ns);
+
+#ifndef VNS_COMPAT_IMPL
+#define security_create_user_ns vns_security_create_user_ns
+#define setup_mq_sysctls vns_setup_mq_sysctls
+#define retire_mq_sysctls vns_retire_mq_sysctls
+#define setup_ipc_sysctls vns_setup_ipc_sysctls
+#define retire_ipc_sysctls vns_retire_ipc_sysctls
+#endif
 
 int vendor_ns_init(void);
 void vendor_ns_exit(void);

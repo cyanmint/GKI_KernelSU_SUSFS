@@ -55,7 +55,7 @@ static struct uts_namespace *create_uts_ns(void)
 	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
 	uts_ns = kzalloc(sizeof(*uts_ns), GFP_KERNEL);
 	if (uts_ns)
-		refcount_set(&uts_ns->ns.count, 1);
+		vns_uts_init_ref(uts_ns);
 	return uts_ns;
 }
 

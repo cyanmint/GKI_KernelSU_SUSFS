@@ -67,6 +67,7 @@
 #include <linux/sem.h>
 #include <linux/cred.h>
 
+#define VNS_COMPAT_IMPL
 #include "../vendor_ns.h"
 #include "../include/uapi/vendor_ns.h"
 #include "../../../common/shadow_hook.h"
@@ -312,7 +313,7 @@ void retire_userns_sysctls(struct user_namespace *ns)
  * our definition satisfies in-module references and avoids modpost errors.
  */
 #ifdef CONFIG_SECURITY
-int security_create_user_ns(const struct cred *cred)
+int vns_security_create_user_ns(const struct cred *cred)
 {
 	if (vns_security_create_user_ns_real)
 		return vns_security_create_user_ns_real(cred);
@@ -341,7 +342,7 @@ void perf_event_namespaces(struct task_struct *tsk)
  * <linux/ipc_namespace.h> declares this as extern when CONFIG_POSIX_MQUEUE=y.
  */
 #ifdef CONFIG_POSIX_MQUEUE
-bool setup_mq_sysctls(struct ipc_namespace *ns)
+bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
 {
 	if (vns_setup_mq_sysctls_real)
 		return vns_setup_mq_sysctls_real(ns);
@@ -415,7 +416,7 @@ struct ns_common *from_mnt_ns(struct mnt_namespace *mnt_ns)
  * Returns the struct pid for a pidfd file, used in vns_sys_setns() to
  * identify the target namespace set from a process pidfd.
  * Falls back to ERR_PTR(-EBADF) if unresolved, causing setns to reject
- * pidfds (it will still work with /proc/<pid>/ns/* paths).
+ * pidfds (it will still work with /proc/<pid>/ns/<type> paths).
  */
 struct pid *pidfd_pid(const struct file *file)
 {
@@ -431,10 +432,17 @@ struct pid *pidfd_pid(const struct file *file)
  * free_time_ns lives as vns_free_time_ns(); this shim forwards the call so
  * the inline can resolve.
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+void free_time_ns(struct kref *kref)
+{
+	vns_free_time_ns(container_of(kref, struct time_namespace, kref));
+}
+#else
 void free_time_ns(struct time_namespace *ns)
 {
 	vns_free_time_ns(ns);
 }
+#endif
 
 /*
  * [BUILD-COMPAT] set_fs_root (fs/fs_struct.c, not exported).
@@ -518,10 +526,17 @@ void sem_init_ns(struct ipc_namespace *ns)
  * free_uts_ns() when the refcount reaches zero.  Delegate to
  * vns_free_uts_ns() defined in our vendored utsname.c.
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+void free_uts_ns(struct kref *kref)
+{
+	vns_free_uts_ns(container_of(kref, struct uts_namespace, kref));
+}
+#else
 void free_uts_ns(struct uts_namespace *ns)
 {
 	vns_free_uts_ns(ns);
 }
+#endif
 
 /*
  * [BUILD-COMPAT] set_fs_pwd (fs/fs_struct.c, not exported).
@@ -574,7 +589,7 @@ bool proc_ns_file(const struct file *file)
  * Unregisters per-ipc-ns sysctl entries.
  * <linux/ipc_namespace.h> declares this when CONFIG_SYSCTL=y.
  */
-void retire_ipc_sysctls(struct ipc_namespace *ns)
+void vns_retire_ipc_sysctls(struct ipc_namespace *ns)
 {
 	if (vns_retire_ipc_sysctls_real)
 		vns_retire_ipc_sysctls_real(ns);
@@ -586,7 +601,7 @@ void retire_ipc_sysctls(struct ipc_namespace *ns)
  * [BUILD-COMPAT] retire_mq_sysctls (ipc/mqueue.c, not exported).
  * Unregisters per-ipc-ns mqueue sysctl entries.
  */
-void retire_mq_sysctls(struct ipc_namespace *ns)
+void vns_retire_mq_sysctls(struct ipc_namespace *ns)
 {
 	if (vns_retire_mq_sysctls_real)
 		vns_retire_mq_sysctls_real(ns);
@@ -613,7 +628,7 @@ void shm_init_ns(struct ipc_namespace *ns)
  * Registers per-ipc-ns sysctl table entries.
  * <linux/ipc_namespace.h> declares this as extern when CONFIG_SYSCTL=y.
  */
-bool setup_ipc_sysctls(struct ipc_namespace *ns)
+bool vns_setup_ipc_sysctls(struct ipc_namespace *ns)
 {
 	if (vns_setup_ipc_sysctls_real)
 		return vns_setup_ipc_sysctls_real(ns);

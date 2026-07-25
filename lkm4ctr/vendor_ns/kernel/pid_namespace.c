@@ -120,7 +120,7 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 	/* [RENAME] vendored proc-ns ops are namespaced. */
 	ns->ns.ops = &vns_pidns_operations;
 
-	refcount_set(&ns->ns.count, 1);
+	vns_pid_init_ref(ns);
 	ns->level = level;
 	ns->parent = get_pid_ns(parent_pid_ns);
 	ns->user_ns = get_user_ns(user_ns);
@@ -173,7 +173,7 @@ void vns_put_pid_ns(struct pid_namespace *ns) /* [RENAME] */
 
 	while (ns != &init_pid_ns) {
 		parent = ns->parent;
-		if (!refcount_dec_and_test(&ns->ns.count))
+		if (!vns_pid_put_ref(ns))
 			break;
 		destroy_pid_namespace(ns);
 		ns = parent;

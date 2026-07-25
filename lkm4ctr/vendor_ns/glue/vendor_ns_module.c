@@ -28,7 +28,7 @@ static atomic_t vns_inum_counter = ATOMIC_INIT(0x60000000);
 
 int vns_alloc_inum(struct ns_common *ns)
 {
-	ns->stashed = NULL; /* [BUILD-COMPAT] */
+	vns_zero_stashed(ns); /* [BUILD-COMPAT] */
 	if (vns_proc_alloc_inum_fn)
 		return vns_proc_alloc_inum_fn(&ns->inum);
 	ns->inum = (unsigned int)atomic_inc_return(&vns_inum_counter);

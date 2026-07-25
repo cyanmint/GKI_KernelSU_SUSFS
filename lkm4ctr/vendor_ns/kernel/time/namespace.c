@@ -156,7 +156,7 @@ const struct proc_ns_operations vns_timens_for_children_operations = { /* [RENAM
 };
 
 struct time_namespace vns_init_time_ns = { /* [RENAME] */
-	.ns.count	= REFCOUNT_INIT(1),
+	VNS_TIME_REF_INIT
 	.user_ns	= &init_user_ns,
 	.ns.ops		= &vns_timens_operations,
 	.frozen_offsets	= true,
