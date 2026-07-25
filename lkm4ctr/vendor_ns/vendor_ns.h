@@ -197,22 +197,89 @@ extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif
+struct ucounts *vns_inc_ucount(struct user_namespace *ns, kuid_t uid,
+			       enum ucount_type type);
+void vns_dec_ucount(struct ucounts *ucounts, enum ucount_type type);
+bool vns_setup_userns_sysctls(struct user_namespace *ns);
+void vns_retire_userns_sysctls(struct user_namespace *ns);
 void vns_compat_resolve(void);
 bool vns_compat_ready(void);
-
 int vns_security_create_user_ns(const struct cred *cred);
+void vns_perf_event_namespaces(struct task_struct *tsk);
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns);
+void vns_mq_clear_sbinfo(struct ipc_namespace *ns);
+void vns_mq_put_mnt(struct ipc_namespace *ns);
+int vns_msg_init_ns(struct ipc_namespace *ns);
+struct ns_common *vns_from_mnt_ns(struct mnt_namespace *mnt_ns);
+struct pid *vns_pidfd_pid(const struct file *file);
+void vns_set_fs_root(struct fs_struct *fs, const struct path *path);
+struct fs_struct *vns_copy_fs_struct(struct fs_struct *old);
+void vns_set_fs_pwd(struct fs_struct *fs, const struct path *path);
+void vns_free_fs_struct(struct fs_struct *fs);
+bool vns_ptrace_may_access(struct task_struct *task, unsigned int mode);
+bool vns_current_chrooted(void);
+void vns_disable_pid_allocation(struct pid_namespace *ns);
+bool vns_proc_ns_file(const struct file *file);
 void vns_retire_mq_sysctls(struct ipc_namespace *ns);
 bool vns_setup_ipc_sysctls(struct ipc_namespace *ns);
 void vns_retire_ipc_sysctls(struct ipc_namespace *ns);
-int set_cred_ucounts(struct cred *new);
+int vns_set_cred_ucounts(struct cred *new);
+struct cred *vns_prepare_creds(void);
+int vns_commit_creds(struct cred *new);
+bool vns_file_ns_capable(const struct file *file, struct user_namespace *ns,
+			 int cap);
+void __noreturn vns_do_exit(long error_code);
+#ifdef CONFIG_CGROUPS
+void vns_free_cgroup_ns(struct cgroup_namespace *ns);
+#endif
+#ifdef CONFIG_SYSVIPC
+void vns_sem_init_ns(struct ipc_namespace *ns);
+void vns_shm_init_ns(struct ipc_namespace *ns);
+void vns_exit_sem(struct task_struct *tsk);
+#endif
+#ifdef CONFIG_USER_NS
+bool vns_in_userns(const struct user_namespace *ancestor,
+		   const struct user_namespace *descendant);
+#endif
+#ifdef CONFIG_POSIX_MQUEUE
+int vns_mq_init_ns(struct ipc_namespace *ns);
+#endif
 
 #ifndef VNS_COMPAT_IMPL
+#define inc_ucount vns_inc_ucount
+#define dec_ucount vns_dec_ucount
+#define setup_userns_sysctls vns_setup_userns_sysctls
+#define retire_userns_sysctls vns_retire_userns_sysctls
 #define security_create_user_ns vns_security_create_user_ns
+#define perf_event_namespaces vns_perf_event_namespaces
 #define setup_mq_sysctls vns_setup_mq_sysctls
+#define mq_clear_sbinfo vns_mq_clear_sbinfo
+#define mq_put_mnt vns_mq_put_mnt
+#define msg_init_ns vns_msg_init_ns
+#define from_mnt_ns vns_from_mnt_ns
+#define pidfd_pid vns_pidfd_pid
+#define set_fs_root vns_set_fs_root
+#define copy_fs_struct vns_copy_fs_struct
+#define set_fs_pwd vns_set_fs_pwd
+#define free_fs_struct vns_free_fs_struct
+#define ptrace_may_access vns_ptrace_may_access
+#define current_chrooted vns_current_chrooted
+#define disable_pid_allocation vns_disable_pid_allocation
+#define proc_ns_file vns_proc_ns_file
 #define retire_mq_sysctls vns_retire_mq_sysctls
+#define sem_init_ns vns_sem_init_ns
+#define shm_init_ns vns_shm_init_ns
+#define exit_sem vns_exit_sem
 #define setup_ipc_sysctls vns_setup_ipc_sysctls
 #define retire_ipc_sysctls vns_retire_ipc_sysctls
+#define set_cred_ucounts vns_set_cred_ucounts
+#define prepare_creds vns_prepare_creds
+#define commit_creds vns_commit_creds
+#define file_ns_capable vns_file_ns_capable
+#define do_exit vns_do_exit
+#define in_userns vns_in_userns
+#define mq_init_ns vns_mq_init_ns
+#define free_cgroup_ns vns_free_cgroup_ns
 #endif
 
 int vendor_ns_init(void);

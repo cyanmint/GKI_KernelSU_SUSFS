@@ -323,8 +323,8 @@ struct ucounts vns_ucounts_stub;
  * created even on kernels that restrict ucounts.  On kernels where the real
  * functions resolve, they are called instead.
  */
-struct ucounts *inc_ucount(struct user_namespace *ns, kuid_t uid,
-			   enum ucount_type type)
+struct ucounts *vns_inc_ucount(struct user_namespace *ns, kuid_t uid,
+			       enum ucount_type type)
 {
 	if (vns_inc_ucount_real)
 		return vns_inc_ucount_real(ns, uid, type);
@@ -332,7 +332,7 @@ struct ucounts *inc_ucount(struct user_namespace *ns, kuid_t uid,
 	return &vns_ucounts_stub;
 }
 
-void dec_ucount(struct ucounts *ucounts, enum ucount_type type)
+void vns_dec_ucount(struct ucounts *ucounts, enum ucount_type type)
 {
 	if (!ucounts || ucounts == &vns_ucounts_stub)
 		return;
@@ -347,14 +347,14 @@ void dec_ucount(struct ucounts *ucounts, enum ucount_type type)
  * means /proc/sys/user/ entries for vendor namespaces are absent, which
  * is acceptable for a parallel namespace subsystem.
  */
-bool setup_userns_sysctls(struct user_namespace *ns)
+bool vns_setup_userns_sysctls(struct user_namespace *ns)
 {
 	if (vns_setup_userns_sysctls_real)
 		return vns_setup_userns_sysctls_real(ns);
 	return true; /* stub: pretend success */
 }
 
-void retire_userns_sysctls(struct user_namespace *ns)
+void vns_retire_userns_sysctls(struct user_namespace *ns)
 {
 	if (vns_retire_userns_sysctls_real)
 		vns_retire_userns_sysctls_real(ns);
@@ -381,7 +381,7 @@ int vns_security_create_user_ns(const struct cred *cred)
  * <linux/perf_event.h> declares this as extern when CONFIG_PERF_EVENTS=y.
  */
 #ifdef CONFIG_PERF_EVENTS
-void perf_event_namespaces(struct task_struct *tsk)
+void vns_perf_event_namespaces(struct task_struct *tsk)
 {
 	if (vns_perf_event_namespaces_real)
 		vns_perf_event_namespaces_real(tsk);
@@ -411,14 +411,14 @@ bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
  * Both are no-ops here because vendor_ns does not mount a per-ns mqueue.
  * Declared in vendor_ns/ipc/util.h which ipc/namespace.c includes.
  */
-void mq_clear_sbinfo(struct ipc_namespace *ns)
+void vns_mq_clear_sbinfo(struct ipc_namespace *ns)
 {
 	if (vns_mq_clear_sbinfo_real)
 		vns_mq_clear_sbinfo_real(ns);
 	/* stub: no-op */
 }
 
-void mq_put_mnt(struct ipc_namespace *ns)
+void vns_mq_put_mnt(struct ipc_namespace *ns)
 {
 	if (vns_mq_put_mnt_real)
 		vns_mq_put_mnt_real(ns);
@@ -443,7 +443,7 @@ DEFINE_SPINLOCK(mq_lock);
  * where the symbol is not exported.
  */
 #ifdef CONFIG_SYSVIPC
-int msg_init_ns(struct ipc_namespace *ns)
+int vns_msg_init_ns(struct ipc_namespace *ns)
 {
 	if (vns_msg_init_ns_real)
 		return vns_msg_init_ns_real(ns);
@@ -458,7 +458,7 @@ int msg_init_ns(struct ipc_namespace *ns)
  * Mount namespace support is not yet vendored, so setns(CLONE_NEWNS) is
  * intentionally rejected via this returning NULL.
  */
-struct ns_common *from_mnt_ns(struct mnt_namespace *mnt_ns)
+struct ns_common *vns_from_mnt_ns(struct mnt_namespace *mnt_ns)
 {
 	if (vns_from_mnt_ns_real)
 		return vns_from_mnt_ns_real(mnt_ns);
@@ -472,7 +472,7 @@ struct ns_common *from_mnt_ns(struct mnt_namespace *mnt_ns)
  * Falls back to ERR_PTR(-EBADF) if unresolved, causing setns to reject
  * pidfds (it will still work with /proc/<pid>/ns/<type> paths).
  */
-struct pid *pidfd_pid(const struct file *file)
+struct pid *vns_pidfd_pid(const struct file *file)
 {
 	if (vns_pidfd_pid_real)
 		return vns_pidfd_pid_real(file);
@@ -503,7 +503,7 @@ void free_time_ns(struct time_namespace *ns)
  * Updates the root path stored in a task's fs_struct.  Used by
  * vns_install_nsproxy() when switching namespaces.
  */
-void set_fs_root(struct fs_struct *fs, const struct path *path)
+void vns_set_fs_root(struct fs_struct *fs, const struct path *path)
 {
 	if (vns_set_fs_root_real)
 		vns_set_fs_root_real(fs, path);
@@ -515,7 +515,7 @@ void set_fs_root(struct fs_struct *fs, const struct path *path)
  * Allocates a copy of the caller's fs_struct.  Used in copy_namespaces()
  * when the new namespace set needs an independent filesystem root.
  */
-struct fs_struct *copy_fs_struct(struct fs_struct *old)
+struct fs_struct *vns_copy_fs_struct(struct fs_struct *old)
 {
 	if (vns_copy_fs_struct_real)
 		return vns_copy_fs_struct_real(old);
@@ -527,7 +527,7 @@ struct fs_struct *copy_fs_struct(struct fs_struct *old)
  * Access-mode check used in vns_sys_setns() to gate cross-process ns changes.
  * Fall back to denying access if the real function is not resolved.
  */
-bool ptrace_may_access(struct task_struct *task, unsigned int mode)
+bool vns_ptrace_may_access(struct task_struct *task, unsigned int mode)
 {
 	if (vns_ptrace_may_access_real)
 		return vns_ptrace_may_access_real(task, mode);
@@ -539,7 +539,7 @@ bool ptrace_may_access(struct task_struct *task, unsigned int mode)
  * Clears the PIDNS_ADDING flag so the pid namespace stops accepting new pids.
  * Called in vns_zap_pid_ns_processes() during pid namespace teardown.
  */
-void disable_pid_allocation(struct pid_namespace *ns)
+void vns_disable_pid_allocation(struct pid_namespace *ns)
 {
 	if (vns_disable_pid_allocation_real)
 		vns_disable_pid_allocation_real(ns);
@@ -566,7 +566,7 @@ void key_free_user_ns(struct user_namespace *ns)
  * Initialises the SysV semaphore IDs for a new ipc_namespace.
  * ipc/util.h already provides a static inline no-op when !CONFIG_SYSVIPC.
  */
-void sem_init_ns(struct ipc_namespace *ns)
+void vns_sem_init_ns(struct ipc_namespace *ns)
 {
 	if (vns_sem_init_ns_real)
 		vns_sem_init_ns_real(ns);
@@ -596,7 +596,7 @@ void free_uts_ns(struct uts_namespace *ns)
  * [BUILD-COMPAT] set_fs_pwd (fs/fs_struct.c, not exported).
  * Updates the current working directory in a task's fs_struct.
  */
-void set_fs_pwd(struct fs_struct *fs, const struct path *path)
+void vns_set_fs_pwd(struct fs_struct *fs, const struct path *path)
 {
 	if (vns_set_fs_pwd_real)
 		vns_set_fs_pwd_real(fs, path);
@@ -607,7 +607,7 @@ void set_fs_pwd(struct fs_struct *fs, const struct path *path)
  * [BUILD-COMPAT] free_fs_struct (fs/fs_struct.c, not exported).
  * Releases an fs_struct allocated by copy_fs_struct().
  */
-void free_fs_struct(struct fs_struct *fs)
+void vns_free_fs_struct(struct fs_struct *fs)
 {
 	if (vns_free_fs_struct_real)
 		vns_free_fs_struct_real(fs);
@@ -619,7 +619,7 @@ void free_fs_struct(struct fs_struct *fs)
  * Returns true if the current task is in a chroot jail.
  * Used in user_namespace.c to gate unshare(CLONE_NEWUSER).
  */
-bool current_chrooted(void)
+bool vns_current_chrooted(void)
 {
 	if (vns_current_chrooted_real)
 		return vns_current_chrooted_real();
@@ -631,7 +631,7 @@ bool current_chrooted(void)
  * Returns true if the given file is a /proc/<pid>/ns/<ns> magic-link file.
  * Used in vns_sys_setns() to check whether the fd refers to a namespace.
  */
-bool proc_ns_file(const struct file *file)
+bool vns_proc_ns_file(const struct file *file)
 {
 	if (vns_proc_ns_file_real)
 		return vns_proc_ns_file_real(file);
@@ -694,7 +694,7 @@ bool vns_setup_ipc_sysctls(struct ipc_namespace *ns)
  * Associates ucounts with a credentials struct during user_namespace creation.
  * Returns 0 on success.  Stub returns 0 (allow) when not resolved.
  */
-int set_cred_ucounts(struct cred *new)
+int vns_set_cred_ucounts(struct cred *new)
 {
 	if (vns_set_cred_ucounts_real)
 		return vns_set_cred_ucounts_real(new);
@@ -707,28 +707,29 @@ int set_cred_ucounts(struct cred *new)
  * because of symbol trimming. Resolve them via shadow_hook_resolve() at init
  * time and keep local wrappers here so the module never imports them directly.
  */
-struct cred *prepare_creds(void)
+struct cred *vns_prepare_creds(void)
 {
 	if (vns_prepare_creds_real)
 		return vns_prepare_creds_real();
 	return NULL;
 }
 
-int commit_creds(struct cred *new)
+int vns_commit_creds(struct cred *new)
 {
 	if (vns_commit_creds_real)
 		return vns_commit_creds_real(new);
 	return -ENOENT;
 }
 
-bool file_ns_capable(const struct file *file, struct user_namespace *ns, int cap)
+bool vns_file_ns_capable(const struct file *file, struct user_namespace *ns,
+			 int cap)
 {
 	if (vns_file_ns_capable_real)
 		return vns_file_ns_capable_real(file, ns, cap);
 	return false;
 }
 
-void __noreturn do_exit(long error_code)
+void __noreturn vns_do_exit(long error_code)
 {
 	if (vns_do_exit_real)
 		vns_do_exit_real(error_code);
@@ -738,7 +739,7 @@ void __noreturn do_exit(long error_code)
 }
 
 #ifdef CONFIG_CGROUPS
-void free_cgroup_ns(struct cgroup_namespace *ns)
+void vns_free_cgroup_ns(struct cgroup_namespace *ns)
 {
 	if (vns_free_cgroup_ns_real) {
 		vns_free_cgroup_ns_real(ns);
@@ -755,8 +756,8 @@ void free_cgroup_ns(struct cgroup_namespace *ns)
  * Returns true if 'descendant' is the same as or a descendant of 'ancestor'.
  * <linux/user_namespace.h> provides a static inline fallback when !CONFIG_USER_NS.
  */
-bool in_userns(const struct user_namespace *ancestor,
-	       const struct user_namespace *descendant)
+bool vns_in_userns(const struct user_namespace *ancestor,
+		   const struct user_namespace *descendant)
 {
 	if (vns_in_userns_real)
 		return vns_in_userns_real(ancestor, descendant);
@@ -771,7 +772,7 @@ bool in_userns(const struct user_namespace *ancestor,
  * <linux/ipc_namespace.h> provides a static inline returning 0 when
  * !CONFIG_POSIX_MQUEUE.
  */
-int mq_init_ns(struct ipc_namespace *ns)
+int vns_mq_init_ns(struct ipc_namespace *ns)
 {
 	if (vns_mq_init_ns_real)
 		return vns_mq_init_ns_real(ns);
@@ -785,7 +786,7 @@ int mq_init_ns(struct ipc_namespace *ns)
  * Called on task exit to release any SysV semaphore undo structures.
  * <linux/sem.h> provides a static inline no-op when !CONFIG_SYSVIPC.
  */
-void exit_sem(struct task_struct *tsk)
+void vns_exit_sem(struct task_struct *tsk)
 {
 	if (vns_exit_sem_real)
 		vns_exit_sem_real(tsk);
