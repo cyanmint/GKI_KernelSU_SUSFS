@@ -92,6 +92,9 @@
 #include "../vendor_kernel.h"
 #include "util.h"
 
+#undef SYSCALL_METADATA
+#define SYSCALL_METADATA(sname, nb, ...)
+
 #define semget vns_semget
 #define semctl vns_semctl_syscall
 #define old_semctl vns_old_semctl
@@ -106,6 +109,7 @@
 #define compat_ksys_semtimedop vns_compat_ksys_semtimedop
 #define copy_semundo vns_copy_semundo
 #define sem_init vns_sem_init
+#define free_ipcs vns_free_ipcs
 
 /* One semaphore structure for each semaphore in the system. */
 struct sem {

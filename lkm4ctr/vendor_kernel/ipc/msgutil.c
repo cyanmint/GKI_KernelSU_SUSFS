@@ -18,6 +18,8 @@
 
 #include "util.h"
 
+#define ipcns_operations vns_ipcns_operations
+
 DEFINE_SPINLOCK(mq_lock);
 
 /*

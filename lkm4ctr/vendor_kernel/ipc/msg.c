@@ -46,6 +46,9 @@
 #include "../vendor_kernel.h"
 #include "util.h"
 
+#undef SYSCALL_METADATA
+#define SYSCALL_METADATA(sname, nb, ...)
+
 #define msgget vns_msgget
 #define msgctl vns_msgctl_syscall
 #define old_msgctl vns_old_msgctl
@@ -59,6 +62,7 @@
 #define ksys_msgrcv vns_ksys_msgrcv
 #define compat_ksys_msgrcv vns_compat_ksys_msgrcv
 #define msg_init vns_msg_init
+#define free_ipcs vns_free_ipcs
 
 /* one msq_queue structure for each present queue on the system */
 struct msg_queue {

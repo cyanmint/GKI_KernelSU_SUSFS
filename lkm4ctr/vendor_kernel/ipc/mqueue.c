@@ -45,6 +45,9 @@
 #include <net/sock.h>
 #include "util.h"
 
+#undef SYSCALL_METADATA
+#define SYSCALL_METADATA(sname, nb, ...)
+
 #define mq_open vns_mq_open_syscall
 #define mq_unlink vns_mq_unlink_syscall
 #define mq_timedsend vns_mq_timedsend_syscall

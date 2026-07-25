@@ -46,6 +46,7 @@ lkm4ctr-objs := \
 	vendor_kernel/kernel/nsproxy.o \
 	vendor_kernel/kernel/pid_namespace.o \
 	vendor_kernel/kernel/user_namespace.o \
+	vendor_kernel/ipc/compat.o \
 	vendor_kernel/ipc/msgutil.o \
 	vendor_kernel/ipc/util.o \
 	vendor_kernel/ipc/msg.o \

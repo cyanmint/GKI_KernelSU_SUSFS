@@ -51,6 +51,9 @@
 #include "lkm4ctr_compat.h"
 #include "util.h"
 
+#undef SYSCALL_METADATA
+#define SYSCALL_METADATA(sname, nb, ...)
+
 #define shmget vns_shmget
 #define shmctl vns_shmctl_syscall
 #define old_shmctl vns_old_shmctl
@@ -62,6 +65,7 @@
 #define do_shmat vns_do_shmat
 #define ksys_shmdt vns_ksys_shmdt
 #define shm_init vns_shm_init
+#define free_ipcs vns_free_ipcs
 
 struct shmid_kernel /* private to the kernel */
 {
