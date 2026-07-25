@@ -1465,5 +1465,10 @@ const struct proc_ns_operations vns_userns_operations = { /* [RENAME] */
 
 void vns_user_ns_init(void) /* [RENAME] */
 {
-	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
+	/* [BUILD-COMPAT] module-owned cache: see vendor_kernel/README.md's
+	 * "Slab-cache consistency with the real kernel" for why this no
+	 * longer resolves the real kernel's private user_ns_cachep. */
+	if (!vns_user_ns_cachep)
+		vns_user_ns_cachep = kmem_cache_create("vns_user_namespace",
+			sizeof(struct user_namespace), 0, SLAB_ACCOUNT, NULL);
 }

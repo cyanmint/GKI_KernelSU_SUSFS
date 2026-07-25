@@ -41,10 +41,101 @@
 #include <linux/syscalls.h>
 #include <linux/cgroup.h>
 #include <linux/perf_event.h>
+#include <linux/hashtable.h>
+#include <linux/spinlock.h>
+#include <linux/kprobes.h>
 #include "../vendor_kernel.h"
+#include "../include/uapi/vendor_kernel.h"
+#include "../../../common/lkm4ctr_log.h"
 
 /* [BUILD-COMPAT] Forward declaration for vendored time_namespace init object. */
 extern struct time_namespace vns_init_time_ns;
+
+/*
+ * [BUILD-COMPAT] vns_nsproxy_set tracks every module-owned struct nsproxy *
+ * currently installed on some task_struct->nsproxy. It exists purely so
+ * that vns_task_exit_cleanup() (invoked from the do_exit() shadow_hook in
+ * glue/vendor_kernel_syscalls.c) can tell, for an arbitrary exiting task,
+ * whether that task's nsproxy is one of vendor_kernel's own vendored
+ * objects (allocated from vns_nsproxy_cachep) as opposed to the real
+ * kernel's init_nsproxy/&vns_init_nsproxy singleton -- without needing any
+ * unexported mm-internal helper such as virt_to_cache(). Membership is a
+ * pointer identity check only; the hash table is a small fixed-size
+ * spinlock-protected chain, sized generously since a device is expected to
+ * have at most a handful of concurrently-live vendored nsproxy objects.
+ */
+static DEFINE_HASHTABLE(vns_nsproxy_set, 6);
+static DEFINE_SPINLOCK(vns_nsproxy_set_lock);
+
+struct vns_nsproxy_set_entry {
+	struct nsproxy *ns;
+	struct hlist_node node;
+};
+
+static void vns_nsproxy_set_add(struct nsproxy *ns)
+{
+	struct vns_nsproxy_set_entry *entry;
+	unsigned long flags;
+
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry) {
+		/*
+		 * Allocation failure here just means vns_task_exit_cleanup()
+		 * will fail to recognize this object later and the real
+		 * kernel's exit path may attempt to free it against its own
+		 * cache. This is exceedingly unlikely (a tiny fixed-size
+		 * allocation) and there is no safe way to fail create_nsproxy()
+		 * at this point without unwinding a fully-populated object, so
+		 * we log and continue rather than leak the whole nsproxy.
+		 */
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG, "vns_nsproxy_set_add: kmalloc failed, exit-safety tracking degraded for %p", ns);
+		return;
+	}
+	entry->ns = ns;
+
+	spin_lock_irqsave(&vns_nsproxy_set_lock, flags);
+	hash_add(vns_nsproxy_set, &entry->node, (unsigned long)ns);
+	spin_unlock_irqrestore(&vns_nsproxy_set_lock, flags);
+}
+
+static bool vns_nsproxy_set_remove(struct nsproxy *ns)
+{
+	struct vns_nsproxy_set_entry *entry;
+	unsigned long flags;
+	bool found = false;
+
+	spin_lock_irqsave(&vns_nsproxy_set_lock, flags);
+	hash_for_each_possible(vns_nsproxy_set, entry, node, (unsigned long)ns) {
+		if (entry->ns == ns) {
+			hash_del(&entry->node);
+			found = true;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&vns_nsproxy_set_lock, flags);
+
+	if (found)
+		kfree(entry);
+	return found;
+}
+
+static bool vns_nsproxy_set_contains(struct nsproxy *ns)
+{
+	struct vns_nsproxy_set_entry *entry;
+	unsigned long flags;
+	bool found = false;
+
+	spin_lock_irqsave(&vns_nsproxy_set_lock, flags);
+	hash_for_each_possible(vns_nsproxy_set, entry, node, (unsigned long)ns) {
+		if (entry->ns == ns) {
+			found = true;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&vns_nsproxy_set_lock, flags);
+
+	return found;
+}
 
 
 struct nsproxy vns_init_nsproxy = { /* [RENAME] */
@@ -74,13 +165,16 @@ static inline struct nsproxy *create_nsproxy(void)
 {
 	struct nsproxy *nsproxy;
 
-	/* [BUILD-COMPAT] allocate from the real nsproxy_cachep (resolved at
-	 * init) instead of kzalloc, so the real kernel's free_nsproxy() can
-	 * safely kmem_cache_free() this object once installed on the real
-	 * task_struct->nsproxy. */
+	/* [BUILD-COMPAT] allocate from vendor_kernel's own module-owned
+	 * nsproxy cache (created in vns_nsproxy_cache_init()) instead of the
+	 * real kernel's private nsproxy_cachep. See vns_task_exit_cleanup()
+	 * below for how the real kernel's own exit path is kept from ever
+	 * touching this module-owned object. */
 	nsproxy = kmem_cache_alloc(vns_nsproxy_cachep, GFP_KERNEL);
-	if (nsproxy)
+	if (nsproxy) {
 		vns_init_count(&nsproxy->count, 1); /* [BUILD-COMPAT] */
+		vns_nsproxy_set_add(nsproxy); /* [BUILD-COMPAT] */
+	}
 	return nsproxy;
 }
 
@@ -171,7 +265,7 @@ out_pid:
 		vns_put_ipc_ns(new_nsp->ipc_ns); /* [RENAME] */
 out_ipc:
 	if (new_nsp->uts_ns)
-		put_uts_ns(new_nsp->uts_ns);
+		vns_put_uts_ns(new_nsp->uts_ns); /* [BUILD-COMPAT] */
 out_uts:
 	if (new_nsp->mnt_ns)
 		if (vns_put_mnt_ns_fn)
@@ -227,7 +321,7 @@ void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 		if (vns_put_mnt_ns_fn)
 			vns_put_mnt_ns_fn(ns->mnt_ns); /* [BUILD-COMPAT] */
 	if (ns->uts_ns)
-		put_uts_ns(ns->uts_ns);
+		vns_put_uts_ns(ns->uts_ns); /* [BUILD-COMPAT] */
 	if (ns->ipc_ns)
 		vns_put_ipc_ns(ns->ipc_ns); /* [RENAME] */
 	if (ns->pid_ns_for_children)
@@ -239,6 +333,7 @@ void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 	vns_put_cgroup_ns(ns->cgroup_ns); /* [RENAME] */
 	if (ns->net_ns && vns_put_net_ns_fn)
 		vns_put_net_ns_fn(ns->net_ns); /* [BUILD-COMPAT] */
+	vns_nsproxy_set_remove(ns); /* [BUILD-COMPAT] */
 	kmem_cache_free(vns_nsproxy_cachep, ns); /* [BUILD-COMPAT] */
 }
 
@@ -613,4 +708,107 @@ void vns_put_nsproxy(struct nsproxy *ns) /* [RENAME] */
 {
 	if (ns && vns_put_count(&ns->count))
 		vns_free_nsproxy(ns);
+}
+
+void vns_nsproxy_cache_init(void) /* [BUILD-COMPAT] */
+{
+	/* [BUILD-COMPAT] module-owned cache: see vendor_kernel/README.md's
+	 * "Slab-cache consistency with the real kernel" for why this no
+	 * longer resolves the real kernel's private nsproxy_cachep. */
+	if (!vns_nsproxy_cachep)
+		vns_nsproxy_cachep = kmem_cache_create("vns_nsproxy",
+			sizeof(struct nsproxy), 0,
+			SLAB_HWCACHE_ALIGN | SLAB_ACCOUNT, NULL);
+
+	/*
+	 * Pin vns_init_nsproxy's refcount to a large sentinel value so it can
+	 * never legitimately reach zero and be mistaken for a freeable
+	 * object -- it is a static singleton, never slab-allocated, and is
+	 * only ever used as the safe fallback nsproxy in
+	 * vns_task_exit_cleanup() below.
+	 */
+	vns_init_count(&vns_init_nsproxy.count, 0x40000000);
+}
+
+/*
+ * vns_task_exit_cleanup() - see the declaration comment in vendor_kernel.h.
+ * Called from the do_exit() shadow_hook (glue/vendor_kernel_syscalls.c)
+ * for every exiting task, strictly before the real do_exit() body (and
+ * therefore the real exit_task_namespaces()/free_nsproxy()) runs.
+ */
+void vns_task_exit_cleanup(struct task_struct *tsk) /* [BUILD-COMPAT] */
+{
+	struct nsproxy *ns;
+
+	task_lock(tsk);
+	ns = tsk->nsproxy;
+	if (!ns || !vns_nsproxy_set_contains(ns)) {
+		task_unlock(tsk);
+		return;
+	}
+	get_nsproxy(&vns_init_nsproxy);
+	tsk->nsproxy = &vns_init_nsproxy;
+	task_unlock(tsk);
+
+	/*
+	 * From here on, the real kernel's own exit_task_namespaces() will
+	 * only ever see &vns_init_nsproxy (pinned, never slab-allocated) on
+	 * this task, and will never call kmem_cache_free() against a
+	 * module-owned object. Tear the vendored object down ourselves,
+	 * through vendor_kernel's own self-contained free path.
+	 */
+	vns_put_nsproxy(ns); /* [RENAME] */
+}
+
+/*
+ * [BUILD-COMPAT] Exit-safety kprobe: a plain pre_handler-only kprobe on
+ * do_exit(), NOT one of the redirecting shadow_hook entries used elsewhere
+ * in vendor_kernel. do_exit() is __noreturn, so hooking it via the
+ * SHADOW_HOOK()/shadow_hijack redirect mechanism (which relies on a
+ * kretprobe firing on the *replacement* function's return to release the
+ * rmmod-safety module reference -- see common/shadow_hook.h's "rmmod
+ * safety" note) would never release that reference, permanently pinning
+ * module_refcount() above zero after the very first process exit on the
+ * whole system. A pre_handler-only kprobe has no such problem: it runs
+ * vns_task_exit_cleanup() and returns normally, letting the original
+ * do_exit() instruction execute completely untouched immediately
+ * afterwards, and register_kprobe()/unregister_kprobe() are already
+ * synchronously safe to install/remove (the same primitive
+ * shadow_hook_resolve() itself relies on for one-shot symbol resolution).
+ */
+static int vns_exit_kprobe_pre_handler(struct kprobe *p, struct pt_regs *regs)
+{
+	vns_task_exit_cleanup(current);
+	return 0;
+}
+
+static struct kprobe vns_exit_kprobe = {
+	.symbol_name	= "do_exit",
+	.pre_handler	= vns_exit_kprobe_pre_handler,
+};
+static bool vns_exit_kprobe_installed;
+
+int vns_exit_hook_init(void) /* [BUILD-COMPAT] */
+{
+	int ret;
+
+	if (vns_exit_kprobe_installed)
+		return 0;
+
+	ret = register_kprobe(&vns_exit_kprobe);
+	if (ret) {
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"do_exit exit-safety kprobe registration failed (%d)", ret);
+		return ret;
+	}
+	vns_exit_kprobe_installed = true;
+	return 0;
+}
+
+void vns_exit_hook_exit(void) /* [BUILD-COMPAT] */
+{
+	if (vns_exit_kprobe_installed) {
+		unregister_kprobe(&vns_exit_kprobe);
+		vns_exit_kprobe_installed = false;
+	}
 }

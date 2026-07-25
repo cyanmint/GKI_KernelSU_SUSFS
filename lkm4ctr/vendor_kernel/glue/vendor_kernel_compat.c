@@ -182,21 +182,45 @@ struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif /* CONFIG_POSIX_MQUEUE || CONFIG_SYSVIPC */
 
 /*
- * [BUILD-COMPAT] Real kmem_cache pointers for the four namespace-related
- * structs (uts_namespace, nsproxy, pid_namespace, user_namespace) that the
- * real kernel allocates from private, non-exported kmem_cache instances
- * (uts_ns_cache, nsproxy_cachep, pid_ns_cachep, user_ns_cachep).
+ * [BUILD-COMPAT] Module-owned kmem_cache pointers for the four namespace-
+ * related structs (uts_namespace, nsproxy, pid_namespace, user_namespace).
  *
- * vendor_kernel installs its vendored namespaces directly onto the real
- * task_struct->nsproxy (see vns_switch_task_namespaces()), which means the
+ * These used to be resolved from the *real* kernel's own private,
+ * non-exported kmem_cache instances (uts_ns_cache, nsproxy_cachep,
+ * pid_ns_cachep, user_ns_cachep) via shadow_hook_resolve(), on the theory
+ * that vendor_kernel installs its vendored namespaces directly onto the
+ * real task_struct->nsproxy (see vns_switch_task_namespaces()), so the
  * *real* kernel's own exit path (do_exit -> exit_task_namespaces ->
- * free_nsproxy -> free_uts_ns/__put_user_ns/put_pid_ns) will eventually
- * kmem_cache_free() these objects using the real cache pointers below.
- * If vendor_kernel allocated them with kzalloc() instead, SLUB's
- * cache_from_obj() detects the mismatch ("Wrong slab cache") and corrupts
- * state, leading to a kernel BUG/panic on task exit. Resolving the real
- * cache pointers and allocating/freeing through them keeps every vendored
- * namespace struct fully slab-consistent with the real kernel.
+ * free_nsproxy -> free_uts_ns/__put_user_ns/put_pid_ns) would eventually
+ * kmem_cache_free() these objects using the real kernel's own cache
+ * pointers, and SLUB's cache_from_obj() would detect a kzalloc()-vs-real-
+ * cache mismatch ("Wrong slab cache") and corrupt state otherwise.
+ *
+ * That resolution was fundamentally unreliable: these are non-exported
+ * `struct kmem_cache *` *data* symbols, and shadow_hook_resolve() finds
+ * symbols through register_kprobe(), which relies on kallsyms -- kallsyms
+ * only carries function symbols unless CONFIG_KALLSYMS_ALL is set (almost
+ * never true on production/GKI kernels). uts_ns_cache/pid_ns_cachep/
+ * user_ns_cachep additionally do not exist in vmlinux at all whenever
+ * CONFIG_UTS_NS/CONFIG_PID_NS/CONFIG_USER_NS is `n` (exactly the scenario
+ * vendor_kernel targets). This made vendor_kernel fail to load with -ENOENT
+ * on essentially every real device.
+ *
+ * Instead, these caches are now module-owned: created via
+ * kmem_cache_create() in vns_uts_ns_init()/vns_nsproxy_cache_init()/
+ * vns_pid_ns_init()/vns_user_ns_init(), matching the exact object layout
+ * (so kmem_cache_alloc()/kmem_cache_zalloc() call sites are unchanged).
+ * The real kernel's own exit path is prevented from ever touching a
+ * module-owned object via vns_task_exit_cleanup() (kernel/nsproxy.c),
+ * hooked onto the real do_exit() (glue/vendor_kernel_syscalls.c): before
+ * the real do_exit() body runs, any exiting task whose task_struct->nsproxy
+ * is a module-owned object (tracked in vns_nsproxy_set, kernel/nsproxy.c)
+ * is swapped back onto the pinned vns_init_nsproxy singleton and the real
+ * vendored object is torn down entirely by vendor_kernel itself
+ * (vns_put_nsproxy()/vns_free_nsproxy(), which recurse into
+ * vns_put_uts_ns()/vns_put_pid_ns()/vns_put_user_ns() -- all self-
+ * contained, module-owned frees). See vendor_kernel/README.md, "Slab-cache
+ * consistency with the real kernel".
  */
 struct kmem_cache *vns_uts_ns_cache;
 struct kmem_cache *vns_nsproxy_cachep;
@@ -272,26 +296,26 @@ void vns_compat_resolve(void)
 		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
 			"compat: init_ipc_ns not resolved (ipc ns disabled)");
 #endif
-	vns_uts_ns_cache = (struct kmem_cache *)(uintptr_t)
-		shadow_hook_resolve("uts_ns_cache");
-	if (!vns_uts_ns_cache)
-		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: uts_ns_cache not resolved (vendor_kernel unavailable)");
-	vns_nsproxy_cachep = (struct kmem_cache *)(uintptr_t)
-		shadow_hook_resolve("nsproxy_cachep");
-	if (!vns_nsproxy_cachep)
-		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: nsproxy_cachep not resolved (vendor_kernel unavailable)");
-	vns_pid_ns_cachep = (struct kmem_cache *)(uintptr_t)
-		shadow_hook_resolve("pid_ns_cachep");
-	if (!vns_pid_ns_cachep)
-		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: pid_ns_cachep not resolved (vendor_kernel unavailable)");
-	vns_user_ns_cachep = (struct kmem_cache *)(uintptr_t)
-		shadow_hook_resolve("user_ns_cachep");
-	if (!vns_user_ns_cachep)
-		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
-			"compat: user_ns_cachep not resolved (vendor_kernel unavailable)");
+	/*
+	 * [BUILD-COMPAT] uts_ns_cache/nsproxy_cachep/pid_ns_cachep/
+	 * user_ns_cachep are NOT resolved here anymore. They are private
+	 * `struct kmem_cache *` *data* symbols: shadow_hook_resolve() finds
+	 * them through register_kprobe(), which in turn relies on kallsyms,
+	 * and kallsyms only carries function symbols unless the running
+	 * kernel was built with CONFIG_KALLSYMS_ALL (essentially never true
+	 * on production/GKI kernels) -- so this resolution was guaranteed to
+	 * fail on every real device, making vns_compat_ready() fail closed
+	 * unconditionally. uts_ns_cache/pid_ns_cachep/user_ns_cachep also
+	 * simply do not exist in vmlinux at all whenever the corresponding
+	 * CONFIG_UTS_NS/CONFIG_PID_NS/CONFIG_USER_NS is `n` (kernel/Makefile
+	 * gates utsname.o/pid_namespace.o/user_namespace.o on those
+	 * options), which is exactly the scenario vendor_kernel targets.
+	 * vns_uts_ns_cache/vns_nsproxy_cachep/vns_pid_ns_cachep/
+	 * vns_user_ns_cachep are now module-owned kmem_cache_create() caches
+	 * instead (created in vns_uts_ns_init()/vns_nsproxy_cache_init()/
+	 * vns_pid_ns_init()/vns_user_ns_init()); see vendor_kernel/README.md,
+	 * "Slab-cache consistency with the real kernel".
+	 */
 
 #undef RESOLVE
 }
@@ -320,26 +344,14 @@ bool vns_compat_ready(void)
 			    "compat: do_exit unresolved; vendor_kernel unavailable");
 		ready = false;
 	}
-	if (!vns_uts_ns_cache) {
-		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
-			    "compat: uts_ns_cache unresolved; vendor_kernel unavailable");
-		ready = false;
-	}
-	if (!vns_nsproxy_cachep) {
-		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
-			    "compat: nsproxy_cachep unresolved; vendor_kernel unavailable");
-		ready = false;
-	}
-	if (!vns_pid_ns_cachep) {
-		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
-			    "compat: pid_ns_cachep unresolved; vendor_kernel unavailable");
-		ready = false;
-	}
-	if (!vns_user_ns_cachep) {
-		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
-			    "compat: user_ns_cachep unresolved; vendor_kernel unavailable");
-		ready = false;
-	}
+	/*
+	 * uts_ns_cache/nsproxy_cachep/pid_ns_cachep/user_ns_cachep are no
+	 * longer resolved from the running kernel at all (see the comment in
+	 * vns_compat_resolve() above); vns_uts_ns_cache/vns_nsproxy_cachep/
+	 * vns_pid_ns_cachep/vns_user_ns_cachep are module-owned caches
+	 * created by each subsystem's own _init() function during
+	 * vendor_kernel_init(), so they are not part of this readiness gate.
+	 */
 
 	return ready;
 }

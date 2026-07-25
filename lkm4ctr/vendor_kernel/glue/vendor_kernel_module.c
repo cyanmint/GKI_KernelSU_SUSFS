@@ -195,15 +195,32 @@ int vendor_kernel_init(void)
 	if (vns_init_ipc_ns_ptr)
 		vns_init_nsproxy.ipc_ns = vns_init_ipc_ns_ptr;
 #endif
-	/* [BUILD-COMPAT] vendored init helpers do not create slab caches out of tree. */
+	/* [BUILD-COMPAT] vendored init helpers create vendor_kernel's own
+	 * module-owned slab caches instead of resolving the real kernel's. */
 	vns_uts_ns_init();
 	vns_pid_ns_init();
 	vns_user_ns_init();
+	vns_nsproxy_cache_init();
 	vns_nsfs_init();
 
-	hooked = shadow_hook_install_all(vendor_kernel_core_hooks, "vendor_kernel");
-	if (hooked < 0)
+	if (!vns_uts_ns_cache || !vns_pid_ns_cachep || !vns_user_ns_cachep ||
+	    !vns_nsproxy_cachep) {
+		LKM4CTR_ERR("vendor_kernel", "failed to create module-owned namespace slab cache(s)");
+		return -ENOMEM;
+	}
+
+	/* [BUILD-COMPAT] must succeed before any hooks are live: without it,
+	 * an exiting task's module-owned nsproxy could be freed by the real
+	 * kernel's own exit path against the real, mismatched kmem_cache. */
+	hooked = vns_exit_hook_init();
+	if (hooked)
 		return hooked;
+
+	hooked = shadow_hook_install_all(vendor_kernel_core_hooks, "vendor_kernel");
+	if (hooked < 0) {
+		vns_exit_hook_exit();
+		return hooked;
+	}
 
 	vendor_kernel_enabled = true;
 	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
@@ -216,6 +233,7 @@ void vendor_kernel_exit(void)
 		return;
 	vendor_kernel_enabled = false;
 	shadow_hook_remove_all(vendor_kernel_core_hooks);
+	vns_exit_hook_exit();
 	vns_registry_clear_all();
 	LKM4CTR_INFO("vendor_kernel", "unloaded");
 }

@@ -404,5 +404,11 @@ const struct proc_ns_operations vns_pidns_for_children_operations = { /* [RENAME
 
 void vns_pid_ns_init(void) /* [RENAME] */
 {
-	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
+	/* [BUILD-COMPAT] module-owned cache: see vendor_kernel/README.md's
+	 * "Slab-cache consistency with the real kernel" for why this no
+	 * longer resolves the real kernel's private pid_ns_cachep. */
+	if (!vns_pid_ns_cachep)
+		vns_pid_ns_cachep = kmem_cache_create("vns_pid_namespace",
+			sizeof(struct pid_namespace), 0,
+			SLAB_HWCACHE_ALIGN | SLAB_ACCOUNT, NULL);
 }

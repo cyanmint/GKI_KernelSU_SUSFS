@@ -111,6 +111,8 @@ static inline void vns_zero_stashed(struct ns_common *ns)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
 #define vns_uts_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
+#define vns_uts_get_ref(obj) vns_get_count(&(obj)->kref.refcount)
+#define vns_uts_put_ref(obj) vns_put_count(&(obj)->kref.refcount)
 #define vns_pid_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
 #define vns_pid_get_ref(obj) vns_get_count(&(obj)->kref.refcount)
 #define vns_pid_put_ref(obj) vns_put_count(&(obj)->kref.refcount)
@@ -122,6 +124,8 @@ static inline void vns_zero_stashed(struct ns_common *ns)
 #define VNS_TIME_REF_INIT .kref = KREF_INIT(1),
 #else
 #define vns_uts_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_uts_get_ref(obj) vns_get_count(&(obj)->ns.count)
+#define vns_uts_put_ref(obj) vns_put_count(&(obj)->ns.count)
 #define vns_pid_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
 #define vns_pid_get_ref(obj) vns_get_count(&(obj)->ns.count)
 #define vns_pid_put_ref(obj) vns_put_count(&(obj)->ns.count)
@@ -138,6 +142,20 @@ void vns_free_inum(struct ns_common *ns);
 
 struct uts_namespace *vns_copy_utsname(unsigned long flags, struct user_namespace *user_ns, struct uts_namespace *old_ns);
 void vns_free_uts_ns(struct uts_namespace *ns);
+/*
+ * [BUILD-COMPAT] vns_get_uts_ns()/vns_put_uts_ns() are self-contained
+ * replacements for the real kernel's get_uts_ns()/put_uts_ns(), which are
+ * declared in <linux/utsname.h> as a real refcount_inc()/
+ * refcount_dec_and_test()+free_uts_ns() pair when CONFIG_UTS_NS=y, or a
+ * pair of plain no-ops when CONFIG_UTS_NS=n (same pattern as
+ * get_pid_ns()/put_pid_ns() and get_user_ns()/put_user_ns() -- see
+ * vendor_kernel/README.md, "Namespace refcounting is fully
+ * self-contained"). Since vendor_kernel always vendors and installs its
+ * own uts_namespace objects regardless of the target's CONFIG_UTS_NS, every
+ * vendored call site uses these local equivalents instead.
+ */
+struct uts_namespace *vns_get_uts_ns(struct uts_namespace *ns);
+void vns_put_uts_ns(struct uts_namespace *ns);
 extern const struct proc_ns_operations vns_utsns_operations;
 void vns_uts_ns_init(void);
 
@@ -149,6 +167,23 @@ int vns_unshare_nsproxy_namespaces(unsigned long unshare_flags, struct nsproxy *
 void vns_switch_task_namespaces(struct task_struct *p, struct nsproxy *new);
 void vns_exit_task_namespaces(struct task_struct *p);
 long vns_sys_setns(int fd, int flags);
+void vns_nsproxy_cache_init(void);
+/*
+ * vns_task_exit_cleanup() - called from the do_exit() shadow_hook
+ * (glue/vendor_kernel_syscalls.c) for every exiting task, before the real
+ * do_exit() body runs. If @tsk->nsproxy is currently one of vendor_kernel's
+ * own module-owned objects (tracked in vns_nsproxy_set, kernel/nsproxy.c),
+ * swaps it back onto the pinned vns_init_nsproxy singleton and tears the
+ * real vendored object down entirely through vendor_kernel's own
+ * self-contained free path (vns_put_nsproxy()/vns_free_nsproxy()), so the
+ * real kernel's own exit_task_namespaces()/free_nsproxy() never sees a
+ * module-owned object and can never attempt to kmem_cache_free() it
+ * against a real, mismatched kmem_cache. A no-op for any task that never
+ * had a vendor_kernel namespace installed.
+ */
+void vns_task_exit_cleanup(struct task_struct *tsk);
+int vns_exit_hook_init(void);
+void vns_exit_hook_exit(void);
 
 struct ipc_namespace *vns_copy_ipcs(unsigned long flags, struct user_namespace *user_ns, struct ipc_namespace *old_ns);
 void vns_put_ipc_ns(struct ipc_namespace *ns);
@@ -256,12 +291,14 @@ extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif
 /*
- * Real kmem_cache pointers resolved from the running kernel
- * (uts_ns_cache, nsproxy_cachep, pid_ns_cachep, user_ns_cachep). Vendored
- * namespace allocators must use these instead of kzalloc/kfree, because
- * vendor_kernel installs its namespaces directly on task_struct->nsproxy
- * and the real kernel's own exit path frees them via kmem_cache_free()
- * against these exact cache pointers.
+ * Module-owned kmem_cache pointers (created via kmem_cache_create() in
+ * vns_uts_ns_init()/vns_nsproxy_cache_init()/vns_pid_ns_init()/
+ * vns_user_ns_init(), NOT resolved from the running kernel). Vendored
+ * namespace allocators use kmem_cache_alloc()/kmem_cache_zalloc() against
+ * these instead of kzalloc()/kfree() purely to mirror upstream's
+ * alloc-vs-zalloc semantics; the real kernel's own exit path is prevented
+ * from ever touching a module-owned object at all (see
+ * vns_task_exit_cleanup(), kernel/nsproxy.c).
  */
 extern struct kmem_cache *vns_uts_ns_cache;
 extern struct kmem_cache *vns_nsproxy_cachep;

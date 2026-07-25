@@ -53,10 +53,11 @@ static struct uts_namespace *create_uts_ns(void)
 {
 	struct uts_namespace *uts_ns;
 
-	/* [BUILD-COMPAT] allocate from the real uts_ns_cache (resolved at init)
-	 * instead of kzalloc, so the real kernel's exit-path free_uts_ns() can
-	 * safely kmem_cache_free() this object once it is installed on the
-	 * real task_struct->nsproxy. */
+	/* [BUILD-COMPAT] allocate from vendor_kernel's own module-owned
+	 * uts_ns_cache (created in vns_uts_ns_init()) instead of kzalloc,
+	 * purely to mirror upstream's kmem_cache_alloc() semantics; see
+	 * vendor_kernel.h's comment on vns_get_uts_ns()/vns_put_uts_ns() for
+	 * why the real kernel's exit path never touches this object. */
 	uts_ns = kmem_cache_alloc(vns_uts_ns_cache, GFP_KERNEL);
 	if (uts_ns)
 		vns_uts_init_ref(uts_ns);
@@ -121,14 +122,14 @@ unsigned long flags,
 	struct uts_namespace *new_ns;
 
 	BUG_ON(!old_ns);
-	get_uts_ns(old_ns);
+	vns_get_uts_ns(old_ns); /* [BUILD-COMPAT] */
 
 	if (!(flags & CLONE_NEWUTS))
 		return old_ns;
 
 	new_ns = clone_uts_ns(user_ns, old_ns);
 
-	put_uts_ns(old_ns);
+	vns_put_uts_ns(old_ns); /* [BUILD-COMPAT] */
 	return new_ns;
 }
 
@@ -138,6 +139,23 @@ void vns_free_uts_ns(struct uts_namespace *ns) /* [RENAME] */
 	vns_put_user_ns(ns->user_ns); /* [BUILD-COMPAT] */
 	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 	kmem_cache_free(vns_uts_ns_cache, ns); /* [BUILD-COMPAT] */
+}
+
+/*
+ * [BUILD-COMPAT] vns_get_uts_ns()/vns_put_uts_ns() -- see the declaration
+ * comment in vendor_kernel.h ("Namespace refcounting is fully
+ * self-contained").
+ */
+struct uts_namespace *vns_get_uts_ns(struct uts_namespace *ns) /* [BUILD-COMPAT] */
+{
+	vns_uts_get_ref(ns);
+	return ns;
+}
+
+void vns_put_uts_ns(struct uts_namespace *ns) /* [BUILD-COMPAT] */
+{
+	if (vns_uts_put_ref(ns))
+		vns_free_uts_ns(ns);
 }
 
 static inline struct uts_namespace *to_uts_ns(struct ns_common *ns)
@@ -154,7 +172,7 @@ static struct ns_common *utsns_get(struct task_struct *task)
 	nsproxy = task->nsproxy;
 	if (nsproxy) {
 		ns = nsproxy->uts_ns;
-		get_uts_ns(ns);
+		vns_get_uts_ns(ns); /* [BUILD-COMPAT] */
 	}
 	task_unlock(task);
 
@@ -163,7 +181,7 @@ static struct ns_common *utsns_get(struct task_struct *task)
 
 static void utsns_put(struct ns_common *ns)
 {
-	put_uts_ns(to_uts_ns(ns));
+	vns_put_uts_ns(to_uts_ns(ns)); /* [BUILD-COMPAT] */
 }
 
 static int utsns_install(struct nsset *nsset, struct ns_common *new)
@@ -175,8 +193,8 @@ static int utsns_install(struct nsset *nsset, struct ns_common *new)
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))
 		return -EPERM;
 
-	get_uts_ns(ns);
-	put_uts_ns(nsproxy->uts_ns);
+	vns_get_uts_ns(ns); /* [BUILD-COMPAT] */
+	vns_put_uts_ns(nsproxy->uts_ns); /* [BUILD-COMPAT] */
 	nsproxy->uts_ns = ns;
 	return 0;
 }
@@ -197,5 +215,11 @@ const struct proc_ns_operations vns_utsns_operations = { /* [RENAME] */
 
 void vns_uts_ns_init(void) /* [RENAME] */
 {
-	/* [BUILD-COMPAT] no per-type slab cache in out-of-tree module */
+	/* [BUILD-COMPAT] module-owned cache: see vendor_kernel.h's comment on
+	 * vns_get_uts_ns()/vns_put_uts_ns() and vendor_kernel/README.md's
+	 * "Slab-cache consistency with the real kernel" for why this no
+	 * longer resolves the real kernel's private uts_ns_cache. */
+	if (!vns_uts_ns_cache)
+		vns_uts_ns_cache = kmem_cache_create("vns_uts_namespace",
+			sizeof(struct uts_namespace), 0, SLAB_ACCOUNT, NULL);
 }
