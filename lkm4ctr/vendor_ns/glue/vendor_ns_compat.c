@@ -116,10 +116,6 @@ typedef int  (*commit_creds_fn_t)(struct cred *);
 typedef bool (*file_ns_capable_fn_t)(const struct file *,
 				     struct user_namespace *, int);
 typedef void (*do_exit_fn_t)(long);
-#ifdef CONFIG_USER_NS
-typedef bool (*in_userns_fn_t)(const struct user_namespace *,
-			       const struct user_namespace *);
-#endif
 #ifdef CONFIG_POSIX_MQUEUE
 typedef int  (*mq_init_ns_fn_t)(struct ipc_namespace *);
 #endif
@@ -162,13 +158,6 @@ static prepare_creds_fn_t         vns_prepare_creds_real;
 static commit_creds_fn_t          vns_commit_creds_real;
 static file_ns_capable_fn_t       vns_file_ns_capable_real;
 static do_exit_fn_t               vns_do_exit_real;
-#ifdef CONFIG_CGROUPS
-typedef void (*free_cgroup_ns_fn_t)(struct cgroup_namespace *);
-static free_cgroup_ns_fn_t        vns_free_cgroup_ns_real;
-#endif
-#ifdef CONFIG_USER_NS
-static in_userns_fn_t             vns_in_userns_real;
-#endif
 #ifdef CONFIG_POSIX_MQUEUE
 static mq_init_ns_fn_t            vns_mq_init_ns_real;
 #endif
@@ -244,12 +233,6 @@ void vns_compat_resolve(void)
 	RESOLVE(vns_commit_creds_real,          commit_creds);
 	RESOLVE(vns_file_ns_capable_real,       file_ns_capable);
 	RESOLVE(vns_do_exit_real,               do_exit);
-#ifdef CONFIG_CGROUPS
-	RESOLVE(vns_free_cgroup_ns_real,        free_cgroup_ns);
-#endif
-#ifdef CONFIG_USER_NS
-	RESOLVE(vns_in_userns_real,             in_userns);
-#endif
 #ifdef CONFIG_POSIX_MQUEUE
 	RESOLVE(vns_mq_init_ns_real,            mq_init_ns);
 #endif
@@ -294,13 +277,6 @@ bool vns_compat_ready(void)
 			    "compat: do_exit unresolved; vendor_ns unavailable");
 		ready = false;
 	}
-#ifdef CONFIG_CGROUPS
-	if (!vns_free_cgroup_ns_real) {
-		LKM4CTR_ERR(VENDOR_NS_TAG,
-			    "compat: free_cgroup_ns unresolved; vendor_ns unavailable");
-		ready = false;
-	}
-#endif
 
 	return ready;
 }
@@ -739,31 +715,21 @@ void __noreturn vns_do_exit(long error_code)
 }
 
 #ifdef CONFIG_CGROUPS
-void vns_free_cgroup_ns(struct cgroup_namespace *ns)
+/*
+ * [BUILD-COMPAT] free_cgroup_ns (kernel/cgroup/namespace.c, not exported).
+ * This symbol is referenced from inline helpers in <linux/cgroup.h> that are
+ * parsed before vendor_ns.h can remap the name. vendor_ns never allocates its
+ * own cgroup namespaces, so hitting this fallback would only mean a real
+ * kernel cgroup namespace refcount unexpectedly dropped to zero through this
+ * module; leak it rather than recurse back into put_cgroup_ns().
+ */
+void free_cgroup_ns(struct cgroup_namespace *ns)
 {
-	if (vns_free_cgroup_ns_real) {
-		vns_free_cgroup_ns_real(ns);
-		return;
-	}
-	LKM4CTR_ERR(VENDOR_NS_TAG,
-		    "compat: free_cgroup_ns unresolved during runtime; leaking namespace");
+	LKM4CTR_WARN(VENDOR_NS_TAG,
+		     "compat: unexpected free_cgroup_ns(%px); leaking cgroup namespace",
+		     ns);
 }
 #endif
-
-#ifdef CONFIG_USER_NS
-/*
- * [BUILD-COMPAT] in_userns (kernel/user_namespace.c, not exported on GKI).
- * Returns true if 'descendant' is the same as or a descendant of 'ancestor'.
- * <linux/user_namespace.h> provides a static inline fallback when !CONFIG_USER_NS.
- */
-bool vns_in_userns(const struct user_namespace *ancestor,
-		   const struct user_namespace *descendant)
-{
-	if (vns_in_userns_real)
-		return vns_in_userns_real(ancestor, descendant);
-	return ancestor == descendant; /* stub: only exact match */
-}
-#endif /* CONFIG_USER_NS */
 
 #ifdef CONFIG_POSIX_MQUEUE
 /*

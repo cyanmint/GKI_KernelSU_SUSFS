@@ -209,7 +209,9 @@ void vns_perf_event_namespaces(struct task_struct *tsk);
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns);
 void vns_mq_clear_sbinfo(struct ipc_namespace *ns);
 void vns_mq_put_mnt(struct ipc_namespace *ns);
+#ifdef CONFIG_SYSVIPC
 int vns_msg_init_ns(struct ipc_namespace *ns);
+#endif
 struct ns_common *vns_from_mnt_ns(struct mnt_namespace *mnt_ns);
 struct pid *vns_pidfd_pid(const struct file *file);
 void vns_set_fs_root(struct fs_struct *fs, const struct path *path);
@@ -229,17 +231,10 @@ int vns_commit_creds(struct cred *new);
 bool vns_file_ns_capable(const struct file *file, struct user_namespace *ns,
 			 int cap);
 void __noreturn vns_do_exit(long error_code);
-#ifdef CONFIG_CGROUPS
-void vns_free_cgroup_ns(struct cgroup_namespace *ns);
-#endif
 #ifdef CONFIG_SYSVIPC
 void vns_sem_init_ns(struct ipc_namespace *ns);
 void vns_shm_init_ns(struct ipc_namespace *ns);
 void vns_exit_sem(struct task_struct *tsk);
-#endif
-#ifdef CONFIG_USER_NS
-bool vns_in_userns(const struct user_namespace *ancestor,
-		   const struct user_namespace *descendant);
 #endif
 #ifdef CONFIG_POSIX_MQUEUE
 int vns_mq_init_ns(struct ipc_namespace *ns);
@@ -255,7 +250,9 @@ int vns_mq_init_ns(struct ipc_namespace *ns);
 #define setup_mq_sysctls vns_setup_mq_sysctls
 #define mq_clear_sbinfo vns_mq_clear_sbinfo
 #define mq_put_mnt vns_mq_put_mnt
+#ifdef CONFIG_SYSVIPC
 #define msg_init_ns vns_msg_init_ns
+#endif
 #define from_mnt_ns vns_from_mnt_ns
 #define pidfd_pid vns_pidfd_pid
 #define set_fs_root vns_set_fs_root
@@ -267,9 +264,11 @@ int vns_mq_init_ns(struct ipc_namespace *ns);
 #define disable_pid_allocation vns_disable_pid_allocation
 #define proc_ns_file vns_proc_ns_file
 #define retire_mq_sysctls vns_retire_mq_sysctls
+#ifdef CONFIG_SYSVIPC
 #define sem_init_ns vns_sem_init_ns
 #define shm_init_ns vns_shm_init_ns
 #define exit_sem vns_exit_sem
+#endif
 #define setup_ipc_sysctls vns_setup_ipc_sysctls
 #define retire_ipc_sysctls vns_retire_ipc_sysctls
 #define set_cred_ucounts vns_set_cred_ucounts
@@ -277,9 +276,15 @@ int vns_mq_init_ns(struct ipc_namespace *ns);
 #define commit_creds vns_commit_creds
 #define file_ns_capable vns_file_ns_capable
 #define do_exit vns_do_exit
+#ifdef CONFIG_USER_NS
 #define in_userns vns_in_userns
+#endif
+#ifdef CONFIG_POSIX_MQUEUE
 #define mq_init_ns vns_mq_init_ns
+#endif
+#ifdef CONFIG_CGROUPS
 #define free_cgroup_ns vns_free_cgroup_ns
+#endif
 #endif
 
 int vendor_ns_init(void);
