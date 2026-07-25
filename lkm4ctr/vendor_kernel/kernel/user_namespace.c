@@ -258,6 +258,31 @@ struct user_namespace *ns)
 	schedule_work(&ns->work);
 }
 
+/*
+ * [BUILD-COMPAT] Local equivalents of the real kernel's get_user_ns()/
+ * put_user_ns(). Both are always static inline in user_namespace.h, but
+ * their bodies differ based on the *target* kernel's own CONFIG_USER_NS
+ * setting: a real refcount_inc()/refcount_dec_and_test()+__put_user_ns()
+ * pair when CONFIG_USER_NS=y, or plain no-ops (returning init_user_ns,
+ * never freeing anything) when =n. Since vendor_kernel creates and
+ * refcounts its own struct user_namespace objects independently of the
+ * target's CONFIG_USER_NS, these shims always perform the real semantics
+ * and route to vns___put_user_ns() above on the final put. See
+ * vendor_kernel.h for the full rationale.
+ */
+struct user_namespace *vns_get_user_ns(struct user_namespace *ns) /* [BUILD-COMPAT] */
+{
+	if (ns)
+		vns_user_get_ref(ns);
+	return ns;
+}
+
+void vns_put_user_ns(struct user_namespace *ns) /* [BUILD-COMPAT] */
+{
+	if (ns && vns_user_put_ref(ns))
+		vns___put_user_ns(ns);
+}
+
 /**
  * idmap_key struct holds the information necessary to find an idmapping in a
  * sorted idmap array. It is passed to cmp_map_id() as first argument.
@@ -1359,7 +1384,7 @@ static struct ns_common *userns_get(struct task_struct *task)
 	struct user_namespace *user_ns;
 
 	rcu_read_lock();
-	user_ns = get_user_ns(__task_cred(task)->user_ns);
+	user_ns = vns_get_user_ns(__task_cred(task)->user_ns); /* [BUILD-COMPAT] */
 	rcu_read_unlock();
 
 	return user_ns ? &user_ns->ns : NULL;
@@ -1367,7 +1392,7 @@ static struct ns_common *userns_get(struct task_struct *task)
 
 static void userns_put(struct ns_common *ns)
 {
-	put_user_ns(to_user_ns(ns));
+	vns_put_user_ns(to_user_ns(ns)); /* [BUILD-COMPAT] */
 }
 
 static int userns_install(struct nsset *nsset, struct ns_common *ns)
@@ -1395,8 +1420,8 @@ static int userns_install(struct nsset *nsset, struct ns_common *ns)
 	if (!cred)
 		return -EINVAL;
 
-	put_user_ns(cred->user_ns);
-	set_cred_user_ns(cred, get_user_ns(user_ns));
+	vns_put_user_ns(cred->user_ns); /* [BUILD-COMPAT] */
+	set_cred_user_ns(cred, vns_get_user_ns(user_ns)); /* [BUILD-COMPAT] */
 
 	if (set_cred_ucounts(cred) < 0)
 		return -EINVAL;
@@ -1420,7 +1445,7 @@ struct ns_common *ns)
 		p = p->parent;
 	}
 
-	return &get_user_ns(owner)->ns;
+	return &vns_get_user_ns(owner)->ns; /* [BUILD-COMPAT] */
 }
 
 static struct user_namespace *userns_owner(struct ns_common *ns)

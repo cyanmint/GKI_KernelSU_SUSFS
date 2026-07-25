@@ -423,7 +423,6 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 		return -ESRCH;
 	}
 
-#ifdef CONFIG_PID_NS
 	if (flags & CLONE_NEWPID) {
 		pid_ns = task_active_pid_ns(tsk);
 		if (unlikely(!pid_ns)) {
@@ -431,14 +430,11 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 			ret = -ESRCH;
 			goto out;
 		}
-		get_pid_ns(pid_ns);
+		vns_get_pid_ns(pid_ns); /* [BUILD-COMPAT] */
 	}
-#endif
 
-#ifdef CONFIG_USER_NS
 	if (flags & CLONE_NEWUSER)
-		user_ns = get_user_ns(__task_cred(tsk)->user_ns);
-#endif
+		user_ns = vns_get_user_ns(__task_cred(tsk)->user_ns); /* [BUILD-COMPAT] */
 	rcu_read_unlock();
 
 	/*
@@ -447,13 +443,11 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 	 * supported on this kernel. We don't report errors here
 	 * if a namespace is requested that isn't supported.
 	 */
-#ifdef CONFIG_USER_NS
 	if (flags & CLONE_NEWUSER) {
 		ret = validate_ns(nsset, &user_ns->ns);
 		if (ret)
 			goto out;
 	}
-#endif
 
 	if (flags & CLONE_NEWNS) {
 		ret = validate_ns(nsset, from_mnt_ns(nsp->mnt_ns));
@@ -477,13 +471,17 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 	}
 #endif
 
-#ifdef CONFIG_PID_NS
+	/*
+	 * [BUILD-COMPAT] Unlike upstream, this is not gated on CONFIG_PID_NS:
+	 * vendor_kernel always vendors its own pid namespace support (see
+	 * vns_get_pid_ns()/vns_put_pid_ns() above), independent of whether
+	 * the target kernel's own CONFIG_PID_NS is y or n.
+	 */
 	if (flags & CLONE_NEWPID) {
 		ret = validate_ns(nsset, &pid_ns->ns);
 		if (ret)
 			goto out;
 	}
-#endif
 
 #ifdef CONFIG_CGROUPS
 	if (flags & CLONE_NEWCGROUP) {
@@ -511,13 +509,14 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 out:
 	if (pid_ns)
-		put_pid_ns(pid_ns);
+		vns_put_pid_ns(pid_ns); /* [BUILD-COMPAT] */
 	if (nsp)
 		vns_put_nsproxy(nsp); /* [RENAME] */
-	put_user_ns(user_ns);
+	vns_put_user_ns(user_ns); /* [BUILD-COMPAT] */
 
 	return ret;
 }
+
 
 /*
  * This is the point of no return. There are just a few namespaces
@@ -533,13 +532,16 @@ static void commit_nsset(struct nsset *nsset)
 	unsigned flags = nsset->flags;
 	struct task_struct *me = current;
 
-#ifdef CONFIG_USER_NS
+	/*
+	 * [BUILD-COMPAT] Unlike upstream, this is not gated on CONFIG_USER_NS:
+	 * vendor_kernel always vendors its own user namespace support,
+	 * independent of the target kernel's own CONFIG_USER_NS setting.
+	 */
 	if (flags & CLONE_NEWUSER) {
 		/* transfer ownership */
 		commit_creds(nsset_cred(nsset));
 		nsset->cred = NULL;
 	}
-#endif
 
 	/* We only need to commit if we have used a temporary fs_struct. */
 	if ((flags & CLONE_NEWNS) && (flags & ~CLONE_NEWNS)) {

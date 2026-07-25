@@ -126,8 +126,8 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 
 	vns_pid_init_ref(ns);
 	ns->level = level;
-	ns->parent = get_pid_ns(parent_pid_ns);
-	ns->user_ns = get_user_ns(user_ns);
+	ns->parent = vns_get_pid_ns(parent_pid_ns); /* [BUILD-COMPAT] */
+	ns->user_ns = vns_get_user_ns(user_ns); /* [BUILD-COMPAT] */
 	ns->ucounts = ucounts;
 	ns->pid_allocated = PIDNS_ADDING;
 
@@ -147,7 +147,7 @@ static void delayed_free_pidns(struct rcu_head *p)
 	struct pid_namespace *ns = container_of(p, struct pid_namespace, rcu);
 
 	dec_pid_namespaces(ns->ucounts);
-	put_user_ns(ns->user_ns);
+	vns_put_user_ns(ns->user_ns); /* [BUILD-COMPAT] */
 
 	kmem_cache_free(vns_pid_ns_cachep, ns); /* [BUILD-COMPAT] */
 }
@@ -165,10 +165,26 @@ unsigned long flags,
 	struct user_namespace *user_ns, struct pid_namespace *old_ns)
 {
 	if (!(flags & CLONE_NEWPID))
-		return get_pid_ns(old_ns);
+		return vns_get_pid_ns(old_ns); /* [BUILD-COMPAT] */
 	if (task_active_pid_ns(current) != old_ns)
 		return ERR_PTR(-EINVAL);
 	return create_pid_namespace(user_ns, old_ns);
+}
+
+/*
+ * [BUILD-COMPAT] Local equivalent of the real kernel's get_pid_ns(), which
+ * is always a static inline in pid_namespace.h whose body differs based on
+ * the *target* kernel's own CONFIG_PID_NS setting (real refcount_inc() vs.
+ * no-op). Since vendor_kernel installs and refcounts its own struct
+ * pid_namespace objects independently of the target's CONFIG_PID_NS, this
+ * shim always performs the real refcount_inc() semantics. See
+ * vendor_kernel.h for the full rationale.
+ */
+struct pid_namespace *vns_get_pid_ns(struct pid_namespace *ns) /* [BUILD-COMPAT] */
+{
+	if (ns != &init_pid_ns)
+		vns_pid_get_ref(ns);
+	return ns;
 }
 
 void vns_put_pid_ns(struct pid_namespace *ns) /* [RENAME] */
@@ -276,7 +292,7 @@ static struct ns_common *pidns_get(struct task_struct *task)
 	rcu_read_lock();
 	ns = task_active_pid_ns(task);
 	if (ns)
-		get_pid_ns(ns);
+		vns_get_pid_ns(ns); /* [BUILD-COMPAT] */
 	rcu_read_unlock();
 
 	return ns ? &ns->ns : NULL;
@@ -289,7 +305,7 @@ static struct ns_common *pidns_for_children_get(struct task_struct *task)
 	task_lock(task);
 	if (task->nsproxy) {
 		ns = task->nsproxy->pid_ns_for_children;
-		get_pid_ns(ns);
+		vns_get_pid_ns(ns); /* [BUILD-COMPAT] */
 	}
 	task_unlock(task);
 
@@ -307,7 +323,7 @@ static struct ns_common *pidns_for_children_get(struct task_struct *task)
 
 static void pidns_put(struct ns_common *ns)
 {
-	put_pid_ns(to_pid_ns(ns));
+	vns_put_pid_ns(to_pid_ns(ns)); /* [BUILD-COMPAT] */
 }
 
 static int pidns_install(struct nsset *nsset, struct ns_common *ns)
@@ -337,8 +353,8 @@ static int pidns_install(struct nsset *nsset, struct ns_common *ns)
 	if (ancestor != active)
 		return -EINVAL;
 
-	put_pid_ns(nsproxy->pid_ns_for_children);
-	nsproxy->pid_ns_for_children = get_pid_ns(new);
+	vns_put_pid_ns(nsproxy->pid_ns_for_children); /* [BUILD-COMPAT] */
+	nsproxy->pid_ns_for_children = vns_get_pid_ns(new); /* [BUILD-COMPAT] */
 	return 0;
 }
 
@@ -357,7 +373,7 @@ static struct ns_common *pidns_get_parent(struct ns_common *ns)
 		p = p->parent;
 	}
 
-	return &get_pid_ns(pid_ns)->ns;
+	return &vns_get_pid_ns(pid_ns)->ns; /* [BUILD-COMPAT] */
 }
 
 static struct user_namespace *pidns_owner(struct ns_common *ns)

@@ -96,7 +96,7 @@ static struct uts_namespace *clone_uts_ns(struct user_namespace *user_ns,
 
 	down_read(&uts_sem);
 	memcpy(&ns->name, &old_ns->name, sizeof(ns->name));
-	ns->user_ns = get_user_ns(user_ns);
+	ns->user_ns = vns_get_user_ns(user_ns); /* [BUILD-COMPAT] */
 	up_read(&uts_sem);
 	return ns;
 
@@ -135,7 +135,7 @@ unsigned long flags,
 void vns_free_uts_ns(struct uts_namespace *ns) /* [RENAME] */
 {
 	dec_uts_namespaces(ns->ucounts);
-	put_user_ns(ns->user_ns);
+	vns_put_user_ns(ns->user_ns); /* [BUILD-COMPAT] */
 	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 	kmem_cache_free(vns_uts_ns_cache, ns); /* [BUILD-COMPAT] */
 }

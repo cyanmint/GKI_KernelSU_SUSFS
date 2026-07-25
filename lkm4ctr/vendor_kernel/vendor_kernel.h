@@ -84,6 +84,14 @@ static inline bool vns_count_dec_and_test(void *count, bool is_refcount)
 	return atomic_dec_and_test((atomic_t *)count);
 }
 
+static inline void vns_count_inc(void *count, bool is_refcount)
+{
+	if (is_refcount)
+		refcount_inc((refcount_t *)count);
+	else
+		atomic_inc((atomic_t *)count);
+}
+
 #define VNS_COUNT_TYPE_IS_REFCOUNT(ptr) \
 	__builtin_types_compatible_p(typeof(*(ptr)), refcount_t)
 
@@ -93,6 +101,9 @@ static inline bool vns_count_dec_and_test(void *count, bool is_refcount)
 #define vns_put_count(ptr) \
 	vns_count_dec_and_test((void *)(ptr), VNS_COUNT_TYPE_IS_REFCOUNT(ptr))
 
+#define vns_get_count(ptr) \
+	vns_count_inc((void *)(ptr), VNS_COUNT_TYPE_IS_REFCOUNT(ptr))
+
 static inline void vns_zero_stashed(struct ns_common *ns)
 {
 	memset(&ns->stashed, 0, sizeof(ns->stashed));
@@ -101,8 +112,10 @@ static inline void vns_zero_stashed(struct ns_common *ns)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
 #define vns_uts_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
 #define vns_pid_init_ref(obj) vns_init_count(&(obj)->kref.refcount, 1)
+#define vns_pid_get_ref(obj) vns_get_count(&(obj)->kref.refcount)
 #define vns_pid_put_ref(obj) vns_put_count(&(obj)->kref.refcount)
 #define vns_user_init_ref(obj) vns_init_count(&(obj)->count, 1)
+#define vns_user_get_ref(obj) vns_get_count(&(obj)->count)
 #define vns_user_put_ref(obj) vns_put_count(&(obj)->count)
 #define vns_ipc_init_ref(obj) vns_init_count(&(obj)->count, 1)
 #define vns_ipc_put_ref_lock(obj, lock) refcount_dec_and_lock(&(obj)->count, (lock))
@@ -110,8 +123,10 @@ static inline void vns_zero_stashed(struct ns_common *ns)
 #else
 #define vns_uts_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
 #define vns_pid_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_pid_get_ref(obj) vns_get_count(&(obj)->ns.count)
 #define vns_pid_put_ref(obj) vns_put_count(&(obj)->ns.count)
 #define vns_user_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
+#define vns_user_get_ref(obj) vns_get_count(&(obj)->ns.count)
 #define vns_user_put_ref(obj) vns_put_count(&(obj)->ns.count)
 #define vns_ipc_init_ref(obj) vns_init_count(&(obj)->ns.count, 1)
 #define vns_ipc_put_ref_lock(obj, lock) refcount_dec_and_lock(&(obj)->ns.count, (lock))
@@ -155,6 +170,21 @@ extern const struct proc_ns_operations vns_timens_operations;
 extern const struct proc_ns_operations vns_timens_for_children_operations;
 
 struct pid_namespace *vns_copy_pid_ns(unsigned long flags, struct user_namespace *user_ns, struct pid_namespace *old_ns);
+/*
+ * [BUILD-COMPAT] vns_get_pid_ns()/vns_put_pid_ns() are self-contained
+ * replacements for the real kernel's get_pid_ns()/put_pid_ns(). Unlike the
+ * real ones, they never depend on CONFIG_PID_NS: get_pid_ns() is always a
+ * static inline in kernel headers (a real refcount_inc() when
+ * CONFIG_PID_NS=y, a no-op when =n), and put_pid_ns() is an exported
+ * extern function only when CONFIG_PID_NS=y (absent from vmlinux entirely,
+ * not just unexported, when =n). Because vendor_kernel installs its own
+ * struct pid_namespace objects and must refcount/free them correctly
+ * regardless of the target kernel's CONFIG_PID_NS setting, every vendored
+ * call site uses these local equivalents instead of get_pid_ns()/
+ * put_pid_ns() directly (see vendor_kernel/README.md, "Namespace
+ * refcounting is fully self-contained").
+ */
+struct pid_namespace *vns_get_pid_ns(struct pid_namespace *ns);
 void vns_put_pid_ns(struct pid_namespace *ns);
 void vns_zap_pid_ns_processes(struct pid_namespace *pid_ns);
 int vns_reboot_pid_ns(struct pid_namespace *pid_ns, int cmd);
@@ -164,6 +194,21 @@ void vns_pid_ns_init(void);
 
 int vns_create_user_ns(struct cred *new);
 int vns_unshare_userns(unsigned long unshare_flags, struct cred **new_cred);
+/*
+ * [BUILD-COMPAT] vns_get_user_ns()/vns_put_user_ns() are self-contained
+ * replacements for the real kernel's get_user_ns()/put_user_ns(). Both are
+ * always static inline in kernel headers, but their bodies differ (real
+ * refcounting + __put_user_ns() teardown when CONFIG_USER_NS=y, plain
+ * no-ops returning init_user_ns when =n), and __put_user_ns() itself is an
+ * exported extern function that is entirely absent from vmlinux when
+ * CONFIG_USER_NS=n. vendor_kernel creates its own struct user_namespace
+ * objects and must refcount/free them correctly regardless of the target
+ * kernel's CONFIG_USER_NS setting, so every vendored call site uses these
+ * local equivalents (which route to vns___put_user_ns() below) instead of
+ * get_user_ns()/put_user_ns() directly.
+ */
+struct user_namespace *vns_get_user_ns(struct user_namespace *ns);
+void vns_put_user_ns(struct user_namespace *ns);
 void vns___put_user_ns(struct user_namespace *ns);
 kuid_t vns_make_kuid(struct user_namespace *ns, uid_t uid);
 uid_t vns_from_kuid(struct user_namespace *targ, kuid_t kuid);

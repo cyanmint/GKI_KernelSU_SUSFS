@@ -68,7 +68,7 @@ static struct ipc_namespace *create_ipc_ns(struct user_namespace *user_ns,
 	ns->ns.ops = &vns_ipcns_operations;
 
 	vns_ipc_init_ref(ns);
-	ns->user_ns = get_user_ns(user_ns);
+	ns->user_ns = vns_get_user_ns(user_ns); /* [BUILD-COMPAT] */
 	ns->ucounts = ucounts;
 
 	err = mq_init_ns(ns);
@@ -97,7 +97,7 @@ fail_mq:
 	retire_mq_sysctls(ns);
 
 fail_put:
-	put_user_ns(ns->user_ns);
+	vns_put_user_ns(ns->user_ns); /* [BUILD-COMPAT] */
 	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 fail_free:
 	kfree(ns);
@@ -161,7 +161,7 @@ static void vns_free_ipc_ns(struct ipc_namespace *ns) /* [RENAME] */
 	retire_ipc_sysctls(ns);
 
 	dec_ipc_namespaces(ns->ucounts);
-	put_user_ns(ns->user_ns);
+	vns_put_user_ns(ns->user_ns); /* [BUILD-COMPAT] */
 	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
 	kfree(ns);
 }
