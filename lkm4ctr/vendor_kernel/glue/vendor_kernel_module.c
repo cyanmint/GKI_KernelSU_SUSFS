@@ -21,6 +21,7 @@ struct mnt_namespace *(*vns_copy_mnt_ns_fn)(unsigned long, struct mnt_namespace 
 void (*vns_put_mnt_ns_fn)(struct mnt_namespace *);
 struct net *(*vns_copy_net_ns_fn)(unsigned long, struct user_namespace *, struct net *);
 bool vendor_kernel_enabled;
+bool vns_pidns_runtime_supported;
 
 struct vns_registry vendor_kernel_registry;
 static atomic_t vns_inum_counter = ATOMIC_INIT(0x60000000);
@@ -162,6 +163,7 @@ static void vns_resolve_symbols(void)
 	vns_copy_mnt_ns_fn = (void *)shadow_hook_resolve("copy_mnt_ns");
 	vns_put_mnt_ns_fn = (void *)shadow_hook_resolve("put_mnt_ns");
 	vns_copy_net_ns_fn = (void *)shadow_hook_resolve("copy_net_ns");
+	vns_pidns_runtime_supported = shadow_hook_resolve("copy_pid_ns") != 0;
 	/*
 	 * [BUILD-COMPAT] put_net() is always a static inline in
 	 * <net/net_namespace.h> (never a standalone kernel symbol), so it
@@ -231,6 +233,9 @@ int vendor_kernel_init(void)
 
 	vendor_kernel_enabled = true;
 	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
+	if (!vns_pidns_runtime_supported)
+		LKM4CTR_INFO("vendor_kernel",
+			     "running kernel lacks real pid namespace core; CLONE_NEWPID/setns(pid) requests are left as no-op bookkeeping to avoid the CONFIG_PID_NS=n zap_pid_ns_processes() BUG");
 	return 0;
 }
 

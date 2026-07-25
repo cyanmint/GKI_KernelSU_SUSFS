@@ -67,6 +67,7 @@ extern struct mnt_namespace *(*vns_copy_mnt_ns_fn)(unsigned long, struct mnt_nam
 extern void (*vns_put_mnt_ns_fn)(struct mnt_namespace *);
 extern struct net *(*vns_copy_net_ns_fn)(unsigned long, struct user_namespace *, struct net *);
 extern bool vendor_kernel_enabled;
+extern bool vns_pidns_runtime_supported;
 
 static inline void vns_count_set(void *count, int value, bool is_refcount)
 {

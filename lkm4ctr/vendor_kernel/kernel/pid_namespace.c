@@ -164,6 +164,22 @@ struct pid_namespace *vns_copy_pid_ns( /* [RENAME] */
 unsigned long flags,
 	struct user_namespace *user_ns, struct pid_namespace *old_ns)
 {
+	/*
+	 * The real fork()/copy_process() path always consumes
+	 * current->nsproxy->pid_ns_for_children for future children, even on a
+	 * kernel built with CONFIG_PID_NS=n. Installing one of vendor_kernel's
+	 * module-owned pid_namespace objects there therefore lets the real
+	 * kernel allocate a task whose task_active_pid_ns() is that fake
+	 * namespace; when that task is the namespace-local pid 1 and exits, the
+	 * real do_exit()->find_child_reaper() path reaches the target kernel's
+	 * CONFIG_PID_NS=n zap_pid_ns_processes() inline stub, which is an
+	 * unconditional BUG(). If the running kernel genuinely lacks its own
+	 * pid namespace core (copy_pid_ns() absent), degrade CLONE_NEWPID to a
+	 * no-op here instead of ever handing the real kernel a fake pidns.
+	 */
+	if (!vns_pidns_runtime_supported)
+		return vns_get_pid_ns(old_ns);
+
 	if (!(flags & CLONE_NEWPID))
 		return vns_get_pid_ns(old_ns); /* [BUILD-COMPAT] */
 	if (task_active_pid_ns(current) != old_ns)
@@ -331,6 +347,9 @@ static int pidns_install(struct nsset *nsset, struct ns_common *ns)
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct pid_namespace *active = task_active_pid_ns(current);
 	struct pid_namespace *ancestor, *new = to_pid_ns(ns);
+
+	if (!vns_pidns_runtime_supported)
+		return 0;
 
 	if (!ns_capable(new->user_ns, CAP_SYS_ADMIN) ||
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))

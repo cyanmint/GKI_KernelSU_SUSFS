@@ -4,7 +4,7 @@ vendor_kernel is a parallel, vendored copy of the kernel namespace subsystem for
 
 ## Real isolation vs. bookkeeping
 
-- `unshare(CLONE_NEWxxx)` builds the new namespaces and then calls `vns_switch_task_namespaces(current, new_nsp)` to install them on the calling task for real. Because this happens synchronously before the syscall returns, any subsequent `fork()`/`clone()` from that task allocates its child's `struct pid` from the (now current) vendored `pid_ns_for_children`, giving real vpid remapping with no further glue code needed.
+- `unshare(CLONE_NEWxxx)` builds the new namespaces and then calls `vns_switch_task_namespaces(current, new_nsp)` to install them on the calling task for real. Because this happens synchronously before the syscall returns, any subsequent `fork()`/`clone()` from that task sees the new namespace state immediately. `CLONE_NEWPID` is the one runtime-gated exception: vendor_kernel only installs a new `pid_ns_for_children` when the *running* kernel actually has its own pid-namespace core (`copy_pid_ns()` present). On a stock `CONFIG_PID_NS=n` kernel it now degrades to a no-op instead of letting the real exit path hit the inline `zap_pid_ns_processes()` BUG stub.
 - `clone(CLONE_NEWxxx, ...)` (namespaces requested directly at clone time, without a prior `unshare()`) has the vns_* flags masked off before the underlying `clone()`/`clone3()` syscall runs, then the new namespaces are built and installed on the just-created child task. This makes UTS/IPC/USER/NET/MNT/CGROUP isolation real for that pattern too. The one caveat: because the real `copy_process()` already allocated the child's own `struct pid` from the *parent's* pid namespace before this hook runs, the child's own pid is not renumbered by this path (only namespaces it creates for its own descendants are new) — fully remapping the child's own pid for direct `clone(CLONE_NEWPID, ...)` would require hooking `copy_process()`/`kernel_clone()` itself.
 - `setns(2)` (`vns_sys_setns()`) already performed a real install via the same switch primitive and required no changes.
 - The per-tgid registry (`vns_task_find()` / `struct vns_task`) is retained purely for diagfs statistics (`stat_unshare`/`stat_setns`/`stat_clone`); it is no longer the source of truth for which namespaces a task is in — `task_struct->nsproxy` is.
@@ -168,4 +168,3 @@ Run:
 ```
 
 With no argument it defaults to `$RUNNER_TEMP/kernel-common`.
-
