@@ -4,8 +4,10 @@
  * android14-6.1 branch). CHANGES FROM UPSTREAM:
  *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
  *     collision with the built-in kernel implementation.
- *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
- *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] namespace struct allocated via kmem_cache_alloc/_zalloc
+ *     against the real kernel's private cache, resolved at init via
+ *     shadow_hook_resolve(), so the real kernel's own exit path can
+ *     kmem_cache_free() it safely.
  *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
  *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
  *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
@@ -44,7 +46,6 @@
 /* [BUILD-COMPAT] Forward declaration for vendored time_namespace init object. */
 extern struct time_namespace vns_init_time_ns;
 
-/* [BUILD-COMPAT] out-of-tree vendor_kernel uses kzalloc/kfree instead of a slab cache. */
 
 struct nsproxy vns_init_nsproxy = { /* [RENAME] */
 	.count			= ATOMIC_INIT(1),
@@ -73,8 +74,11 @@ static inline struct nsproxy *create_nsproxy(void)
 {
 	struct nsproxy *nsproxy;
 
-	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
-	nsproxy = kzalloc(sizeof(*nsproxy), GFP_KERNEL);
+	/* [BUILD-COMPAT] allocate from the real nsproxy_cachep (resolved at
+	 * init) instead of kzalloc, so the real kernel's free_nsproxy() can
+	 * safely kmem_cache_free() this object once installed on the real
+	 * task_struct->nsproxy. */
+	nsproxy = kmem_cache_alloc(vns_nsproxy_cachep, GFP_KERNEL);
 	if (nsproxy)
 		vns_init_count(&nsproxy->count, 1); /* [BUILD-COMPAT] */
 	return nsproxy;
@@ -173,7 +177,7 @@ out_uts:
 		if (vns_put_mnt_ns_fn)
 			vns_put_mnt_ns_fn(new_nsp->mnt_ns); /* [BUILD-COMPAT] */
 out_ns:
-	kfree(new_nsp); /* [BUILD-COMPAT] */
+	kmem_cache_free(vns_nsproxy_cachep, new_nsp); /* [BUILD-COMPAT] */
 	return ERR_PTR(err);
 }
 
@@ -235,7 +239,7 @@ void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 	vns_put_cgroup_ns(ns->cgroup_ns); /* [RENAME] */
 	if (ns->net_ns && vns_put_net_ns_fn)
 		vns_put_net_ns_fn(ns->net_ns); /* [BUILD-COMPAT] */
-	kfree(ns); /* [BUILD-COMPAT] */
+	kmem_cache_free(vns_nsproxy_cachep, ns); /* [BUILD-COMPAT] */
 }
 
 /*

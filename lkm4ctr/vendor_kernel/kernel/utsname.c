@@ -4,8 +4,10 @@
  * android14-6.1 branch). CHANGES FROM UPSTREAM:
  *   - [RENAME] All non-static global symbols prefixed with vns_ to avoid
  *     collision with the built-in kernel implementation.
- *   - [BUILD-COMPAT] slab caches replaced with kzalloc/kfree (no kmem_cache_create
- *     in out-of-tree module init context).
+ *   - [BUILD-COMPAT] namespace struct allocated via kmem_cache_alloc/_zalloc
+ *     against the real kernel's private cache, resolved at init via
+ *     shadow_hook_resolve(), so the real kernel's own exit path can
+ *     kmem_cache_free() it safely.
  *   - [BUILD-COMPAT] ns_alloc_inum/ns_free_inum -> vns_alloc_inum/vns_free_inum
  *     (proc_alloc_inum not exported; resolved at init via shadow_hook_resolve).
  *   - [BUILD-COMPAT] __init/__exit removed from non-module-init functions.
@@ -36,7 +38,6 @@
  */
 DECLARE_RWSEM(uts_sem);
 
-/* [BUILD-COMPAT] out-of-tree vendor_kernel uses kzalloc/kfree instead of a slab cache. */
 
 static struct ucounts *inc_uts_namespaces(struct user_namespace *ns)
 {
@@ -52,8 +53,11 @@ static struct uts_namespace *create_uts_ns(void)
 {
 	struct uts_namespace *uts_ns;
 
-	/* [BUILD-COMPAT] no slab cache in the out-of-tree module path. */
-	uts_ns = kzalloc(sizeof(*uts_ns), GFP_KERNEL);
+	/* [BUILD-COMPAT] allocate from the real uts_ns_cache (resolved at init)
+	 * instead of kzalloc, so the real kernel's exit-path free_uts_ns() can
+	 * safely kmem_cache_free() this object once it is installed on the
+	 * real task_struct->nsproxy. */
+	uts_ns = kmem_cache_alloc(vns_uts_ns_cache, GFP_KERNEL);
 	if (uts_ns)
 		vns_uts_init_ref(uts_ns);
 	return uts_ns;
@@ -97,7 +101,7 @@ static struct uts_namespace *clone_uts_ns(struct user_namespace *user_ns,
 	return ns;
 
 fail_free:
-	kfree(ns); /* [BUILD-COMPAT] */
+	kmem_cache_free(vns_uts_ns_cache, ns); /* [BUILD-COMPAT] */
 fail_dec:
 	dec_uts_namespaces(ucounts);
 fail:
@@ -133,7 +137,7 @@ void vns_free_uts_ns(struct uts_namespace *ns) /* [RENAME] */
 	dec_uts_namespaces(ns->ucounts);
 	put_user_ns(ns->user_ns);
 	vns_free_inum(&ns->ns); /* [BUILD-COMPAT] */
-	kfree(ns); /* [BUILD-COMPAT] */
+	kmem_cache_free(vns_uts_ns_cache, ns); /* [BUILD-COMPAT] */
 }
 
 static inline struct uts_namespace *to_uts_ns(struct ns_common *ns)

@@ -182,6 +182,28 @@ struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif /* CONFIG_POSIX_MQUEUE || CONFIG_SYSVIPC */
 
 /*
+ * [BUILD-COMPAT] Real kmem_cache pointers for the four namespace-related
+ * structs (uts_namespace, nsproxy, pid_namespace, user_namespace) that the
+ * real kernel allocates from private, non-exported kmem_cache instances
+ * (uts_ns_cache, nsproxy_cachep, pid_ns_cachep, user_ns_cachep).
+ *
+ * vendor_kernel installs its vendored namespaces directly onto the real
+ * task_struct->nsproxy (see vns_switch_task_namespaces()), which means the
+ * *real* kernel's own exit path (do_exit -> exit_task_namespaces ->
+ * free_nsproxy -> free_uts_ns/__put_user_ns/put_pid_ns) will eventually
+ * kmem_cache_free() these objects using the real cache pointers below.
+ * If vendor_kernel allocated them with kzalloc() instead, SLUB's
+ * cache_from_obj() detects the mismatch ("Wrong slab cache") and corrupts
+ * state, leading to a kernel BUG/panic on task exit. Resolving the real
+ * cache pointers and allocating/freeing through them keeps every vendored
+ * namespace struct fully slab-consistent with the real kernel.
+ */
+struct kmem_cache *vns_uts_ns_cache;
+struct kmem_cache *vns_nsproxy_cachep;
+struct kmem_cache *vns_pid_ns_cachep;
+struct kmem_cache *vns_user_ns_cachep;
+
+/*
  * Resolve all non-exported symbols at init time.  Called from
  * vendor_kernel_init() before any vendored namespace code runs.
  */
@@ -250,6 +272,27 @@ void vns_compat_resolve(void)
 		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
 			"compat: init_ipc_ns not resolved (ipc ns disabled)");
 #endif
+	vns_uts_ns_cache = (struct kmem_cache *)(uintptr_t)
+		shadow_hook_resolve("uts_ns_cache");
+	if (!vns_uts_ns_cache)
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"compat: uts_ns_cache not resolved (vendor_kernel unavailable)");
+	vns_nsproxy_cachep = (struct kmem_cache *)(uintptr_t)
+		shadow_hook_resolve("nsproxy_cachep");
+	if (!vns_nsproxy_cachep)
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"compat: nsproxy_cachep not resolved (vendor_kernel unavailable)");
+	vns_pid_ns_cachep = (struct kmem_cache *)(uintptr_t)
+		shadow_hook_resolve("pid_ns_cachep");
+	if (!vns_pid_ns_cachep)
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"compat: pid_ns_cachep not resolved (vendor_kernel unavailable)");
+	vns_user_ns_cachep = (struct kmem_cache *)(uintptr_t)
+		shadow_hook_resolve("user_ns_cachep");
+	if (!vns_user_ns_cachep)
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"compat: user_ns_cachep not resolved (vendor_kernel unavailable)");
+
 #undef RESOLVE
 }
 
@@ -275,6 +318,26 @@ bool vns_compat_ready(void)
 	if (!vns_do_exit_real) {
 		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
 			    "compat: do_exit unresolved; vendor_kernel unavailable");
+		ready = false;
+	}
+	if (!vns_uts_ns_cache) {
+		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
+			    "compat: uts_ns_cache unresolved; vendor_kernel unavailable");
+		ready = false;
+	}
+	if (!vns_nsproxy_cachep) {
+		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
+			    "compat: nsproxy_cachep unresolved; vendor_kernel unavailable");
+		ready = false;
+	}
+	if (!vns_pid_ns_cachep) {
+		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
+			    "compat: pid_ns_cachep unresolved; vendor_kernel unavailable");
+		ready = false;
+	}
+	if (!vns_user_ns_cachep) {
+		LKM4CTR_ERR(VENDOR_KERNEL_TAG,
+			    "compat: user_ns_cachep unresolved; vendor_kernel unavailable");
 		ready = false;
 	}
 

@@ -210,6 +210,18 @@ extern struct cgroup_namespace *vns_init_cgroup_ns_ptr;
 #if defined(CONFIG_POSIX_MQUEUE) || defined(CONFIG_SYSVIPC)
 extern struct ipc_namespace *vns_init_ipc_ns_ptr;
 #endif
+/*
+ * Real kmem_cache pointers resolved from the running kernel
+ * (uts_ns_cache, nsproxy_cachep, pid_ns_cachep, user_ns_cachep). Vendored
+ * namespace allocators must use these instead of kzalloc/kfree, because
+ * vendor_kernel installs its namespaces directly on task_struct->nsproxy
+ * and the real kernel's own exit path frees them via kmem_cache_free()
+ * against these exact cache pointers.
+ */
+extern struct kmem_cache *vns_uts_ns_cache;
+extern struct kmem_cache *vns_nsproxy_cachep;
+extern struct kmem_cache *vns_pid_ns_cachep;
+extern struct kmem_cache *vns_user_ns_cachep;
 struct ucounts *vns_inc_ucount(struct user_namespace *ns, kuid_t uid,
 			       enum ucount_type type);
 void vns_dec_ucount(struct ucounts *ucounts, enum ucount_type type);

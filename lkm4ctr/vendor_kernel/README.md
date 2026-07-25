@@ -9,6 +9,12 @@ vendor_kernel is a parallel, vendored copy of the kernel namespace subsystem for
 - `setns(2)` (`vns_sys_setns()`) already performed a real install via the same switch primitive and required no changes.
 - The per-tgid registry (`vns_task_find()` / `struct vns_task`) is retained purely for diagfs statistics (`stat_unshare`/`stat_setns`/`stat_clone`); it is no longer the source of truth for which namespaces a task is in — `task_struct->nsproxy` is.
 
+## Slab-cache consistency with the real kernel
+
+Once vendored namespaces are installed on the real `task_struct->nsproxy`/`cred->user_ns`, the real kernel's own exit path (`do_exit` -> `exit_task_namespaces` -> `free_nsproxy` -> `free_uts_ns`/`put_pid_ns`/`__put_user_ns`) eventually frees them, using `kmem_cache_free()` against the real kernel's private, non-exported `kmem_cache` instances (`uts_ns_cache`, `nsproxy_cachep`, `pid_ns_cachep`, `user_ns_cachep`). If those objects had been allocated with plain `kzalloc()`, SLUB's `cache_from_obj()` detects the mismatch ("Wrong slab cache") and the resulting corruption crashes the kernel (observed as a `kernel BUG at pid_namespace.h:76` panic on task exit).
+
+To fix this, the 4 real cache pointers are resolved at init time via `shadow_hook_resolve()` (same mechanism already used for `init_cgroup_ns`/`init_ipc_ns`) into `vns_uts_ns_cache`/`vns_nsproxy_cachep`/`vns_pid_ns_cachep`/`vns_user_ns_cachep` (`glue/vendor_kernel_compat.c`), and `create_uts_ns()`/`create_nsproxy()`/`create_pid_namespace()`/`alloc_user_ns` in the corresponding vendored files now allocate/free through `kmem_cache_alloc()`/`kmem_cache_zalloc()`/`kmem_cache_free()` against these real caches instead of `kzalloc()`/`kfree()`, matching upstream's alloc-vs-zalloc semantics exactly. `vns_compat_ready()` fails closed (module init aborts) if any of the 4 caches cannot be resolved. `ipc_namespace`, `cgroup_namespace`, and `time_namespace` are unaffected — upstream itself allocates those with plain `kzalloc()`/`kmalloc()` + `kfree()`, so there is no cache mismatch to fix. The per-level `struct pid` slab cache (`ns->pid_cachep`, created via `create_pid_cachep()`) was already a real, self-consistent `kmem_cache_create()`-based cache and needed no change.
+
 ## Known remaining gaps
 
 - POSIX message queues (`ipc/mqueue.c`) and SysV IPC (`ipc/msg.c`, `ipc/sem.c`, `ipc/shm.c`, `ipc/util.c`) are vendored sources but are not yet wired into `lkm4ctr/Makefile` or hooked to their syscalls; `mq_open()`/`msgget()`/etc. still resolve to `sys_ni_syscall()` on kernels built without `CONFIG_POSIX_MQUEUE`/`CONFIG_SYSVIPC`. Wiring these up needs dedicated syscall-hook glue (mirroring `vendor_kernel_syscalls.c`) plus Makefile changes.
@@ -18,7 +24,7 @@ vendor_kernel is a parallel, vendored copy of the kernel namespace subsystem for
 
 - upstream sources were copied from `kernel-common` `android14-6.1` (kernel `6.1.124`)
 - all non-static global symbols are renamed with a `vns_` prefix
-- slab-cache users are converted to `kzalloc`/`kfree` so the code can build out-of-tree
+- slab-cache users for `ipc_namespace`/`cgroup_namespace`/`time_namespace` are `kzalloc`/`kfree` (matches upstream, which also uses plain kzalloc/kmalloc for these); `uts_namespace`/`nsproxy`/`pid_namespace`/`user_namespace` allocate/free through the real kernel's resolved `kmem_cache` pointers (see "Slab-cache consistency with the real kernel" above), since those structs are installed on the real `task_struct` and freed by the real kernel's exit path
 - inode-number allocation uses `vns_alloc_inum()` / `vns_free_inum()`
 - diagfs statistics are emitted through `vendor_kernel_diag_snprintf()`
 
