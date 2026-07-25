@@ -21,6 +21,18 @@
  * real names directly here (mirroring how glue/vendor_kernel_compat.c defines
  * tasklist_lock / free_uts_ns / free_cgroup_ns directly).
  *
+ * This file now owns the exact-name wrappers for:
+ *   - ipc/accounting helpers: put_ipc_ns, __percpu_counter_sum, get_ucounts,
+ *     pid_vnr
+ *   - timeout/timespec helpers: schedule_hrtimeout_range{,_clock},
+ *     get_timespec64, get_old_timespec32
+ *   - mqueue/VFS helpers: shmem_kernel_file_setup, getname{,_flags},
+ *     putname, mnt_want_write, lookup_one_len, mntget, vfs_mkobj,
+ *     inode_permission, dentry_open, path_put, mnt_drop_write, vfs_unlink,
+ *     fs_context_for_mount, fc_mount, put_fs_context, get_tree_nodev,
+ *     get_tree_keyed, simple_lookup
+ *   - maple-tree / netlink helpers: mas_pause, netlink_getsockbyfilp
+ *
  * Resolution of every function symbol below is reliable on real targets:
  * these are all ordinary kallsyms *function* symbols (not the private
  * `struct kmem_cache *` *data* symbols that forced the namespace caches to be
@@ -45,11 +57,20 @@
 #include <linux/shmem_fs.h>
 #include <linux/file.h>
 #include <linux/fs.h>
+#include <linux/fs_context.h>
 #include <linux/ipc.h>
+#include <linux/hrtimer.h>
+#include <linux/maple_tree.h>
+#include <linux/mount.h>
 #include <linux/msg.h>
+#include <linux/path.h>
+#include <linux/percpu_counter.h>
+#include <linux/pid.h>
 #include <linux/sem.h>
 #include <linux/mqueue.h>
 #include <linux/namei.h>
+#include <linux/time.h>
+#include <linux/time32.h>
 
 #include "../vendor_kernel.h"
 #include "../ipc/util.h"
@@ -128,6 +149,43 @@ typedef struct filename *(*getname_flags_fn_t)(const char __user *, int, int *);
 #else
 typedef struct filename *(*getname_flags_fn_t)(const char __user *, int);
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+typedef struct filename *(*getname_fn_t)(const char __user *);
+#endif
+typedef void (*putname_fn_t)(struct filename *);
+typedef struct file *(*shmem_kernel_file_setup_fn_t)(const char *, loff_t,
+	unsigned long);
+typedef int (*mnt_want_write_fn_t)(struct vfsmount *);
+typedef struct dentry *(*lookup_one_len_fn_t)(const char *, struct dentry *, int);
+typedef struct vfsmount *(*mntget_fn_t)(struct vfsmount *);
+typedef int (*vfs_mkobj_fn_t)(struct dentry *, umode_t,
+	int (*)(struct dentry *, umode_t, void *), void *);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+typedef int (*inode_permission_fn_t)(struct mnt_idmap *, struct inode *, int);
+typedef int (*vfs_unlink_fn_t)(struct mnt_idmap *, struct inode *,
+	struct dentry *, struct inode **);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+typedef int (*inode_permission_fn_t)(struct user_namespace *, struct inode *, int);
+typedef int (*vfs_unlink_fn_t)(struct user_namespace *, struct inode *,
+	struct dentry *, struct inode **);
+#else
+typedef int (*inode_permission_fn_t)(struct inode *, int);
+typedef int (*vfs_unlink_fn_t)(struct inode *, struct dentry *, struct inode **);
+#endif
+typedef struct file *(*dentry_open_fn_t)(const struct path *, int,
+	const struct cred *);
+typedef void (*path_put_fn_t)(const struct path *);
+typedef void (*mnt_drop_write_fn_t)(struct vfsmount *);
+typedef struct fs_context *(*fs_context_for_mount_fn_t)(struct file_system_type *,
+	unsigned int);
+typedef struct vfsmount *(*fc_mount_fn_t)(struct fs_context *);
+typedef void (*put_fs_context_fn_t)(struct fs_context *);
+typedef int (*get_tree_nodev_fn_t)(struct fs_context *,
+	int (*)(struct super_block *, struct fs_context *));
+typedef int (*get_tree_keyed_fn_t)(struct fs_context *,
+	int (*)(struct super_block *, struct fs_context *), void *);
+typedef struct dentry *(*simple_lookup_fn_t)(struct inode *, struct dentry *,
+	unsigned int);
 
 /* signal / wake_q */
 typedef int (*do_send_sig_info_fn_t)(int, struct kernel_siginfo *,
@@ -148,10 +206,28 @@ typedef long (*inc_rlimit_ucounts_fn_t)(struct ucounts *,
 					vns_rlimit_ucount_type_t, long);
 typedef bool (*dec_rlimit_ucounts_fn_t)(struct ucounts *,
 					vns_rlimit_ucount_type_t, long);
+typedef struct ucounts *(*get_ucounts_fn_t)(struct ucounts *);
+#endif
+
+/* ipc/accounting */
+typedef s64 (*__percpu_counter_sum_fn_t)(struct percpu_counter *);
+typedef pid_t (*pid_vnr_fn_t)(struct pid *);
+typedef int (*schedule_hrtimeout_range_fn_t)(ktime_t *, u64,
+	enum hrtimer_mode);
+typedef int (*schedule_hrtimeout_range_clock_fn_t)(ktime_t *, u64,
+	enum hrtimer_mode, clockid_t);
+typedef int (*get_timespec64_fn_t)(struct timespec64 *,
+	const struct __kernel_timespec __user *);
+typedef int (*get_old_timespec32_fn_t)(struct timespec64 *, const void __user *);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+typedef void (*mas_pause_fn_t)(struct ma_state *);
 #endif
 
 /* netlink (mq_notify) */
 typedef struct sock *(*netlink_getsockbyfd_fn_t)(int);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+typedef struct sock *(*netlink_getsockbyfilp_fn_t)(struct file *);
+#endif
 typedef int (*netlink_attachskb_fn_t)(struct sock *, struct sk_buff *, long *,
 	struct sock *);
 typedef void (*netlink_detachskb_fn_t)(struct sock *, struct sk_buff *);
@@ -206,6 +282,26 @@ static shmem_lock_fn_t          r_shmem_lock;
 static shmem_unlock_mapping_fn_t r_shmem_unlock_mapping;
 static alloc_file_clone_fn_t    r_alloc_file_clone;
 static getname_flags_fn_t       r_getname_flags;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+static getname_fn_t             r_getname;
+#endif
+static putname_fn_t             r_putname;
+static shmem_kernel_file_setup_fn_t r_shmem_kernel_file_setup;
+static mnt_want_write_fn_t      r_mnt_want_write;
+static lookup_one_len_fn_t      r_lookup_one_len;
+static mntget_fn_t              r_mntget;
+static vfs_mkobj_fn_t           r_vfs_mkobj;
+static inode_permission_fn_t    r_inode_permission;
+static dentry_open_fn_t         r_dentry_open;
+static path_put_fn_t            r_path_put;
+static mnt_drop_write_fn_t      r_mnt_drop_write;
+static vfs_unlink_fn_t          r_vfs_unlink;
+static fs_context_for_mount_fn_t r_fs_context_for_mount;
+static fc_mount_fn_t            r_fc_mount;
+static put_fs_context_fn_t      r_put_fs_context;
+static get_tree_nodev_fn_t      r_get_tree_nodev;
+static get_tree_keyed_fn_t      r_get_tree_keyed;
+static simple_lookup_fn_t       r_simple_lookup;
 static do_send_sig_info_fn_t    r_do_send_sig_info;
 static wake_q_add_fn_t          r_wake_q_add;
 static wake_q_add_safe_fn_t     r_wake_q_add_safe;
@@ -214,8 +310,21 @@ static wake_up_q_fn_t           r_wake_up_q;
 static put_ucounts_fn_t         r_put_ucounts;
 static inc_rlimit_ucounts_fn_t  r_inc_rlimit_ucounts;
 static dec_rlimit_ucounts_fn_t  r_dec_rlimit_ucounts;
+static get_ucounts_fn_t         r_get_ucounts;
+#endif
+static __percpu_counter_sum_fn_t r___percpu_counter_sum;
+static pid_vnr_fn_t             r_pid_vnr;
+static schedule_hrtimeout_range_fn_t r_schedule_hrtimeout_range;
+static schedule_hrtimeout_range_clock_fn_t r_schedule_hrtimeout_range_clock;
+static get_timespec64_fn_t      r_get_timespec64;
+static get_old_timespec32_fn_t  r_get_old_timespec32;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+static mas_pause_fn_t           r_mas_pause;
 #endif
 static netlink_getsockbyfd_fn_t r_netlink_getsockbyfd;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+static netlink_getsockbyfilp_fn_t r_netlink_getsockbyfilp;
+#endif
 static netlink_attachskb_fn_t   r_netlink_attachskb;
 static netlink_detachskb_fn_t   r_netlink_detachskb;
 static netlink_sendskb_fn_t     r_netlink_sendskb;
@@ -271,6 +380,26 @@ void vns_ipc_compat_resolve(void)
 	R(r_shmem_unlock_mapping, shmem_unlock_mapping);
 	R(r_alloc_file_clone, alloc_file_clone);
 	R(r_getname_flags, getname_flags);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+	R(r_getname, getname);
+#endif
+	R(r_putname, putname);
+	R(r_shmem_kernel_file_setup, shmem_kernel_file_setup);
+	R(r_mnt_want_write, mnt_want_write);
+	R(r_lookup_one_len, lookup_one_len);
+	R(r_mntget, mntget);
+	R(r_vfs_mkobj, vfs_mkobj);
+	R(r_inode_permission, inode_permission);
+	R(r_dentry_open, dentry_open);
+	R(r_path_put, path_put);
+	R(r_mnt_drop_write, mnt_drop_write);
+	R(r_vfs_unlink, vfs_unlink);
+	R(r_fs_context_for_mount, fs_context_for_mount);
+	R(r_fc_mount, fc_mount);
+	R(r_put_fs_context, put_fs_context);
+	R(r_get_tree_nodev, get_tree_nodev);
+	R(r_get_tree_keyed, get_tree_keyed);
+	R(r_simple_lookup, simple_lookup);
 	R(r_do_send_sig_info, do_send_sig_info);
 	R(r_wake_q_add, wake_q_add);
 	R(r_wake_q_add_safe, wake_q_add_safe);
@@ -279,8 +408,21 @@ void vns_ipc_compat_resolve(void)
 	R(r_put_ucounts, put_ucounts);
 	R(r_inc_rlimit_ucounts, inc_rlimit_ucounts);
 	R(r_dec_rlimit_ucounts, dec_rlimit_ucounts);
+	R(r_get_ucounts, get_ucounts);
+#endif
+	R(r___percpu_counter_sum, __percpu_counter_sum);
+	R(r_pid_vnr, pid_vnr);
+	R(r_schedule_hrtimeout_range, schedule_hrtimeout_range);
+	R(r_schedule_hrtimeout_range_clock, schedule_hrtimeout_range_clock);
+	R(r_get_timespec64, get_timespec64);
+	R(r_get_old_timespec32, get_old_timespec32);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+	R(r_mas_pause, mas_pause);
 #endif
 	R(r_netlink_getsockbyfd, netlink_getsockbyfd);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+	R(r_netlink_getsockbyfilp, netlink_getsockbyfilp);
+#endif
 	R(r_netlink_attachskb, netlink_attachskb);
 	R(r_netlink_detachskb, netlink_detachskb);
 	R(r_netlink_sendskb, netlink_sendskb);
@@ -425,6 +567,182 @@ struct filename *getname_flags(const char __user *filename, int flags)
 }
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+struct filename *getname(const char __user *filename)
+{
+	if (r_getname)
+		return r_getname(filename);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+	return getname_flags(filename, 0, NULL);
+#else
+	return getname_flags(filename, 0);
+#endif
+}
+#endif
+
+void putname(struct filename *name)
+{
+	if (r_putname)
+		r_putname(name);
+}
+
+struct file *shmem_kernel_file_setup(const char *name, loff_t size,
+				     unsigned long flags)
+{
+	if (r_shmem_kernel_file_setup)
+		return r_shmem_kernel_file_setup(name, size, flags);
+	return ERR_PTR(-ENOSYS);
+}
+
+int mnt_want_write(struct vfsmount *mnt)
+{
+	if (r_mnt_want_write)
+		return r_mnt_want_write(mnt);
+	return -ENOSYS;
+}
+
+struct dentry *lookup_one_len(const char *name, struct dentry *base, int len)
+{
+	if (r_lookup_one_len)
+		return r_lookup_one_len(name, base, len);
+	return ERR_PTR(-ENOSYS);
+}
+
+struct vfsmount *mntget(struct vfsmount *mnt)
+{
+	if (r_mntget)
+		return r_mntget(mnt);
+	return mnt;
+}
+
+int vfs_mkobj(struct dentry *dentry, umode_t mode,
+	      int (*f)(struct dentry *, umode_t, void *), void *arg)
+{
+	if (r_vfs_mkobj)
+		return r_vfs_mkobj(dentry, mode, f, arg);
+	return -ENOSYS;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+int inode_permission(struct mnt_idmap *idmap, struct inode *inode, int mask)
+{
+	if (r_inode_permission)
+		return r_inode_permission(idmap, inode, mask);
+	/* Permission denials are safety checks; absence falls back to allow. */
+	return 0;
+}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+int inode_permission(struct user_namespace *mnt_userns, struct inode *inode,
+		     int mask)
+{
+	if (r_inode_permission)
+		return r_inode_permission(mnt_userns, inode, mask);
+	/* Permission denials are safety checks; absence falls back to allow. */
+	return 0;
+}
+#else
+int inode_permission(struct inode *inode, int mask)
+{
+	if (r_inode_permission)
+		return r_inode_permission(inode, mask);
+	/* Permission denials are safety checks; absence falls back to allow. */
+	return 0;
+}
+#endif
+
+struct file *dentry_open(const struct path *path, int flags,
+			 const struct cred *creds)
+{
+	if (r_dentry_open)
+		return r_dentry_open(path, flags, creds);
+	return ERR_PTR(-ENOSYS);
+}
+
+void path_put(const struct path *path)
+{
+	if (r_path_put)
+		r_path_put(path);
+}
+
+void mnt_drop_write(struct vfsmount *mnt)
+{
+	if (r_mnt_drop_write)
+		r_mnt_drop_write(mnt);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+int vfs_unlink(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry,
+	       struct inode **delegated_inode)
+{
+	if (r_vfs_unlink)
+		return r_vfs_unlink(idmap, dir, dentry, delegated_inode);
+	return -ENOSYS;
+}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+int vfs_unlink(struct user_namespace *mnt_userns, struct inode *dir,
+	       struct dentry *dentry, struct inode **delegated_inode)
+{
+	if (r_vfs_unlink)
+		return r_vfs_unlink(mnt_userns, dir, dentry, delegated_inode);
+	return -ENOSYS;
+}
+#else
+int vfs_unlink(struct inode *dir, struct dentry *dentry,
+	       struct inode **delegated_inode)
+{
+	if (r_vfs_unlink)
+		return r_vfs_unlink(dir, dentry, delegated_inode);
+	return -ENOSYS;
+}
+#endif
+
+struct fs_context *fs_context_for_mount(struct file_system_type *fs_type,
+					unsigned int sb_flags)
+{
+	if (r_fs_context_for_mount)
+		return r_fs_context_for_mount(fs_type, sb_flags);
+	return ERR_PTR(-ENOSYS);
+}
+
+struct vfsmount *fc_mount(struct fs_context *fc)
+{
+	if (r_fc_mount)
+		return r_fc_mount(fc);
+	return ERR_PTR(-ENOSYS);
+}
+
+void put_fs_context(struct fs_context *fc)
+{
+	if (r_put_fs_context)
+		r_put_fs_context(fc);
+}
+
+int get_tree_nodev(struct fs_context *fc,
+		   int (*fill_super)(struct super_block *, struct fs_context *))
+{
+	if (r_get_tree_nodev)
+		return r_get_tree_nodev(fc, fill_super);
+	return -ENOSYS;
+}
+
+int get_tree_keyed(struct fs_context *fc,
+		   int (*fill_super)(struct super_block *, struct fs_context *),
+		   void *key)
+{
+	if (r_get_tree_keyed)
+		return r_get_tree_keyed(fc, fill_super, key);
+	return -ENOSYS;
+}
+
+struct dentry *simple_lookup(struct inode *dir, struct dentry *dentry,
+			     unsigned int flags)
+{
+	if (r_simple_lookup)
+		return r_simple_lookup(dir, dentry, flags);
+	d_add(dentry, NULL);
+	return NULL;
+}
+
 /* ---- signal / wake_q --------------------------------------------------- */
 
 int do_send_sig_info(int sig, struct kernel_siginfo *info,
@@ -484,9 +802,88 @@ bool dec_rlimit_ucounts(struct ucounts *ucounts, vns_rlimit_ucount_type_t type,
 		return r_dec_rlimit_ucounts(ucounts, type, v);
 	return false;
 }
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+struct ucounts *get_ucounts(struct ucounts *ucounts)
+{
+	if (r_get_ucounts)
+		return r_get_ucounts(ucounts);
+	return NULL;
+}
+#endif
+#endif
+
+/* ---- ipc/accounting/time ----------------------------------------------- */
+
+void put_ipc_ns(struct ipc_namespace *ns)
+{
+	vns_put_ipc_ns(ns);
+}
+
+s64 __percpu_counter_sum(struct percpu_counter *fbc)
+{
+	if (r___percpu_counter_sum)
+		return r___percpu_counter_sum(fbc);
+	return READ_ONCE(fbc->count);
+}
+
+pid_t pid_vnr(struct pid *pid)
+{
+	if (r_pid_vnr)
+		return r_pid_vnr(pid);
+	return 0;
+}
+
+int schedule_hrtimeout_range(ktime_t *expires, u64 delta,
+			     enum hrtimer_mode mode)
+{
+	if (r_schedule_hrtimeout_range)
+		return r_schedule_hrtimeout_range(expires, delta, mode);
+	return 0;
+}
+
+int schedule_hrtimeout_range_clock(ktime_t *expires, u64 delta,
+				   enum hrtimer_mode mode, clockid_t clock_id)
+{
+	if (r_schedule_hrtimeout_range_clock)
+		return r_schedule_hrtimeout_range_clock(expires, delta, mode,
+							clock_id);
+	return 0;
+}
+
+int get_timespec64(struct timespec64 *ts,
+		   const struct __kernel_timespec __user *uts)
+{
+	if (r_get_timespec64)
+		return r_get_timespec64(ts, uts);
+	return -EFAULT;
+}
+
+int get_old_timespec32(struct timespec64 *ts, const void __user *uts)
+{
+	if (r_get_old_timespec32)
+		return r_get_old_timespec32(ts, uts);
+	return -EFAULT;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+void mas_pause(struct ma_state *mas)
+{
+	if (r_mas_pause)
+		r_mas_pause(mas);
+}
 #endif
 
 /* ---- netlink (mq_notify) ----------------------------------------------- */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+struct sock *netlink_getsockbyfilp(struct file *filp)
+{
+	if (r_netlink_getsockbyfilp)
+		return r_netlink_getsockbyfilp(filp);
+	return ERR_PTR(-ENOSYS);
+}
+#endif
 
 struct sock *netlink_getsockbyfd(int fd)
 {
