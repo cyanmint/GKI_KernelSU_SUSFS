@@ -20,7 +20,6 @@ void (*vns_proc_free_inum_fn)(unsigned int);
 struct mnt_namespace *(*vns_copy_mnt_ns_fn)(unsigned long, struct mnt_namespace *, struct user_namespace *, struct fs_struct *);
 void (*vns_put_mnt_ns_fn)(struct mnt_namespace *);
 struct net *(*vns_copy_net_ns_fn)(unsigned long, struct user_namespace *, struct net *);
-void (*vns_put_net_ns_fn)(struct net *);
 bool vendor_kernel_enabled;
 
 struct vns_registry vendor_kernel_registry;
@@ -163,7 +162,15 @@ static void vns_resolve_symbols(void)
 	vns_copy_mnt_ns_fn = (void *)shadow_hook_resolve("copy_mnt_ns");
 	vns_put_mnt_ns_fn = (void *)shadow_hook_resolve("put_mnt_ns");
 	vns_copy_net_ns_fn = (void *)shadow_hook_resolve("copy_net_ns");
-	vns_put_net_ns_fn = (void *)shadow_hook_resolve("put_net");
+	/*
+	 * [BUILD-COMPAT] put_net() is always a static inline in
+	 * <net/net_namespace.h> (never a standalone kernel symbol), so it
+	 * must NOT be resolved by name here: shadow_hook_resolve("put_net")
+	 * either fails or, worse, silently binds to an unrelated symbol that
+	 * happens to share the name in kallsyms, causing a CFI failure when
+	 * called through this mismatched function pointer. Callers use the
+	 * real put_net() inline directly instead (see kernel/nsproxy.c).
+	 */
 }
 
 int vendor_kernel_init(void)

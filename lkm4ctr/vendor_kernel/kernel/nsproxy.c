@@ -253,8 +253,8 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 	return new_nsp;
 
 out_time:
-	if (new_nsp->net_ns && vns_put_net_ns_fn)
-		vns_put_net_ns_fn(new_nsp->net_ns); /* [BUILD-COMPAT] */
+	if (new_nsp->net_ns)
+		put_net(new_nsp->net_ns); /* [BUILD-COMPAT] real inline, not resolved by name */
 out_net:
 	vns_put_cgroup_ns(new_nsp->cgroup_ns); /* [RENAME] */
 out_cgroup:
@@ -331,8 +331,8 @@ void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 	if (ns->time_ns_for_children)
 		vns_put_time_ns(ns->time_ns_for_children); /* [RENAME] */
 	vns_put_cgroup_ns(ns->cgroup_ns); /* [RENAME] */
-	if (ns->net_ns && vns_put_net_ns_fn)
-		vns_put_net_ns_fn(ns->net_ns); /* [BUILD-COMPAT] */
+	if (ns->net_ns)
+		put_net(ns->net_ns); /* [BUILD-COMPAT] real inline, not resolved by name */
 	vns_nsproxy_set_remove(ns); /* [BUILD-COMPAT] */
 	kmem_cache_free(vns_nsproxy_cachep, ns); /* [BUILD-COMPAT] */
 }
