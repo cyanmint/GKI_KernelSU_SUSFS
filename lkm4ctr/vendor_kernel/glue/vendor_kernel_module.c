@@ -241,6 +241,7 @@ void vendor_kernel_exit(void)
 	vendor_kernel_enabled = false;
 	shadow_hook_remove_all(vendor_kernel_core_hooks);
 	vns_exit_hook_exit();
+	vns_nsproxy_deferred_flush();
 	vns_registry_clear_all();
 	LKM4CTR_INFO("vendor_kernel", "unloaded");
 }

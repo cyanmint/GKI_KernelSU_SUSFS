@@ -183,6 +183,15 @@ void vns_nsproxy_cache_init(void);
 void vns_task_exit_cleanup(struct task_struct *tsk);
 int vns_exit_hook_init(void);
 void vns_exit_hook_exit(void);
+/*
+ * vns_nsproxy_deferred_flush() - waits for every nsproxy teardown deferred
+ * by vns_task_exit_cleanup() (kernel/nsproxy.c) to finish. Must be called
+ * from vendor_kernel_exit() strictly after vns_exit_hook_exit() has
+ * unregistered the do_exit() kprobe (so no further work can be queued),
+ * and before the module image can be unloaded, or a still-pending
+ * workqueue callback would execute code that has already been unmapped.
+ */
+void vns_nsproxy_deferred_flush(void);
 
 struct ipc_namespace *vns_copy_ipcs(unsigned long flags, struct user_namespace *user_ns, struct ipc_namespace *old_ns);
 void vns_put_ipc_ns(struct ipc_namespace *ns);

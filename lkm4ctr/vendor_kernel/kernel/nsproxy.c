@@ -44,6 +44,8 @@
 #include <linux/hashtable.h>
 #include <linux/spinlock.h>
 #include <linux/kprobes.h>
+#include <linux/llist.h>
+#include <linux/workqueue.h>
 #include "../vendor_kernel.h"
 #include "../include/uapi/vendor_kernel.h"
 #include "../../../common/lkm4ctr_log.h"
@@ -731,6 +733,66 @@ void vns_nsproxy_cache_init(void) /* [BUILD-COMPAT] */
 }
 
 /*
+ * [BUILD-COMPAT] vns_task_exit_cleanup() runs from a plain pre_handler-only
+ * kprobe on do_exit() (vns_exit_kprobe_pre_handler() below), and kprobe
+ * handlers execute in atomic context (preemption disabled) regardless of
+ * the underlying int3/brk trap mechanism -- see Documentation/trace/kprobes.rst:
+ * "Probes are run with preemption disabled ... you must not do anything
+ * that could cause a sleep". vns_put_nsproxy()/vns_free_nsproxy() can reach
+ * put_mnt_ns() -> namespace_unlock() -> synchronize_rcu_expedited(), which
+ * schedules -- calling that path directly from the kprobe pre_handler
+ * triggers "BUG: scheduling while atomic". So the actual teardown of a
+ * vendored nsproxy is deferred to process context via a workqueue; only the
+ * task_lock()-protected pointer swap (fully atomic-safe: spinlock and plain
+ * refcounting) happens inline in the kprobe handler itself.
+ */
+struct vns_nsproxy_deferred_put {
+	struct llist_node node;
+	struct nsproxy *ns;
+};
+
+static LLIST_HEAD(vns_nsproxy_deferred_list);
+
+static void vns_nsproxy_deferred_put_fn(struct work_struct *work)
+{
+	struct llist_node *node = llist_del_all(&vns_nsproxy_deferred_list);
+	struct vns_nsproxy_deferred_put *entry, *tmp;
+
+	llist_for_each_entry_safe(entry, tmp, node, node) {
+		vns_put_nsproxy(entry->ns); /* [RENAME] */
+		kfree(entry);
+	}
+}
+static DECLARE_WORK(vns_nsproxy_deferred_put_work, vns_nsproxy_deferred_put_fn);
+
+void vns_nsproxy_deferred_flush(void)
+{
+	flush_work(&vns_nsproxy_deferred_put_work);
+}
+
+static void vns_nsproxy_put_deferred(struct nsproxy *ns)
+{
+	struct vns_nsproxy_deferred_put *entry;
+
+	entry = kmalloc(sizeof(*entry), GFP_ATOMIC);
+	if (!entry) {
+		/*
+		 * Atomic allocation failure for a tiny fixed-size object is
+		 * exceedingly unlikely; there is no safe way to free ns
+		 * synchronously here (see the atomic-context comment above),
+		 * so log and leak the reference rather than risk a second
+		 * "scheduling while atomic" crash.
+		 */
+		LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+			"vns_nsproxy_put_deferred: kmalloc failed, leaking nsproxy %p", ns);
+		return;
+	}
+	entry->ns = ns;
+	llist_add(&entry->node, &vns_nsproxy_deferred_list);
+	schedule_work(&vns_nsproxy_deferred_put_work);
+}
+
+/*
  * vns_task_exit_cleanup() - see the declaration comment in vendor_kernel.h.
  * Called from the do_exit() shadow_hook (glue/vendor_kernel_syscalls.c)
  * for every exiting task, strictly before the real do_exit() body (and
@@ -754,10 +816,11 @@ void vns_task_exit_cleanup(struct task_struct *tsk) /* [BUILD-COMPAT] */
 	 * From here on, the real kernel's own exit_task_namespaces() will
 	 * only ever see &vns_init_nsproxy (pinned, never slab-allocated) on
 	 * this task, and will never call kmem_cache_free() against a
-	 * module-owned object. Tear the vendored object down ourselves,
-	 * through vendor_kernel's own self-contained free path.
+	 * module-owned object. Tear the vendored object down through
+	 * vendor_kernel's own self-contained free path, deferred to process
+	 * context (see the atomic-context comment above this function).
 	 */
-	vns_put_nsproxy(ns); /* [RENAME] */
+	vns_nsproxy_put_deferred(ns);
 }
 
 /*
