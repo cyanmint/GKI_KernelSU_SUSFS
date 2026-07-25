@@ -73,6 +73,7 @@ static void set_cred_user_ns(struct cred *cred, struct user_namespace *user_ns)
 	cred->user_ns = user_ns;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 static unsigned long enforced_nproc_rlimit(void)
 {
 	unsigned long limit = RLIM_INFINITY;
@@ -84,6 +85,7 @@ static unsigned long enforced_nproc_rlimit(void)
 
 	return limit;
 }
+#endif
 
 /*
  * Create a new user namespace, deriving the creator from the user in the

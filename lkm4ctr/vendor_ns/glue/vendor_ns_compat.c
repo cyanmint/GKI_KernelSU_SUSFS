@@ -341,8 +341,10 @@ void perf_event_namespaces(struct task_struct *tsk)
  */
 bool vns_setup_mq_sysctls(struct ipc_namespace *ns)
 {
+#ifdef CONFIG_POSIX_MQUEUE
 	if (vns_setup_mq_sysctls_real)
 		return vns_setup_mq_sysctls_real(ns);
+#endif
 	return true; /* stub */
 }
 
@@ -598,8 +600,10 @@ void vns_retire_ipc_sysctls(struct ipc_namespace *ns)
  */
 void vns_retire_mq_sysctls(struct ipc_namespace *ns)
 {
+#ifdef CONFIG_POSIX_MQUEUE
 	if (vns_retire_mq_sysctls_real)
 		vns_retire_mq_sysctls_real(ns);
+#endif
 	/* stub: no-op */
 }
 
