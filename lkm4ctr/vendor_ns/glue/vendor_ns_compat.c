@@ -376,7 +376,6 @@ void mq_put_mnt(struct ipc_namespace *ns)
  * Declared as extern in <linux/ipc_namespace.h> when CONFIG_POSIX_MQUEUE=y.
  */
 DEFINE_SPINLOCK(mq_lock);
-#endif /* CONFIG_POSIX_MQUEUE */
 
 /*
  * [BUILD-COMPAT] msg_init_ns (ipc/msg.c, not exported).
@@ -593,7 +592,6 @@ void vns_retire_ipc_sysctls(struct ipc_namespace *ns)
 	/* stub: sysctl entries remain (harmless for a parallel ns subsystem) */
 }
 
-#ifdef CONFIG_POSIX_MQUEUE
 /*
  * [BUILD-COMPAT] retire_mq_sysctls (ipc/mqueue.c, not exported).
  * Unregisters per-ipc-ns mqueue sysctl entries.
