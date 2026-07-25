@@ -16,6 +16,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched.h>
 
+#include "../vendor_kernel.h"
 #include "util.h"
 
 #define ipcns_operations vns_ipcns_operations

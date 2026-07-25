@@ -224,6 +224,8 @@ void vns_mq_clear_sbinfo(struct ipc_namespace *ns);
 void vns_mq_put_mnt(struct ipc_namespace *ns);
 #ifdef CONFIG_SYSVIPC
 int vns_msg_init_ns(struct ipc_namespace *ns);
+void vns_free_ipcs(struct ipc_namespace *ns, struct ipc_ids *ids,
+		 void (*free)(struct ipc_namespace *, struct kern_ipc_perm *));
 #endif
 struct ns_common *vns_from_mnt_ns(struct mnt_namespace *mnt_ns);
 struct pid *vns_pidfd_pid(const struct file *file);
