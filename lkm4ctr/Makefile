@@ -57,6 +57,56 @@ lkm4ctr-objs := \
 
 OBJECT_FILES_NON_STANDARD_vendor_kernel/kernel/pid_namespace.o := y
 
+# vendor_kernel: force its required namespace/IPC Kconfig options to =y
+# regardless of the running kernel's own .config.
+#
+# lkm4ctr/Kconfig's LKM4CTR_VENDOR_KERNEL already `select`s all of these,
+# but that Kconfig file is never actually sourced by a real Kconfig tree
+# for this standalone out-of-tree build (see the comment atop
+# lkm4ctr/Kconfig), so the `select` has no effect on the module this
+# Makefile actually produces. Force the same options directly on every
+# vendor_kernel object file's compiler command line instead, so
+# vendor_kernel's own vendored namespace implementation (unconditionally
+# compiled in above) always takes its "namespace type is supported" code
+# paths, instead of falling back to bookkeeping-only behaviour or
+# -EINVAL, irrespective of what the target kernel's actual .config says.
+#
+# This is safe: none of these options gate the layout of any struct
+# vendor_kernel touches (struct nsproxy's and struct cgroup_namespace's
+# member fields are unconditional upstream regardless of these options;
+# see lkm4ctr/vendor_kernel/README.md) -- they only gate *declarations*
+# of the real kernel's own namespace symbols/functions, which
+# vendor_kernel already resolves defensively at runtime via
+# shadow_hook_resolve() and fails closed (vns_compat_ready()) if a
+# resolution required for correct operation is missing.
+VENDOR_KERNEL_FORCE_CONFIG := \
+	-DCONFIG_NAMESPACES=1 \
+	-DCONFIG_UTS_NS=1 \
+	-DCONFIG_IPC_NS=1 \
+	-DCONFIG_PID_NS=1 \
+	-DCONFIG_USER_NS=1 \
+	-DCONFIG_NET_NS=1 \
+	-DCONFIG_CGROUPS=1 \
+	-DCONFIG_TIME_NS=1 \
+	-DCONFIG_SYSVIPC=1 \
+	-DCONFIG_POSIX_MQUEUE=1
+
+VENDOR_KERNEL_OBJS := \
+	vendor_kernel/kernel/utsname.o \
+	vendor_kernel/kernel/nsproxy.o \
+	vendor_kernel/kernel/pid_namespace.o \
+	vendor_kernel/kernel/user_namespace.o \
+	vendor_kernel/ipc/namespace.o \
+	vendor_kernel/fs/nsfs.o \
+	vendor_kernel/kernel/cgroup/namespace.o \
+	vendor_kernel/kernel/time/namespace.o \
+	vendor_kernel/glue/vendor_kernel_module.o \
+	vendor_kernel/glue/vendor_kernel_syscalls.o \
+	vendor_kernel/glue/vendor_kernel_diag.o \
+	vendor_kernel/glue/vendor_kernel_compat.o
+
+$(foreach o,$(VENDOR_KERNEL_OBJS),$(eval CFLAGS_$(o) += $(VENDOR_KERNEL_FORCE_CONFIG)))
+
 ccflags-y += -I$(src)/../common
 
 # LKM4CTR_LOG_DMESG - build-time logging switch (see common/lkm4ctr_log.h

@@ -19,14 +19,18 @@ To fix this, the 4 real cache pointers are resolved at init time via `shadow_hoo
 
 `vendor_kernel` resolves several of the running kernel's namespace-private
 symbols (e.g. `pid_ns_cachep`, `init_ipc_ns`) by name at module load time via
-`shadow_hook_resolve()`. For any namespace type whose backing `CONFIG_*_NS`
-option is not built into the running kernel, the corresponding kernel object
-never exists to resolve, and `unshare(2)`/`clone(2)`/`setns(2)` for that
-namespace type either falls back to bookkeeping-only behaviour or fails with
-`-EINVAL` (this is the root cause of `ns_pid`/`ns_ipc` unshare test failures
-seen on kernels that ship with `CONFIG_PID_NS=n`/`CONFIG_IPC_NS=n`, even
-though `vendor_kernel` itself loads and activates successfully). The running
-kernel therefore must be built with:
+`shadow_hook_resolve()`. Historically, for any namespace type whose backing
+`CONFIG_*_NS` option was not built into the running kernel, the corresponding
+kernel object never existed to resolve, and `unshare(2)`/`clone(2)`/`setns(2)`
+for that namespace type either fell back to bookkeeping-only behaviour or
+failed with `-EINVAL` (this was the root cause of `ns_pid`/`ns_ipc` unshare
+test failures seen on kernels that ship with `CONFIG_PID_NS=n`/`CONFIG_IPC_NS=n`,
+even though `vendor_kernel` itself loaded and activated successfully).
+
+`lkm4ctr/Makefile` now forces every one of the options below to `=1` directly
+on the compiler command line for every vendor_kernel object file, so
+`vendor_kernel`'s own code always compiles as if the running kernel had been
+built with:
 
 - `CONFIG_NAMESPACES=y`
 - `CONFIG_UTS_NS=y`
@@ -37,11 +41,25 @@ kernel therefore must be built with:
 - `CONFIG_CGROUPS=y`
 - `CONFIG_TIME_NS=y`
 
-`lkm4ctr/Kconfig`'s `LKM4CTR_VENDOR_KERNEL` option now `select`s all of the
-above, so any future in-tree build sourcing that file will force them on
-automatically; this out-of-tree module build cannot itself change the
-target kernel's `.config`, so the running vendor kernel's defconfig must
-still enable these options directly.
+regardless of what the target kernel's actual `.config` says, so `unshare(2)`/
+`clone(2)`/`setns(2)` for every namespace type vendored here are always
+compiled in and never spuriously fail closed with `-EINVAL` due to the host
+kernel's own build configuration. This is safe because none of these options
+change the layout of any struct `vendor_kernel` touches (`struct nsproxy`'s
+and `struct cgroup_namespace`'s member fields are unconditional upstream
+regardless of these options) -- they only gate *declarations* of the real
+kernel's own namespace symbols/functions, which `vendor_kernel` already
+resolves defensively at runtime via `shadow_hook_resolve()` and fails closed
+(`vns_compat_ready()`) if a resolution required for correct operation is
+missing on that particular running kernel binary.
+
+`lkm4ctr/Kconfig`'s `LKM4CTR_VENDOR_KERNEL` option also `select`s all of the
+above, so any future in-tree build sourcing that file picks up matching
+Kconfig-level documentation, but that file is never actually sourced by a
+real Kconfig tree for this standalone out-of-tree build (see the comment
+atop `lkm4ctr/Kconfig`) -- the `lkm4ctr/Makefile` compiler-flag forcing
+described above is what actually takes effect for the module this
+repository builds.
 
 ## Known remaining gaps
 
