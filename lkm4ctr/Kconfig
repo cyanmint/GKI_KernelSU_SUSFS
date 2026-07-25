@@ -41,3 +41,11 @@ config LKM4CTR_LOG_DMESG
 	  Say N (the default) to make lkm4ctr.ko completely silent in
 	  dmesg: it will never call printk at all, and every message is
 	  reachable only by mounting the lkm4ctr diagfs.
+
+config LKM4CTR_VENDOR_KERNEL
+	bool "vendor_kernel: Vendored kernel namespace subsystem"
+	depends on LKM4CTR
+	help
+	  Vendor the entire Linux kernel namespace subsystem as a parallel
+	  in-module implementation. Hooks all namespace syscalls unconditionally.
+	  Mutually exclusive with shadow_ns at runtime.

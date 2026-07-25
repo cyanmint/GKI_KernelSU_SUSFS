@@ -12,15 +12,15 @@ module entry point, one `.ko`.
 
 ## Module map
 
-| Component             | Directory                         | `/dev` node | Summary |
-|----------------------|-----------------------------------|-------------|---------|
-| `lkm4ctr.ko`      | `lkm4ctr/`                     | —           | Unified module containing the shared hook engine plus the namespace, SysV IPC, POSIX mqueue and cgroup-device compatibility subsystems. |
-| `shadow_hijack`      | `lkm4ctr/shadow_hijack/`       | —           | Internal shared ftrace/kprobe hook implementation used by the other subsystems inside `lkm4ctr.ko`. |
-| `shadow_ns`          | `lkm4ctr/shadow_ns/`           | —           | `unshare/setns/clone/clone3/fork/vfork` hooks. Real per-namespace isolation for UTS, PID and USER; bookkeeping only for IPC/NET/CGROUP/MNT when genuinely absent. |
-| `shadow_sysvipc`     | `lkm4ctr/shadow_sysvipc/`      | —           | System V IPC (msg/sem/shm) hooks and shadow registry. |
-| `shadow_mqueue`      | `lkm4ctr/shadow_mqueue/`       | —           | POSIX mqueue hooks plus real shadow message transfer. |
-| `shadow_cgdevices`   | `lkm4ctr/shadow_cgdevices/`    | —           | Transparent device-open hook shim for the cgroup-device compatibility slot. |
-| `lkm4ctr_checker` | `lkm4ctr_checker/`             | n/a         | **Userspace** diagnostic binary (not a kernel module): performs real syscalls and reports PASS/STUB/FAIL per feature. |
+| Component             | Directory                         | Summary |
+|-----------------------|-----------------------------------|---------|
+| `lkm4ctr.ko`          | `lkm4ctr/`                        | nified module containing the shared hook engine plus the namespace, SysV IPC, POSIX mqueue and cgroup-device compatibility subsystems. |
+| `shadow_hijack`       | `lkm4ctr/shadow_hijack/`          | Internal shared ftrace/kprobe hook implementation used by the other subsystems inside `lkm4ctr.ko`. |
+| `shadow_ns`           | `lkm4ctr/shadow_ns/`              | `unshare/setns/clone/clone3/fork/vfork` hooks. Real per-namespace isolation for UTS, PID and USER; bookkeeping only for IPC/NET/CGROUP/MNT when genuinely absent. |
+| `shadow_sysvipc`      | `lkm4ctr/shadow_sysvipc/`         | System V IPC (msg/sem/shm) hooks and shadow registry. |
+| `shadow_mqueue`       | `lkm4ctr/shadow_mqueue/`          | POSIX mqueue hooks plus real shadow message transfer. |
+| `shadow_cgdevices`    | `lkm4ctr/shadow_cgdevices/`       | Transparent device-open hook shim for the cgroup-device compatibility slot. |
+| `lkm4ctr_checker`     | `lkm4ctr_checker/`                | **Userspace** diagnostic binary (not a kernel module): performs real syscalls and reports PASS/STUB/FAIL per feature. |
 
 ### Real vs. bookkeeping vs. stub — a quick reference
 

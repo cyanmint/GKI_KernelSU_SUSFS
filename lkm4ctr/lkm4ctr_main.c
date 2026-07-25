@@ -8,6 +8,8 @@ int shadow_hijack_init(void);
 void shadow_hijack_exit(void);
 int shadow_ns_init(void);
 void shadow_ns_exit(void);
+int vendor_kernel_init(void);
+void vendor_kernel_exit(void);
 int shadow_sysvipc_init(void);
 void shadow_sysvipc_exit(void);
 int shadow_mqueue_init(void);
@@ -71,6 +73,7 @@ static void __exit lkm4ctr_exit(void)
 	shadow_cgdevices_exit();
 	shadow_mqueue_exit();
 	shadow_sysvipc_exit();
+	vendor_kernel_exit();
 	shadow_ns_exit();
 	shadow_hijack_exit();
 	LKM4CTR_INFO(LKM4CTR_TAG, "unloaded unified module");
