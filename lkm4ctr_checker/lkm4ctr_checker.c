@@ -522,13 +522,89 @@ static void shadow_checker_pid(void)
 
 /*
  * ---------------------------------------------------------------------
+ * shadow_checker_run_as_uid1() - re-run @fn as uid 1 instead of SKIPping
+ * a USER-namespace test outright when the checker itself is running as
+ * uid 0 (e.g. as PID 1 during early boot, or invoked directly by root).
+ *
+ * @fn is one of shadow_checker_user()/shadow_checker_user_idmap(): both
+ * start by reading getuid() and SKIP immediately if it is 0, since a
+ * remap-to-0 can't be told apart from "no remap, still 0" otherwise. A
+ * plain in-process setuid(1) would work for the test but would
+ * irreversibly drop this process's own root privileges (needed by the
+ * mount(2)/CLONE_NEWNS-using tests that run later), so the drop happens
+ * in a throwaway fork(2)'d child instead: it calls setuid(1) (real,
+ * effective and saved uid all become 1, exactly as if the checker had
+ * been started as a normal user) and then simply calls @fn() again,
+ * which now observes getuid() == 1 and proceeds with its normal test
+ * logic and reporting.
+ *
+ * @fn's shadow_checker_report() calls happen inside that child and print
+ * directly to the (shared) stdout as usual, but increment only the
+ * child's own copy of g_fail_count/g_stub_count; the PASS/STUB/FAIL/SKIP
+ * outcome is round-tripped back to this (real) process via the child's
+ * exit status so the final summary counts stay accurate.
+ * ---------------------------------------------------------------------
+ */
+#define SHADOW_CHECKER_UID1_EXIT_FAIL 1
+#define SHADOW_CHECKER_UID1_EXIT_STUB 2
+
+static void shadow_checker_run_as_uid1(const char *label, void (*fn)(void))
+{
+	int fail_before = g_fail_count, stub_before = g_stub_count;
+	pid_t pid;
+	int status;
+
+	fflush(stdout);
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report(label, SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		return;
+	}
+
+	if (pid == 0) {
+		int code = 0;
+
+		if (setuid(1)) {
+			shadow_checker_report(label, SHADOW_CHECKER_SKIP,
+					      "setuid(1) to drop uid 0 for test: %s",
+					      strerror(errno));
+			fflush(stdout);
+			_exit(0);
+		}
+
+		fn();
+
+		if (g_fail_count > fail_before)
+			code |= SHADOW_CHECKER_UID1_EXIT_FAIL;
+		if (g_stub_count > stub_before)
+			code |= SHADOW_CHECKER_UID1_EXIT_STUB;
+		fflush(stdout);
+		_exit(code);
+	}
+
+	if (waitpid(pid, &status, 0) == pid && WIFEXITED(status)) {
+		int code = WEXITSTATUS(status);
+
+		if (code & SHADOW_CHECKER_UID1_EXIT_FAIL)
+			g_fail_count++;
+		if (code & SHADOW_CHECKER_UID1_EXIT_STUB)
+			g_stub_count++;
+	}
+}
+
+/*
+ * ---------------------------------------------------------------------
  * USER namespace: unshare(CLONE_NEWUSER) always changes the calling task's
  * apparent uid/gid inside the new namespace *before* any uid_map/gid_map is
  * written - either to the overflow uid (genuine, unmapped kernel
  * namespace: typically 65534) or to 0 (shadow_ns's docker-like
  * single-mapping remap of the creator to root). Both are a real, observable
  * change; only an unchanged uid indicates no isolation at all. This test is
- * only meaningful when run as a non-root user - see the SKIP case.
+ * only meaningful when run as a non-root user, so if the checker itself is
+ * running as uid 0 it re-runs the test as uid 1 instead (see
+ * shadow_checker_run_as_uid1()).
  * ---------------------------------------------------------------------
  */
 static void shadow_checker_user(void)
@@ -539,8 +615,8 @@ static void shadow_checker_user(void)
 	struct shadow_checker_msg msg;
 
 	if (before == 0) {
-		shadow_checker_report("ns_user (USER)", SHADOW_CHECKER_SKIP,
-				      "running as uid 0; test needs a non-root uid to be conclusive");
+		shadow_checker_run_as_uid1("ns_user (USER)",
+					    shadow_checker_user);
 		return;
 	}
 
@@ -924,7 +1000,9 @@ static void shadow_checker_overlay(void)
  * runtime (runc, crun, ...) does before entering the mapped identity, and
  * a strictly stronger check than shadow_checker_user()'s "did the id
  * merely change" test above: this confirms the *entire* getresuid/
- * getresgid family, not just geteuid(), observes the mapped value.
+ * getresgid family, not just geteuid(), observes the mapped value. Like
+ * shadow_checker_user(), re-runs as uid 1 (shadow_checker_run_as_uid1())
+ * instead of SKIPping when the checker itself is running as uid 0.
  * ---------------------------------------------------------------------
  */
 static void shadow_checker_user_idmap(void)
@@ -936,8 +1014,8 @@ static void shadow_checker_user_idmap(void)
 	struct shadow_checker_msg msg;
 
 	if (before == 0) {
-		shadow_checker_report("ns_user (id mapping)", SHADOW_CHECKER_SKIP,
-				      "running as uid 0; test needs a non-root uid to be conclusive");
+		shadow_checker_run_as_uid1("ns_user (id mapping)",
+					    shadow_checker_user_idmap);
 		return;
 	}
 
@@ -1225,6 +1303,19 @@ static void shadow_checker_pid_signal(void)
  * (shadow_ns_pid.c) exercised from the namespace's own pid-1 task, whose
  * own pid/pgid/sid should all be self-consistent (namespace-local 1)
  * exactly like shadow_checker_pid()'s getpid() check above.
+ *
+ * A freshly unshare(CLONE_NEWPID)'d task does NOT automatically become its
+ * own process group/session leader: its pgid/sid are inherited from before
+ * the new pid namespace existed, and since the real (or shadow_ns
+ * fallback's virtual) leader of that group/session lives outside the new
+ * namespace, getpgid(0)/getsid(0) legitimately report 0 there (no vnr
+ * exists for a group/session leader outside the namespace) even with a
+ * fully genuine vpid remap - this is correct real-kernel behaviour, not a
+ * stub. So this test must call setsid(2) first (which makes the calling
+ * task both the process group leader and the session leader of a brand
+ * new group/session, deterministically getting namespace-local id 1 for
+ * both when the vpid remap is real) before reading pgid/sid back, or a
+ * genuine remap is misreported as STUB.
  * ---------------------------------------------------------------------
  */
 static void shadow_checker_pid_pgrp(void)
@@ -1263,14 +1354,25 @@ static void shadow_checker_pid_pgrp(void)
 			_exit(0);
 		}
 		if (leader == 0) {
-			pid_t self = getpid();
-			pid_t pgid = getpgid(0);
-			pid_t sid = getsid(0);
+			pid_t self;
+			pid_t pgid, sid;
 
-			if (setpgid(0, 0)) {
+			/* setsid(2) makes this task the leader of both a
+			 * brand new process group and a brand new session -
+			 * deterministically namespace-local id 1 for both
+			 * when the vpid remap is genuine (see comment
+			 * above). Do this before reading pgid/sid back;
+			 * reading them beforehand would reflect the
+			 * pre-namespace group/session, whose leader lives
+			 * outside the new namespace and so has no vnr here.
+			 */
+			if (setsid() == (pid_t)-1) {
 				shadow_checker_send_err(pipefd[1], errno);
 				_exit(0);
 			}
+			self = getpid();
+			pgid = getpgid(0);
+			sid = getsid(0);
 			shadow_checker_send_ok(pipefd[1], "%d;%d;%d",
 					       (int)self, (int)pgid,
 					       (int)sid);
@@ -1293,7 +1395,7 @@ static void shadow_checker_pid_pgrp(void)
 
 	if (!msg.ok) {
 		shadow_checker_report("ns_pid (pgid/session)", SHADOW_CHECKER_FAIL,
-				      "setpgid/getpgid/getsid: %s",
+				      "setsid/getpgid/getsid: %s",
 				      strerror(msg.err));
 		return;
 	}
@@ -1379,6 +1481,22 @@ static void shadow_checker_pid_procfs_content(void)
 			int pid_f = -1, ppid_f = -1, pgrp_f = -1, sess_f = -1;
 			int status_pid = -1, status_ppid = -1;
 			char *line, *saveptr;
+
+			/* setsid(2) makes this task (the namespace's own
+			 * init) the leader of a brand new process group and
+			 * session, deterministically namespace-local id 1
+			 * for both when the vpid remap is genuine. Without
+			 * this, pgrp/session are inherited from before the
+			 * new pid namespace existed and their leader lives
+			 * outside it, so /proc would legitimately report 0
+			 * for both fields even with a fully genuine remap -
+			 * see shadow_checker_pid_pgrp()'s comment above for
+			 * the same reasoning.
+			 */
+			if (setsid() == (pid_t)-1) {
+				shadow_checker_send_err(pipefd[1], errno);
+				_exit(0);
+			}
 
 			/* Same private-/proc-remount technique as
 			 * shadow_checker_pid(): on a genuine kernel this is
