@@ -57,6 +57,7 @@ static long (*real_sys_exit_group)(const struct pt_regs *regs);
 static long (*real_sys_setpgid)(const struct pt_regs *regs);
 static long (*real_sys_getpgid)(const struct pt_regs *regs);
 static long (*real_sys_getsid)(const struct pt_regs *regs);
+static long (*real_sys_setsid)(const struct pt_regs *regs);
 static long (*real_sys_ptrace)(const struct pt_regs *regs);
 static long (*real_sys_rt_sigqueueinfo)(const struct pt_regs *regs);
 static long (*real_sys_rt_tgsigqueueinfo)(const struct pt_regs *regs);
@@ -96,6 +97,9 @@ static const char * const shadow_ns_getpgid_names[] = {
 static const char * const shadow_ns_getsid_names[] = {
 	"__arm64_sys_getsid", "__x64_sys_getsid", "sys_getsid", NULL,
 };
+static const char * const shadow_ns_setsid_names[] = {
+	"__arm64_sys_setsid", "__x64_sys_setsid", "sys_setsid", NULL,
+};
 static const char * const shadow_ns_ptrace_names[] = {
 	"__arm64_sys_ptrace", "__x64_sys_ptrace", "sys_ptrace", NULL,
 };
@@ -124,8 +128,23 @@ struct shadow_pidns_priv *shadow_ns_pidns_priv_alloc(void)
 	idr_init(&priv->idr);
 	xa_init_flags(&priv->vpid_to_rpid, XA_FLAGS_ALLOC);
 	xa_init(&priv->rpid_to_vpid);
+	xa_init(&priv->rpid_to_vpgid);
+	xa_init(&priv->rpid_to_vsid);
 	priv->adding = true;
 	return priv;
+}
+
+static pid_t shadow_ns_pidns_value_load(struct xarray *xa, unsigned long index)
+{
+	void *v = xa_load(xa, index);
+
+	return v ? (pid_t)xa_to_value(v) : 0;
+}
+
+static int shadow_ns_pidns_value_store(struct xarray *xa, unsigned long index,
+				       pid_t value)
+{
+	return xa_err(xa_store(xa, index, xa_mk_value(value), GFP_KERNEL));
 }
 
 void shadow_ns_pidns_priv_free(struct shadow_pidns_priv *priv)
@@ -135,6 +154,8 @@ void shadow_ns_pidns_priv_free(struct shadow_pidns_priv *priv)
 	idr_destroy(&priv->idr);
 	xa_destroy(&priv->vpid_to_rpid);
 	xa_destroy(&priv->rpid_to_vpid);
+	xa_destroy(&priv->rpid_to_vpgid);
+	xa_destroy(&priv->rpid_to_vsid);
 	mutex_destroy(&priv->lock);
 	kfree(priv);
 }
@@ -200,6 +221,8 @@ void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid)
 
 		xa_erase(&pidns->rpid_to_vpid, rpid);
 		xa_erase(&pidns->vpid_to_rpid, stale_vpid);
+		xa_erase(&pidns->rpid_to_vpgid, rpid);
+		xa_erase(&pidns->rpid_to_vsid, rpid);
 		idr_remove(&pidns->idr, stale_vpid);
 	}
 
@@ -217,6 +240,15 @@ void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid)
 	}
 	if (xa_err(xa_store(&pidns->rpid_to_vpid, rpid, xa_mk_value(vpid),
 			     GFP_KERNEL))) {
+		xa_erase(&pidns->vpid_to_rpid, vpid);
+		idr_remove(&pidns->idr, vpid);
+		goto unlock;
+	}
+	if (shadow_ns_pidns_value_store(&pidns->rpid_to_vpgid, rpid, vpid) ||
+	    shadow_ns_pidns_value_store(&pidns->rpid_to_vsid, rpid, vpid)) {
+		xa_erase(&pidns->rpid_to_vpgid, rpid);
+		xa_erase(&pidns->rpid_to_vsid, rpid);
+		xa_erase(&pidns->rpid_to_vpid, rpid);
 		xa_erase(&pidns->vpid_to_rpid, vpid);
 		idr_remove(&pidns->idr, vpid);
 		goto unlock;
@@ -240,6 +272,8 @@ void shadow_ns_pidns_unregister(struct shadow_pidns_priv *pidns, pid_t rpid)
 	if (v) {
 		u32 vpid = xa_to_value(v);
 
+		xa_erase(&pidns->rpid_to_vpgid, rpid);
+		xa_erase(&pidns->rpid_to_vsid, rpid);
 		xa_erase(&pidns->vpid_to_rpid, vpid);
 		idr_remove(&pidns->idr, vpid);
 	}
@@ -284,6 +318,103 @@ bool shadow_ns_pidns_is_child_reaper(struct shadow_pidns_priv *pidns, pid_t rpid
 		return false;
 	mutex_lock(&pidns->lock);
 	ret = pidns->child_reaper_rpid == rpid;
+	mutex_unlock(&pidns->lock);
+	return ret;
+}
+
+void shadow_ns_pidns_init_task_ids(struct shadow_pidns_priv *pidns, pid_t rpid,
+				    pid_t parent_rpid)
+{
+	pid_t vpid, parent_vpid, vpgid = 0, vsid = 0;
+
+	if (!pidns || rpid <= 0)
+		return;
+
+	mutex_lock(&pidns->lock);
+	vpid = shadow_ns_pidns_value_load(&pidns->rpid_to_vpid, rpid);
+	parent_vpid = shadow_ns_pidns_value_load(&pidns->rpid_to_vpid, parent_rpid);
+	if (vpid) {
+		if (parent_vpid && pidns->child_reaper_rpid != rpid) {
+			vpgid = shadow_ns_pidns_value_load(&pidns->rpid_to_vpgid,
+							    parent_rpid);
+			vsid = shadow_ns_pidns_value_load(&pidns->rpid_to_vsid,
+							   parent_rpid);
+		}
+		if (!vpgid)
+			vpgid = vpid;
+		if (!vsid)
+			vsid = vpid;
+		shadow_ns_pidns_value_store(&pidns->rpid_to_vpgid, rpid, vpgid);
+		shadow_ns_pidns_value_store(&pidns->rpid_to_vsid, rpid, vsid);
+	}
+	mutex_unlock(&pidns->lock);
+}
+
+pid_t shadow_ns_pidns_virtual_ppid(struct shadow_pidns_priv *pidns,
+				   pid_t rpid_self, pid_t real_ppid)
+{
+	pid_t vppid;
+
+	if (!pidns || real_ppid <= 0)
+		return 0;
+	mutex_lock(&pidns->lock);
+	vppid = shadow_ns_pidns_value_load(&pidns->rpid_to_vpid, real_ppid);
+	if (!vppid && pidns->child_reaper_rpid == rpid_self)
+		vppid = 0;
+	mutex_unlock(&pidns->lock);
+	return vppid;
+}
+
+pid_t shadow_ns_pidns_virtual_pgid(struct shadow_pidns_priv *pidns, pid_t rpid)
+{
+	pid_t vpgid = 0;
+
+	if (!pidns || rpid <= 0)
+		return 0;
+	mutex_lock(&pidns->lock);
+	vpgid = shadow_ns_pidns_value_load(&pidns->rpid_to_vpgid, rpid);
+	mutex_unlock(&pidns->lock);
+	return vpgid;
+}
+
+pid_t shadow_ns_pidns_virtual_sid(struct shadow_pidns_priv *pidns, pid_t rpid)
+{
+	pid_t vsid = 0;
+
+	if (!pidns || rpid <= 0)
+		return 0;
+	mutex_lock(&pidns->lock);
+	vsid = shadow_ns_pidns_value_load(&pidns->rpid_to_vsid, rpid);
+	mutex_unlock(&pidns->lock);
+	return vsid;
+}
+
+int shadow_ns_pidns_set_task_pgid(struct shadow_pidns_priv *pidns, pid_t rpid,
+				  pid_t vpgid)
+{
+	int ret = -ESRCH;
+
+	if (!pidns || rpid <= 0 || vpgid <= 0)
+		return -EINVAL;
+	mutex_lock(&pidns->lock);
+	if (shadow_ns_pidns_value_load(&pidns->rpid_to_vpid, rpid))
+		ret = shadow_ns_pidns_value_store(&pidns->rpid_to_vpgid, rpid,
+						  vpgid);
+	mutex_unlock(&pidns->lock);
+	return ret;
+}
+
+int shadow_ns_pidns_set_task_sid(struct shadow_pidns_priv *pidns, pid_t rpid,
+				 pid_t vsid)
+{
+	int ret = -ESRCH;
+
+	if (!pidns || rpid <= 0 || vsid <= 0)
+		return -EINVAL;
+	mutex_lock(&pidns->lock);
+	if (shadow_ns_pidns_value_load(&pidns->rpid_to_vpid, rpid))
+		ret = shadow_ns_pidns_value_store(&pidns->rpid_to_vsid, rpid,
+						  vsid);
 	mutex_unlock(&pidns->lock);
 	return ret;
 }
@@ -368,6 +499,7 @@ static long shadow_ns_hook_getppid(const struct pt_regs *regs)
 	struct shadow_ns *ns = shadow_ns_current_pidns();
 	long real_ppid;
 	pid_t vppid;
+	bool is_child_reaper;
 
 	if (!ns)
 		return real_sys_getppid(regs);
@@ -377,9 +509,14 @@ static long shadow_ns_hook_getppid(const struct pt_regs *regs)
 		shadow_ns_put(ns);
 		return real_ppid;
 	}
-	vppid = shadow_ns_pidns_to_vpid(ns->pid, (pid_t)real_ppid);
+	vppid = shadow_ns_pidns_virtual_ppid(ns->pid, task_tgid_nr(current),
+					      (pid_t)real_ppid);
+	is_child_reaper = shadow_ns_pidns_is_child_reaper(ns->pid,
+							     task_tgid_nr(current));
 	shadow_ns_put(ns);
-	return vppid;
+	if (vppid || is_child_reaper)
+		return vppid;
+	return real_ppid;
 }
 
 static long shadow_ns_pid_translate_target(unsigned long vpid_arg)
@@ -419,6 +556,19 @@ static long shadow_ns_pid_translate_result(long rpid_result)
 	vpid = shadow_ns_pidns_to_vpid(ns->pid, (pid_t)rpid_result);
 	shadow_ns_put(ns);
 	return vpid ? vpid : rpid_result;
+}
+
+static pid_t shadow_ns_pid_query_target(struct shadow_pidns_priv *pidns,
+					unsigned long pid_arg)
+{
+	pid_t rpid;
+
+	if ((long)pid_arg < 0)
+		return 0;
+	if (!pid_arg)
+		return task_tgid_nr(current);
+	rpid = shadow_ns_pidns_to_rpid(pidns, (pid_t)pid_arg);
+	return rpid ? rpid : 0;
 }
 
 static long shadow_ns_hook_kill(const struct pt_regs *regs)
@@ -527,35 +677,102 @@ static long shadow_ns_hook_exit_group(const struct pt_regs *regs)
 
 static long shadow_ns_hook_setpgid(const struct pt_regs *regs)
 {
+	struct shadow_ns *ns = shadow_ns_current_pidns();
 	struct pt_regs regs_copy = *regs;
 	unsigned long pid_arg = shadow_ns_sys_arg0(regs);
 	unsigned long pgid_arg = shadow_ns_sys_arg1(regs);
+	long ret;
+	pid_t target_rpid = 0, target_vpid = 0, new_vpgid = 0;
+
+	if (ns) {
+		target_rpid = shadow_ns_pid_query_target(ns->pid, pid_arg);
+		if (target_rpid)
+			target_vpid = shadow_ns_pidns_to_vpid(ns->pid, target_rpid);
+		if (target_vpid) {
+			if (!pgid_arg)
+				new_vpgid = target_vpid;
+			else
+				new_vpgid = shadow_ns_pidns_to_vpid(ns->pid,
+								 (pid_t)shadow_ns_pid_translate_target(pgid_arg));
+		}
+	}
 
 	shadow_ns_sys_set_arg0(&regs_copy, shadow_ns_pid_translate_target(pid_arg));
 	shadow_ns_sys_set_arg1(&regs_copy, shadow_ns_pid_translate_target(pgid_arg));
-	return real_sys_setpgid(&regs_copy);
+	ret = real_sys_setpgid(&regs_copy);
+	if (!ret && ns && target_vpid && new_vpgid > 0)
+		shadow_ns_pidns_set_task_pgid(ns->pid, target_rpid, new_vpgid);
+	shadow_ns_put(ns);
+	return ret;
 }
 
 static long shadow_ns_hook_getpgid(const struct pt_regs *regs)
 {
+	struct shadow_ns *ns = shadow_ns_current_pidns();
 	struct pt_regs regs_copy = *regs;
 	unsigned long pid_arg = shadow_ns_sys_arg0(regs);
 	long ret;
+	pid_t target_rpid;
 
+	if (ns) {
+		target_rpid = shadow_ns_pid_query_target(ns->pid, pid_arg);
+		if (target_rpid) {
+			ret = shadow_ns_pidns_virtual_pgid(ns->pid, target_rpid);
+			if (ret > 0) {
+				shadow_ns_put(ns);
+				return ret;
+			}
+		}
+	}
 	shadow_ns_sys_set_arg0(&regs_copy, shadow_ns_pid_translate_target(pid_arg));
 	ret = real_sys_getpgid(&regs_copy);
+	shadow_ns_put(ns);
 	return shadow_ns_pid_translate_result(ret);
 }
 
 static long shadow_ns_hook_getsid(const struct pt_regs *regs)
 {
+	struct shadow_ns *ns = shadow_ns_current_pidns();
 	struct pt_regs regs_copy = *regs;
 	unsigned long pid_arg = shadow_ns_sys_arg0(regs);
 	long ret;
+	pid_t target_rpid;
 
+	if (ns) {
+		target_rpid = shadow_ns_pid_query_target(ns->pid, pid_arg);
+		if (target_rpid) {
+			ret = shadow_ns_pidns_virtual_sid(ns->pid, target_rpid);
+			if (ret > 0) {
+				shadow_ns_put(ns);
+				return ret;
+			}
+		}
+	}
 	shadow_ns_sys_set_arg0(&regs_copy, shadow_ns_pid_translate_target(pid_arg));
 	ret = real_sys_getsid(&regs_copy);
+	shadow_ns_put(ns);
 	return shadow_ns_pid_translate_result(ret);
+}
+
+static long shadow_ns_hook_setsid(const struct pt_regs *regs)
+{
+	struct shadow_ns *ns = shadow_ns_current_pidns();
+	long ret = real_sys_setsid(regs);
+	pid_t self_rpid, self_vpid;
+
+	if (ret <= 0 || !ns)
+		goto out_put;
+
+	self_rpid = task_tgid_nr(current);
+	self_vpid = shadow_ns_pidns_to_vpid(ns->pid, self_rpid);
+	if (self_vpid > 0) {
+		shadow_ns_pidns_set_task_pgid(ns->pid, self_rpid, self_vpid);
+		shadow_ns_pidns_set_task_sid(ns->pid, self_rpid, self_vpid);
+		ret = self_vpid;
+	}
+out_put:
+	shadow_ns_put(ns);
+	return ret;
 }
 
 static long shadow_ns_hook_ptrace(const struct pt_regs *regs)
@@ -619,6 +836,8 @@ static struct shadow_hook shadow_ns_getpgid_hook =
 	SHADOW_HOOK(shadow_ns_getpgid_names, shadow_ns_hook_getpgid, &real_sys_getpgid);
 static struct shadow_hook shadow_ns_getsid_hook =
 	SHADOW_HOOK(shadow_ns_getsid_names, shadow_ns_hook_getsid, &real_sys_getsid);
+static struct shadow_hook shadow_ns_setsid_hook =
+	SHADOW_HOOK(shadow_ns_setsid_names, shadow_ns_hook_setsid, &real_sys_setsid);
 static struct shadow_hook shadow_ns_ptrace_hook =
 	SHADOW_HOOK(shadow_ns_ptrace_names, shadow_ns_hook_ptrace, &real_sys_ptrace);
 static struct shadow_hook shadow_ns_rt_sigqueueinfo_hook =
@@ -643,6 +862,7 @@ struct shadow_hook *shadow_ns_pid_hooks[] = {
 	&shadow_ns_setpgid_hook,
 	&shadow_ns_getpgid_hook,
 	&shadow_ns_getsid_hook,
+	&shadow_ns_setsid_hook,
 	&shadow_ns_ptrace_hook,
 	&shadow_ns_rt_sigqueueinfo_hook,
 	&shadow_ns_rt_tgsigqueueinfo_hook,

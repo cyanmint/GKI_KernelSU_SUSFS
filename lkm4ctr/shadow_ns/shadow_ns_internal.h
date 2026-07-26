@@ -146,6 +146,8 @@ struct shadow_pidns_priv {
 	struct idr	idr;
 	struct xarray	vpid_to_rpid;
 	struct xarray	rpid_to_vpid;
+	struct xarray	rpid_to_vpgid;
+	struct xarray	rpid_to_vsid;
 	pid_t		child_reaper_rpid;
 	bool		adding;
 	bool		zapped;
@@ -213,6 +215,7 @@ struct shadow_task_group {
 	pid_t				 tgid;
 	struct shadow_ns		*cur[SHADOW_NS_TYPE_MAX];
 	struct shadow_ns		*pending_pidns;
+	refcount_t			 refcount;
 	struct mutex			 lock;
 };
 
@@ -241,6 +244,16 @@ void shadow_ns_pidns_register(struct shadow_pidns_priv *pidns, pid_t rpid);
 void shadow_ns_pidns_unregister(struct shadow_pidns_priv *pidns, pid_t rpid);
 pid_t shadow_ns_pidns_to_vpid(struct shadow_pidns_priv *pidns, pid_t rpid);
 pid_t shadow_ns_pidns_to_rpid(struct shadow_pidns_priv *pidns, pid_t vpid);
+void shadow_ns_pidns_init_task_ids(struct shadow_pidns_priv *pidns, pid_t rpid,
+				    pid_t parent_rpid);
+pid_t shadow_ns_pidns_virtual_ppid(struct shadow_pidns_priv *pidns,
+				   pid_t rpid_self, pid_t real_ppid);
+pid_t shadow_ns_pidns_virtual_pgid(struct shadow_pidns_priv *pidns, pid_t rpid);
+pid_t shadow_ns_pidns_virtual_sid(struct shadow_pidns_priv *pidns, pid_t rpid);
+int shadow_ns_pidns_set_task_pgid(struct shadow_pidns_priv *pidns, pid_t rpid,
+				  pid_t vpgid);
+int shadow_ns_pidns_set_task_sid(struct shadow_pidns_priv *pidns, pid_t rpid,
+				 pid_t vsid);
 void shadow_ns_pidns_zap(struct shadow_pidns_priv *pidns, pid_t exiting_rpid);
 bool shadow_ns_pidns_is_child_reaper(struct shadow_pidns_priv *pidns, pid_t rpid);
 struct shadow_userns_priv *shadow_ns_userns_priv_alloc(void);
@@ -284,6 +297,7 @@ struct shadow_ns *shadow_ns_get_current(u32 type);
 struct shadow_task_group *shadow_ns_task_group_lookup(pid_t tgid);
 struct shadow_task_group *shadow_ns_task_group_get_or_create(pid_t tgid);
 struct shadow_task_group *shadow_ns_current_task_group(bool create);
+void shadow_ns_task_group_put(struct shadow_task_group *tg);
 void shadow_ns_task_group_free(struct shadow_task_group *tg);
 bool shadow_ns_task_group_alive(pid_t tgid);
 void shadow_ns_reap_stale_task_groups(void);

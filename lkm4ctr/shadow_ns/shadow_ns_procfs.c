@@ -748,6 +748,8 @@ static long shadow_ns_hook_openat2(const struct pt_regs *regs)
 		u64 flags;
 		u64 mode;
 	} how = { .flags = O_RDONLY };
+	const char *entry;
+	pid_t rpid;
 	long ret;
 
 	if (uhow && copy_from_user(&how, uhow, sizeof(how)))
@@ -757,6 +759,13 @@ static long shadow_ns_hook_openat2(const struct pt_regs *regs)
 				   (umode_t)how.mode);
 	if (ret != LONG_MIN)
 		return ret;
+
+	entry = shadow_ns_path_ns_entry(dfd, upath, &rpid);
+	if (entry) {
+		ret = shadow_ns_ns_entry_create_fd(entry, rpid);
+		if (ret != -ENOENT)
+			return ret;
+	}
 
 	ret = real_sys_openat2(regs);
 	return shadow_ns_open_fallback(dfd, upath, ret);
@@ -768,10 +777,19 @@ static long shadow_ns_hook_openat(const struct pt_regs *regs)
 	const char __user *upath =
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
 	int flags = (int)shadow_ns_sys_arg2(regs);
+	const char *entry;
+	pid_t rpid;
 	long ret = shadow_ns_proc_open(dfd, upath, flags, 0);
 
 	if (ret != LONG_MIN)
 		return ret;
+
+	entry = shadow_ns_path_ns_entry(dfd, upath, &rpid);
+	if (entry) {
+		ret = shadow_ns_ns_entry_create_fd(entry, rpid);
+		if (ret != -ENOENT)
+			return ret;
+	}
 
 	ret = real_sys_openat(regs);
 	return shadow_ns_open_fallback(dfd, upath, ret);
@@ -782,10 +800,19 @@ static long shadow_ns_hook_open(const struct pt_regs *regs)
 	const char __user *upath =
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg0(regs);
 	int flags = (int)shadow_ns_sys_arg1(regs);
+	const char *entry;
+	pid_t rpid;
 	long ret = shadow_ns_proc_open(AT_FDCWD, upath, flags, 0);
 
 	if (ret != LONG_MIN)
 		return ret;
+
+	entry = shadow_ns_path_ns_entry(AT_FDCWD, upath, &rpid);
+	if (entry) {
+		ret = shadow_ns_ns_entry_create_fd(entry, rpid);
+		if (ret != -ENOENT)
+			return ret;
+	}
 
 	ret = real_sys_open(regs);
 	return shadow_ns_open_fallback(AT_FDCWD, upath, ret);
@@ -830,28 +857,28 @@ static long shadow_ns_hook_readlinkat(const struct pt_regs *regs)
 		(const char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
 	char __user *ubuf =
 		(char __user *)(uintptr_t)shadow_ns_sys_arg2(regs);
-	long ret = real_sys_readlinkat(regs);
 	const char *entry;
 	pid_t rpid;
-
-	if (ret != -ENOENT)
-		return ret;
+	long ret;
 
 	entry = shadow_ns_path_ns_entry(dfd, upath, &rpid);
-	if (!entry)
-		return ret;
-
-	/*
-	 * bufsiz (4th syscall arg) doesn't fit shadow_ns_sys_arg2()'s
-	 * three-argument helper set; read it directly off the same
-	 * arch-specific register readlinkat(2) passes it in.
-	 */
+	if (entry) {
+		/*
+		 * bufsiz (4th syscall arg) doesn't fit shadow_ns_sys_arg2()'s
+		 * three-argument helper set; read it directly off the same
+		 * arch-specific register readlinkat(2) passes it in.
+		 */
 #if defined(CONFIG_ARM64)
-	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf,
-					    (int)regs->regs[3]);
+		ret = shadow_ns_ns_entry_readlink(entry, rpid, ubuf,
+						   (int)regs->regs[3]);
 #elif defined(CONFIG_X86_64)
-	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf, (int)regs->r10);
+		ret = shadow_ns_ns_entry_readlink(entry, rpid, ubuf, (int)regs->r10);
 #endif
+		if (ret != -ENOENT)
+			return ret;
+	}
+
+	return real_sys_readlinkat(regs);
 }
 
 static long shadow_ns_hook_readlink(const struct pt_regs *regs)
@@ -861,18 +888,18 @@ static long shadow_ns_hook_readlink(const struct pt_regs *regs)
 	char __user *ubuf =
 		(char __user *)(uintptr_t)shadow_ns_sys_arg1(regs);
 	int bufsiz = (int)shadow_ns_sys_arg2(regs);
-	long ret = real_sys_readlink(regs);
 	const char *entry;
 	pid_t rpid;
-
-	if (ret != -ENOENT)
-		return ret;
+	long ret;
 
 	entry = shadow_ns_path_ns_entry(AT_FDCWD, upath, &rpid);
-	if (!entry)
-		return ret;
+	if (entry) {
+		ret = shadow_ns_ns_entry_readlink(entry, rpid, ubuf, bufsiz);
+		if (ret != -ENOENT)
+			return ret;
+	}
 
-	return shadow_ns_ns_entry_readlink(entry, rpid, ubuf, bufsiz);
+	return real_sys_readlink(regs);
 }
 
 static const char * const shadow_ns_readlinkat_names[] = {
@@ -985,6 +1012,43 @@ static long shadow_ns_append_ns_dirent(char *kbuf, long off, const char *name, u
 	return off + reclen;
 }
 
+static void shadow_ns_scan_existing_ns_dirents(void __user *udirp, long ret,
+						bool *have_pid,
+						bool *have_children,
+						bool *have_user,
+						bool *have_ipc)
+{
+	char *kbuf;
+	long off;
+
+	if (ret <= 0)
+		return;
+
+	kbuf = kmalloc(ret, GFP_KERNEL);
+	if (!kbuf)
+		return;
+	if (copy_from_user(kbuf, udirp, ret))
+		goto out;
+
+	for (off = 0; off < ret; ) {
+		struct linux_dirent64 *d = (struct linux_dirent64 *)(kbuf + off);
+
+		if (!d->d_reclen || off + d->d_reclen > ret)
+			break;
+		if (!strcmp(d->d_name, SHADOW_NS_NSFD_NAME_PID))
+			*have_pid = true;
+		else if (!strcmp(d->d_name, SHADOW_NS_NSFD_NAME_PID_CHILD))
+			*have_children = true;
+		else if (!strcmp(d->d_name, SHADOW_NS_NSFD_NAME_USER))
+			*have_user = true;
+		else if (!strcmp(d->d_name, SHADOW_NS_NSFD_NAME_IPC))
+			*have_ipc = true;
+		off += d->d_reclen;
+	}
+out:
+	kfree(kbuf);
+}
+
 /*
  * shadow_ns_getdents64_append_ns_entries() - append synthetic "pid"/
  * "pid_for_children"/"user"/"ipc" dirents to an already-fetched real
@@ -1000,6 +1064,8 @@ static long shadow_ns_getdents64_append_ns_entries(void __user *udirp,
 	struct shadow_ns *ns_pid, *ns_children, *ns_user, *ns_ipc;
 	char kbuf[384];
 	long extra_len = 0;
+	bool have_pid = false, have_children = false;
+	bool have_user = false, have_ipc = false;
 
 	ns_pid = shadow_ns_pidns_for_tgid(rpid, false);
 	ns_children = shadow_ns_pidns_for_tgid(rpid, true);
@@ -1008,16 +1074,19 @@ static long shadow_ns_getdents64_append_ns_entries(void __user *udirp,
 	if (!ns_pid && !ns_children && !ns_user && !ns_ipc)
 		return ret;
 
-	if (ns_pid)
+	shadow_ns_scan_existing_ns_dirents(udirp, ret, &have_pid, &have_children,
+					     &have_user, &have_ipc);
+
+	if (ns_pid && !have_pid)
 		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
 					SHADOW_NS_NSFD_NAME_PID, ns_pid->id);
-	if (ns_children)
+	if (ns_children && !have_children)
 		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
 					SHADOW_NS_NSFD_NAME_PID_CHILD, ns_children->id);
-	if (ns_user)
+	if (ns_user && !have_user)
 		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
 					SHADOW_NS_NSFD_NAME_USER, ns_user->id);
-	if (ns_ipc)
+	if (ns_ipc && !have_ipc)
 		extra_len = shadow_ns_append_ns_dirent(kbuf, extra_len,
 					SHADOW_NS_NSFD_NAME_IPC, ns_ipc->id);
 
@@ -1250,28 +1319,24 @@ out:
 	return leaf;
 }
 
-/*
- * shadow_ns_stat_translate_pid() - translate one whitespace-delimited
- * numeric token of /proc/<pid>/stat from real to virtual via @pidns,
- * falling back to the real value unchanged if it isn't a registered
- * member -- same conservative fallback shadow_ns_pid_translate_result()
- * already uses for getpgid()/getsid().
- */
-static int shadow_ns_stat_translate_pid(struct shadow_pidns_priv *pidns,
-					 const char *tok, size_t toklen)
+static int shadow_ns_stat_virtual_ppid(struct shadow_pidns_priv *pidns,
+				       pid_t rpid_self, const char *tok,
+				       size_t toklen)
 {
 	char numbuf[16];
 	long val;
-	pid_t vpid;
+	pid_t vppid;
 
 	if (!toklen || toklen >= sizeof(numbuf))
 		return -1;
 	memcpy(numbuf, tok, toklen);
 	numbuf[toklen] = '\0';
-	if (kstrtol(numbuf, 10, &val) || val <= 0)
+	if (kstrtol(numbuf, 10, &val) || val < 0)
 		return -1;
-	vpid = shadow_ns_pidns_to_vpid(pidns, (pid_t)val);
-	return vpid ? (int)vpid : (int)val;
+	vppid = shadow_ns_pidns_virtual_ppid(pidns, rpid_self, (pid_t)val);
+	if (vppid || shadow_ns_pidns_is_child_reaper(pidns, rpid_self))
+		return (int)vppid;
+	return (val > 0) ? (int)val : 0;
 }
 
 /*
@@ -1343,8 +1408,15 @@ static long shadow_ns_rewrite_stat(const char *orig, size_t orig_len,
 			return -1;
 		out[outlen++] = ' ';
 
-		translated = (field == 4 || field == 5 || field == 6) ?
-			shadow_ns_stat_translate_pid(pidns, tok, toklen) : -1;
+		if (field == 4)
+			translated = shadow_ns_stat_virtual_ppid(pidns, rpid_self,
+								   tok, toklen);
+		else if (field == 5)
+			translated = shadow_ns_pidns_virtual_pgid(pidns, rpid_self);
+		else if (field == 6)
+			translated = shadow_ns_pidns_virtual_sid(pidns, rpid_self);
+		else
+			translated = -1;
 		if (translated >= 0) {
 			n = snprintf(out + outlen, out_cap - outlen, "%d", translated);
 			if (n < 0 || (size_t)n >= out_cap - outlen)
@@ -1379,6 +1451,7 @@ static long shadow_ns_rewrite_stat(const char *orig, size_t orig_len,
 static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 				      struct shadow_pidns_priv *pidns,
 				      struct shadow_userns_priv *userns,
+				      pid_t rpid_self,
 				      char *out, size_t out_cap)
 {
 	size_t i = 0;
@@ -1403,7 +1476,8 @@ static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 				v++;
 				vlen--;
 			}
-			translated = shadow_ns_stat_translate_pid(pidns, v, vlen);
+			translated = shadow_ns_stat_virtual_ppid(pidns, rpid_self,
+								   v, vlen);
 			if (translated >= 0) {
 				int n = snprintf(out + outlen, out_cap - outlen,
 						  "PPid:\t%d", translated);
@@ -1413,15 +1487,10 @@ static long shadow_ns_rewrite_status(const char *orig, size_t orig_len,
 				handled = true;
 			}
 		} else if (pidns && linelen > 4 && !strncmp(line, "Pid:", 4)) {
-			const char *v = line + 4;
-			size_t vlen = linelen - 4;
-			int translated;
+			int translated = shadow_ns_pidns_to_vpid(pidns, rpid_self);
 
-			while (vlen && *v == '\t') {
-				v++;
-				vlen--;
-			}
-			translated = shadow_ns_stat_translate_pid(pidns, v, vlen);
+			if (translated <= 0)
+				translated = rpid_self;
 			if (translated >= 0) {
 				int n = snprintf(out + outlen, out_cap - outlen,
 						  "Pid:\t%d", translated);
@@ -1532,7 +1601,7 @@ static long shadow_ns_hook_proc_pid_leaf_read(int fd, void __user *ubuf, long re
 	newlen = (leaf == SHADOW_NS_PID_LEAF_STAT) ?
 		shadow_ns_rewrite_stat(kbuf, ret, pidns, rpid, out,
 					ret + SHADOW_NS_PROC_REWRITE_SLACK) :
-		shadow_ns_rewrite_status(kbuf, ret, pidns, userns, out,
+		shadow_ns_rewrite_status(kbuf, ret, pidns, userns, rpid, out,
 					  ret + SHADOW_NS_PROC_REWRITE_SLACK);
 
 	if (newlen >= 0 && !copy_to_user(ubuf, out, newlen))

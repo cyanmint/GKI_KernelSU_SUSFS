@@ -2,6 +2,15 @@
 #include "shadow_ns_internal.h"
 #include "lkm4ctr_log.h"
 
+static struct shadow_task_group *shadow_ns_task_group_grab(struct shadow_task_group *tg)
+{
+	if (!tg)
+		return NULL;
+	if (!refcount_inc_not_zero(&tg->refcount))
+		return NULL;
+	return tg;
+}
+
 struct shadow_task_group *shadow_ns_task_group_lookup(pid_t tgid)
 {
 	struct shadow_task_group *tg;
@@ -10,7 +19,7 @@ struct shadow_task_group *shadow_ns_task_group_lookup(pid_t tgid)
 		return NULL;
 
 	mutex_lock(&shadow_ns_tgid_lock);
-	tg = xa_load(&shadow_ns_tgid_map, tgid);
+	tg = shadow_ns_task_group_grab(xa_load(&shadow_ns_tgid_map, tgid));
 	mutex_unlock(&shadow_ns_tgid_lock);
 	return tg;
 }
@@ -35,6 +44,7 @@ struct shadow_task_group *shadow_ns_task_group_get_or_create(pid_t tgid)
 	}
 
 	tg->tgid = tgid;
+	refcount_set(&tg->refcount, 1); /* map ownership */
 	mutex_init(&tg->lock);
 	ret = xa_err(xa_store(&shadow_ns_tgid_map, tgid, tg, GFP_KERNEL));
 	if (ret) {
@@ -45,6 +55,7 @@ struct shadow_task_group *shadow_ns_task_group_get_or_create(pid_t tgid)
 	}
 
 out_unlock:
+	shadow_ns_task_group_grab(tg);
 	mutex_unlock(&shadow_ns_tgid_lock);
 	return tg;
 }
@@ -70,6 +81,14 @@ void shadow_ns_task_group_free(struct shadow_task_group *tg)
 	tg->pending_pidns = NULL;
 	mutex_destroy(&tg->lock);
 	kfree(tg);
+}
+
+void shadow_ns_task_group_put(struct shadow_task_group *tg)
+{
+	if (!tg)
+		return;
+	if (refcount_dec_and_test(&tg->refcount))
+		shadow_ns_task_group_free(tg);
 }
 
 bool shadow_ns_task_group_alive(pid_t tgid)
@@ -127,7 +146,7 @@ void shadow_ns_reap_stale_task_groups(void)
 						     tg->tgid))
 			shadow_ns_pidns_zap(tg->cur[SHADOW_NS_TYPE_PID]->pid, tg->tgid);
 
-		shadow_ns_task_group_free(tg);
+		shadow_ns_task_group_put(tg);
 	}
 }
 
@@ -275,6 +294,7 @@ int shadow_ns_install_child_state(pid_t child_tgid,
 	if (ret) {
 		for (type = 0; type < SHADOW_NS_TYPE_MAX; type++)
 			shadow_ns_put(next[type]);
+		shadow_ns_task_group_put(child);
 		return ret;
 	}
 
@@ -285,8 +305,12 @@ int shadow_ns_install_child_state(pid_t child_tgid,
 	shadow_ns_slot_replace(&child->cur[SHADOW_NS_TYPE_PID], pidns_for_child);
 	mutex_unlock(&child->lock);
 
-	if (pidns_for_child)
+	if (pidns_for_child) {
 		shadow_ns_pidns_register(pidns_for_child->pid, child_tgid);
+		shadow_ns_pidns_init_task_ids(pidns_for_child->pid, child_tgid,
+					      parent ? parent->tgid : 0);
+	}
+	shadow_ns_task_group_put(child);
 	return 0;
 }
 
@@ -331,6 +355,7 @@ long shadow_ns_task_group_setns_by_id(int id, int flags)
 		shadow_join_cur(tg->cur, ns);
 	mutex_unlock(&tg->lock);
 	ret = 0;
+	shadow_ns_task_group_put(tg);
 	return ret;
 }
 
@@ -363,18 +388,20 @@ long shadow_ns_clone_finalize(long ret, struct shadow_task_group *parent,
 	int err;
 
 	if (ret <= 0)
-		return ret;
+		goto out_put_parent;
 	if (!parent && !shadow_flags)
-		return ret;
+		goto out_put_parent;
 
 	child_tgid = shadow_ns_resolve_child_tgid((pid_t)ret);
 	if (!child_tgid || child_tgid == task_tgid_nr(current))
-		return ret;
+		goto out_put_parent;
 
 	err = shadow_ns_install_child_state(child_tgid, parent, shadow_flags);
 	if (err)
 		LKM4CTR_WARN("shadow_ns", "failed to install child state for tgid %d: %d",
 			     child_tgid, err);
+out_put_parent:
+	shadow_ns_task_group_put(parent);
 	return ret;
 }
 
@@ -391,6 +418,7 @@ struct shadow_ns *shadow_ns_pidns_for_tgid(pid_t rpid, bool for_children)
 	ns = shadow_ns_grab(for_children && tg->pending_pidns ?
 			     tg->pending_pidns : tg->cur[SHADOW_NS_TYPE_PID]);
 	mutex_unlock(&tg->lock);
+	shadow_ns_task_group_put(tg);
 	return ns;
 }
 
@@ -420,6 +448,7 @@ struct shadow_ns *shadow_ns_generic_for_tgid(u32 type, pid_t rpid)
 	mutex_lock(&tg->lock);
 	ns = shadow_ns_grab(tg->cur[type]);
 	mutex_unlock(&tg->lock);
+	shadow_ns_task_group_put(tg);
 	return ns;
 }
 

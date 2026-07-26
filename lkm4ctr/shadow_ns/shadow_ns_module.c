@@ -361,7 +361,7 @@ void shadow_ns_exit(void)
 		mutex_unlock(&shadow_ns_tgid_lock);
 		if (!tg)
 			break;
-		shadow_ns_task_group_free(tg);
+		shadow_ns_task_group_put(tg);
 	}
 	xa_destroy(&shadow_ns_tgid_map);
 

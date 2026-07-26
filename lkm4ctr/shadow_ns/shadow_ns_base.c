@@ -260,5 +260,6 @@ struct shadow_ns *shadow_ns_get_current(u32 type)
 	mutex_lock(&tg->lock);
 	ns = shadow_ns_grab(tg->cur[type]);
 	mutex_unlock(&tg->lock);
+	shadow_ns_task_group_put(tg);
 	return ns;
 }

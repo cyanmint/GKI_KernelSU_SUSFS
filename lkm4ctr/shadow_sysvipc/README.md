@@ -119,11 +119,13 @@ the common container use case of a plain read/write shared mapping.
 
 ### Per-namespace scoping
 
-`shadow_ns`'s `CLONE_NEWIPC` simulation is bookkeeping-only (see
-`../shadow_ns/README.md`): it does not create a functionally isolated IPC
-namespace, only a refcounted namespace-identity object. `shadow_sysvipc`
-consults that object's id (`shadow_ns_current_ipc_ns_id()`, both subsystems
-link into the same `lkm4ctr.ko`) to scope **key-based** lookups
+`shadow_ns`'s `CLONE_NEWIPC` simulation is bookkeeping-only for the *actual*
+kernel IPC data path (see `../shadow_ns/README.md`): it does not create a
+functionally isolated IPC namespace, only a refcounted namespace-identity
+object. That object is nevertheless user-visible through the synthetic
+`/proc/<pid>/ns/ipc` id, and `shadow_sysvipc` consults the same id
+(`shadow_ns_current_ipc_ns_id()`, both subsystems link into the same
+`lkm4ctr.ko`) to scope **key-based** lookups
 (`svipc_find_key_locked()`) per simulated IPC namespace, mirroring the
 *shape* of real `ipc/namespace.c`'s per-namespace `copy_ipcs()`/`free_ipcs()`
 registries (not their storage, which is scaled down to shadow_ns's flat,

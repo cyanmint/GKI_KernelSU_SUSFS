@@ -62,9 +62,9 @@ inert bookkeeping:
 | MNT (`CLONE_NEWNS`) | if `IS_ENABLED(CONFIG_NAMESPACES)` (effectively always, `default !EXPERT`; no dedicated `CONFIG_MNT_NS` symbol exists so the parent menuconfig is used as a defensive proxy) | bookkeeping only — same generic id/refcount registry as IPC/NET/CGROUP; the real, always-compiled-in mount-namespace code in `fs/namespace.c` keeps running regardless, this only adds a parallel bookkeeping entry |
 | CGROUP (`CLONE_NEWCGROUP`) | if `CONFIG_CGROUPS=y` (every GKI defconfig sets this) | bookkeeping only — same generic id/refcount registry as IPC/NET below; no functional cgroup-namespace partitioning to add safely from a module |
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
-| PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}` and rewritten `/proc/<pid>/{stat,status}` pid fields) |
+| PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping plus shadow-tracked virtual process-group/session ids (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`setsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}` and rewritten `/proc/<pid>/{stat,status}` pid fields) |
 | USER (`CLONE_NEWUSER`) | passthrough | **real**: a genuine multi-entry `uid_map`/`gid_map` table (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked and translated through it, plus rewritten `/proc/<pid>/status` `Uid:`/`Gid:` lines and fabricated `/proc/<pid>/ns/user`), defaulting to the single-mapping docker/runc userns-remap shape (namespace id 0 == creator's real uid/gid) until a real map is installed |
-| IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only — falls back to the single global `init_ipc_ns` for actual IPC isolation, but `/proc/<pid>/ns/ipc` is still fabricated (see below) so namespace-support probes that stat every `ns/*` entry as one combined check (e.g. runc's) don't abort; `shadow_sysvipc` additionally scopes its own key-based SysV IPC lookups per this namespace's id (see `../shadow_sysvipc/README.md`) |
+| IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only for the *actual* IPC data path — falls back to the single global `init_ipc_ns` for real kernel isolation — but each simulated IPC namespace still has its own persistent synthetic id and `/proc/<pid>/ns/ipc` reports that id, so namespace-support probes and `shadow_sysvipc` key scoping observe a distinct namespace identity (see below and `../shadow_sysvipc/README.md`) |
 | NET (`CLONE_NEWNET`) | passthrough | bookkeeping only — real net namespace isolation is inseparable from the whole networking stack (`net/core/net_namespace.c` touches routing, sockets, netfilter, sysctls) and cannot safely be vendored into a loadable module |
 
 ### PID namespace isolation details
@@ -96,9 +96,12 @@ that one child immediately.
 
 Every syscall that consumes or produces a pid-namespace pid number is
 translated: `getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`
-(`P_PID` and `P_PGID`) as before, plus `setpgid`/`getpgid`/`getsid` (with the
-returned pgid/sid translated back to a vpid), `ptrace`, `rt_sigqueueinfo`/
-`rt_tgsigqueueinfo`, and `pidfd_open`.
+(`P_PID` and `P_PGID`) as before, plus `setpgid`/`getpgid`/`getsid`/`setsid`.
+shadow_ns now keeps explicit per-task virtual process-group/session ids inside
+each simulated pid namespace, so the namespace's own init correctly reports
+`pid=pgid=sid=1` and later `setpgid(2)`/`setsid(2)` updates stay namespace-
+local. `ptrace`, `rt_sigqueueinfo`/`rt_tgsigqueueinfo`, and `pidfd_open` are
+translated too.
 
 Known simplification: `tgkill`/`tkill` translate the pid argument through the
 tgid-level map (thread ids are not tracked separately), and `waitid`'s
@@ -136,10 +139,12 @@ namespace's members under `/proc`, exactly like the real kernel's
   same fail-safe design as the `getdents64` filtering above). `stat`'s
   `pid` field (ahead of the `(comm)` that may itself embed spaces/parens)
   and its `ppid`/`pgrp`/`session` fields (proc(5) fields 4/5/6), and
-  `status`'s `Pid:`/`PPid:` lines, are all translated from the real rpid to
-  the namespace-local vpid, falling back to the untouched real number for
-  any pid that isn't a registered member (mirrors `getpgid()`/`getsid()`'s
-  own translate-with-fallback behaviour). This is what makes an unmodified
+  `status`'s `Pid:`/`PPid:` lines, are all rewritten to the namespace-local
+  virtual values. `ppid` becomes `0` for the simulated child reaper just like
+  a real pid namespace's init, while `pgrp`/`session` come from the same
+  shadow-tracked virtual pgid/sid bookkeeping `getpgid()`/`getsid()` use,
+  rather than from the host kernel's ambient process-group/session numbers.
+  This is what makes an unmodified
   `ps`/`top` inside the namespace actually display namespace-local pids:
   every one of them trusts these two files' own embedded numbers over (or
   in addition to) the `getdents64`-renamed directory-listing name.
@@ -156,6 +161,14 @@ namespace's members under `/proc`, exactly like the real kernel's
   `shadow_ns_procfs_nsfd_to_id()`, so an unmodified
   `open("/proc/<pid>/ns/pid")` + `setns(fd, CLONE_NEWPID)` sequence (exactly
   what nsenter/runc/dockerd already do) works with no userspace changes.
+
+  The same `open()`/`readlink()` interception also prefers shadow-owned
+  namespace objects for `/proc/<pid>/ns/ipc` (and the other fabricated
+  entries) whenever the target task actually belongs to a simulated shadow
+  namespace, even on kernels whose real procfs entry already exists. That
+  keeps namespace-identity probes aligned with the shadow bookkeeping object
+  instead of leaking the ambient host `ipc:[...]` id after a simulated
+  `unshare(CLONE_NEWIPC)`.
 
 Known limitations of this `/proc` isolation: only `/proc`'s own root listing
 is filtered (subdirectory listings such as `/proc/<pid>/task/`, thread ids,

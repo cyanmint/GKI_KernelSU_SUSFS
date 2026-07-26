@@ -57,6 +57,7 @@ static long shadow_ns_hook_unshare(const struct pt_regs *regs)
 	mutex_lock(&tg->lock);
 	ret = shadow_ns_task_group_unshare_locked(tg, shadow_flags);
 	mutex_unlock(&tg->lock);
+	shadow_ns_task_group_put(tg);
 	return ret;
 }
 
