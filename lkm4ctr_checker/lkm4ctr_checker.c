@@ -690,10 +690,19 @@ static void shadow_checker_generic_ns(const char *label, const char *ns_file,
 
 	snprintf(after, sizeof(after), "%s", msg.payload);
 
-	if (have_before && after[0] && strcmp(before, after))
+	/*
+	 * A distinct post-unshare() namespace identity counts as real
+	 * isolation whether or not a "before" baseline existed: on a kernel
+	 * genuinely lacking native namespace support for this type (e.g.
+	 * CONFIG_IPC_NS=n), /proc/self/ns/<type> may not exist at all before
+	 * unshare() (have_before false), so a fabricated identity appearing
+	 * afterwards is exactly as meaningful a change as a differing id
+	 * would be when a "before" baseline does exist.
+	 */
+	if (after[0] && (!have_before || strcmp(before, after)))
 		shadow_checker_report(label, SHADOW_CHECKER_PASS,
 				      "namespace id changed (%s -> %s)",
-				      before, after);
+				      have_before ? before : "(none)", after);
 	else
 		shadow_checker_report(label, SHADOW_CHECKER_STUB,
 				      "unshare() succeeded but namespace id unchanged (bookkeeping only)");

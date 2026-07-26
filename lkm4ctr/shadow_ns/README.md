@@ -64,7 +64,7 @@ inert bookkeeping:
 | UTS (`CLONE_NEWUTS`) | passthrough | **real**: per-namespace hostname/domainname (`sethostname`/`setdomainname`/`uname` hooked) |
 | PID (`CLONE_NEWPID`) | passthrough | **real**: vendored `kernel/pid.c`/`kernel/pid_namespace.c` algorithms driving per-namespace vpid↔rpid remapping plus shadow-tracked virtual process-group/session ids (`getpid`/`getppid`/`kill`/`tgkill`/`tkill`/`wait4`/`waitid`/`exit_group`/`setpgid`/`getpgid`/`getsid`/`setsid`/`ptrace`/`rt_sigqueueinfo`/`rt_tgsigqueueinfo`/`pidfd_open` hooked, plus fabricated `/proc/<pid>/ns/pid{,_for_children}` and rewritten `/proc/<pid>/{stat,status}` pid fields) |
 | USER (`CLONE_NEWUSER`) | passthrough | **real**: a genuine multi-entry `uid_map`/`gid_map` table (`getuid`/`geteuid`/`getgid`/`getegid`/`getresuid`/`getresgid` hooked and translated through it, plus rewritten `/proc/<pid>/status` `Uid:`/`Gid:` lines and fabricated `/proc/<pid>/ns/user`), defaulting to the single-mapping docker/runc userns-remap shape (namespace id 0 == creator's real uid/gid) until a real map is installed |
-| IPC (`CLONE_NEWIPC`) | passthrough | bookkeeping only for the *actual* IPC data path — falls back to the single global `init_ipc_ns` for real kernel isolation — but each simulated IPC namespace still has its own persistent synthetic id and `/proc/<pid>/ns/ipc` reports that id, so namespace-support probes and `shadow_sysvipc` key scoping observe a distinct namespace identity (see below and `../shadow_sysvipc/README.md`) |
+| IPC (`CLONE_NEWIPC`) | passthrough | **real** for SysV IPC: each simulated IPC namespace has its own persistent synthetic id (`/proc/<pid>/ns/ipc` reports it), and `shadow_sysvipc`'s `msgget`/`semget`/`shmget`/`msgctl`/`semctl`/`shmctl`/`msgsnd`/`msgrcv`/`semop`/`semtimedop`/`shmat`/`shmdt` hooks route any task that is a member of one straight to a namespace-scoped shadow registry instead of the real, un-partitioned `init_ipc_ns` — see below and `../shadow_sysvipc/README.md`. POSIX message queues (`mq_*`, a separate `IPC_NS`-gating input alongside `SYSVIPC`) are not covered by this and remain bookkeeping-only. |
 | NET (`CLONE_NEWNET`) | passthrough | bookkeeping only — real net namespace isolation is inseparable from the whole networking stack (`net/core/net_namespace.c` touches routing, sockets, netfilter, sysctls) and cannot safely be vendored into a loadable module |
 
 ### PID namespace isolation details
@@ -310,7 +310,8 @@ ordering step anymore.
   bookkeeps `type` (i.e. the kernel build genuinely lacks native support).
 * `bool shadow_ns_type_real(u32 type)` — true if the simulation for `type`
   performs genuine functional isolation rather than bookkeeping only
-  (UTS, PID, USER); false for IPC/NET/CGROUP/MNT (bookkeeping-only when
+  (UTS, PID, USER, and now IPC for the SysV IPC data path via
+  `shadow_sysvipc`); false for NET/CGROUP/MNT (bookkeeping-only when
   simulated).
 
 Not currently consumed by any other in-tree module — `lkm4ctr_checker`

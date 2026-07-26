@@ -33,6 +33,33 @@ static unsigned long svipc_sys_arg(const struct pt_regs *regs, unsigned int n)
 	return regs_get_kernel_argument((struct pt_regs *)regs, n);
 }
 
+/*
+ * svipc_ns_active() - is the calling task currently a member of a
+ * shadow_ns-simulated IPC namespace (i.e. it -- or an ancestor it inherited
+ * nsproxy from -- called unshare(CLONE_NEWIPC)/clone(..., CLONE_NEWIPC)/
+ * setns() on a kernel build genuinely lacking CONFIG_IPC_NS; see
+ * ../shadow_ns/README.md)?
+ *
+ * When true, every hook below skips the real syscall entirely and always
+ * routes through the shadow registry, even on a kernel with native
+ * CONFIG_SYSVIPC=y. This is what turns shadow_ns's IPC namespace simulation
+ * from mere id/refcount bookkeeping into genuine functional isolation: a
+ * simulated namespace's msgget()/semget()/shmget() key lookups are already
+ * scoped per shadow_ns_current_ipc_ns_id() (see svipc_find_key_locked()),
+ * but that scoping was previously never consulted whenever the real kernel
+ * syscall itself succeeded, so two simulated IPC namespaces on a
+ * CONFIG_SYSVIPC=y kernel used to transparently share one and the same real,
+ * un-partitioned init_ipc_ns -- exactly the "namespace id tracked, data path
+ * not isolated" bookkeeping-only gap. Tasks that were never moved into a
+ * simulated IPC namespace (the overwhelming common case: ordinary host
+ * processes, or any kernel where CONFIG_IPC_NS is genuinely builtin and thus
+ * left to run untouched by shadow_ns) keep using the real syscall unchanged.
+ */
+static bool svipc_ns_active(void)
+{
+	return shadow_ns_current_ipc_ns_id() != 0;
+}
+
 static const char * const msgget_names[] = { "__arm64_sys_msgget", "sys_msgget", NULL };
 static const char * const msgctl_names[] = { "__arm64_sys_msgctl", "sys_msgctl", NULL };
 static const char * const msgsnd_names[] = { "__arm64_sys_msgsnd", "sys_msgsnd", NULL };
@@ -231,9 +258,11 @@ static long svipc_hook_msgget(const struct pt_regs *regs)
 	s32 key = (s32)svipc_sys_arg(regs, 0);
 	int msgflg = (int)svipc_sys_arg(regs, 1);
 
-	ret = real_sys_msgget(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_msgget(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_create(SHADOW_SYSVIPC_TYPE_MSGQ, key, msgflg, 0, 0);
 }
@@ -245,9 +274,11 @@ static long svipc_hook_msgctl(const struct pt_regs *regs)
 	int cmd = (int)svipc_sys_arg(regs, 1);
 	void __user *buf = (void __user *)svipc_sys_arg(regs, 2);
 
-	ret = real_sys_msgctl(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_msgctl(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_msgctl(msqid, cmd, buf);
 }
@@ -260,9 +291,11 @@ static long svipc_hook_msgsnd(const struct pt_regs *regs)
 	size_t msgsz = (size_t)svipc_sys_arg(regs, 2);
 	int msgflg = (int)svipc_sys_arg(regs, 3);
 
-	ret = real_sys_msgsnd(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_msgsnd(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_msgsnd(msqid, umsgp, msgsz, msgflg);
 }
@@ -276,9 +309,11 @@ static long svipc_hook_msgrcv(const struct pt_regs *regs)
 	long msgtyp = (long)svipc_sys_arg(regs, 3);
 	int msgflg = (int)svipc_sys_arg(regs, 4);
 
-	ret = real_sys_msgrcv(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_msgrcv(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_msgrcv(msqid, umsgp, msgsz, msgtyp, msgflg);
 }
@@ -290,9 +325,11 @@ static long svipc_hook_semget(const struct pt_regs *regs)
 	int nsems = (int)svipc_sys_arg(regs, 1);
 	int semflg = (int)svipc_sys_arg(regs, 2);
 
-	ret = real_sys_semget(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_semget(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_create(SHADOW_SYSVIPC_TYPE_SEM, key, semflg,
 				 nsems, 0);
@@ -306,9 +343,11 @@ static long svipc_hook_semctl(const struct pt_regs *regs)
 	int cmd = (int)svipc_sys_arg(regs, 2);
 	unsigned long arg = svipc_sys_arg(regs, 3);
 
-	ret = real_sys_semctl(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_semctl(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_semctl(semid, semnum, cmd, arg);
 }
@@ -320,9 +359,11 @@ static long svipc_hook_semop(const struct pt_regs *regs)
 	struct sembuf __user *tsops = (struct sembuf __user *)svipc_sys_arg(regs, 1);
 	unsigned int nsops = (unsigned int)svipc_sys_arg(regs, 2);
 
-	ret = real_sys_semop(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_semop(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_semop(semid, tsops, nsops, NULL);
 }
@@ -336,9 +377,11 @@ static long svipc_hook_semtimedop(const struct pt_regs *regs)
 	const struct __kernel_timespec __user *utimeout =
 		(const struct __kernel_timespec __user *)svipc_sys_arg(regs, 3);
 
-	ret = real_sys_semtimedop(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_semtimedop(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_semop(semid, tsops, nsops, utimeout);
 }
@@ -350,9 +393,11 @@ static long svipc_hook_shmget(const struct pt_regs *regs)
 	size_t size = (size_t)svipc_sys_arg(regs, 1);
 	int shmflg = (int)svipc_sys_arg(regs, 2);
 
-	ret = real_sys_shmget(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_shmget(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_create(SHADOW_SYSVIPC_TYPE_SHM, key, shmflg, 0, size);
 }
@@ -364,9 +409,11 @@ static long svipc_hook_shmctl(const struct pt_regs *regs)
 	int cmd = (int)svipc_sys_arg(regs, 1);
 	void __user *buf = (void __user *)svipc_sys_arg(regs, 2);
 
-	ret = real_sys_shmctl(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_shmctl(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_shmctl(shmid, cmd, buf);
 }
@@ -379,9 +426,11 @@ static long svipc_hook_shmat(const struct pt_regs *regs)
 	int shmflg = (int)svipc_sys_arg(regs, 2);
 	unsigned long raddr = 0;
 
-	ret = real_sys_shmat(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_shmat(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	ret = svipc_sys_shmat(shmid, ushmaddr, shmflg, &raddr);
 	if (ret < 0)
@@ -394,9 +443,11 @@ static long svipc_hook_shmdt(const struct pt_regs *regs)
 	long ret;
 	const void __user *ushmaddr = (const void __user *)svipc_sys_arg(regs, 0);
 
-	ret = real_sys_shmdt(regs);
-	if (ret != -ENOSYS)
-		return ret;
+	if (!svipc_ns_active()) {
+		ret = real_sys_shmdt(regs);
+		if (ret != -ENOSYS)
+			return ret;
+	}
 
 	return svipc_sys_shmdt(ushmaddr);
 }

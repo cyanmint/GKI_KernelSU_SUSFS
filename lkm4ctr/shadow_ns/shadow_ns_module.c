@@ -88,19 +88,29 @@
  *     getresgid(2) so unmodified code inside the shadow user namespace
  *     really observes uid/gid 0, not its real host id.
  *
- * IPC/NET/CGROUP/MNT keep reference-counted bookkeeping only when genuinely
- * unsupported: IPC without CONFIG_IPC_NS falls back to the single global
- * init_ipc_ns already (no meaningful extra isolation to add safely from a
- * module), and NET namespace isolation is inseparable from the entire
+ * NET/CGROUP/MNT keep reference-counted bookkeeping only when genuinely
+ * unsupported: NET namespace isolation is inseparable from the entire
  * networking stack (net/core/net_namespace.c touches routing, sockets,
  * netfilter, sysctls, ...); vendoring that wholesale into a loadable module
  * would conflict with the compiled-in stack and cannot be done safely here.
+ * IPC without CONFIG_IPC_NS gets real functional isolation for its SysV IPC
+ * data path instead: shadow_ns still only tracks a plain id/refcount
+ * bookkeeping object here (this module has no dedicated IPC-object storage
+ * of its own -- see shadow_ns_alloc() below), but ../shadow_sysvipc/'s
+ * transparent msgget/semget/shmget/... syscall hooks consult
+ * shadow_ns_current_ipc_ns_id() and, whenever it is non-zero, always route
+ * the calling task through a namespace-scoped shadow SysV IPC registry
+ * instead of the real, un-partitioned init_ipc_ns -- turning shadow_ns's
+ * id/refcount bookkeeping into the namespace key the two subsystems (linked
+ * into the same lkm4ctr.ko) share to keep simulated IPC namespaces' SysV
+ * objects genuinely isolated from each other and from the host. POSIX
+ * message queues are not covered by this and remain bookkeeping-only.
  * CGROUP is included here too: on a kernel built with CONFIG_CGROUPS=n (rare
  * -- every GKI defconfig sets it, but not guaranteed by any other Kconfig
  * relationship), CLONE_NEWCGROUP drops out of SHADOW_NS_BUILTIN_FLAGS_COMPILETIME and
  * shadow_ns transparently falls back to the exact same generic, no-special-
  * payload bookkeeping object (id/parent/refcount only, see shadow_ns_alloc())
- * used for IPC/NET -- no separate code path is needed, since the alloc/clone/
+ * used for NET -- no separate code path is needed, since the alloc/clone/
  * unshare/setns machinery below is already fully generic over "type".
  *
  * MNT (CLONE_NEWNS) is the odd one out: fs/namespace.c/kernel/nsproxy.c have
@@ -126,10 +136,11 @@
  * the exact same mechanism: SHADOW_NS_BUILTIN_FLAGS_COMPILETIME is computed per-type from
  * IS_ENABLED(CONFIG_*_NS), so it automatically evaluates to "none of these
  * five builtin" and shadow_ns transparently falls back to real PID/USER
- * isolation plus IPC/NET bookkeeping for all of them — no separate code path
- * needed. MNT (gated on CONFIG_NAMESPACES itself, as described above) and
- * CGROUP (gated solely by CONFIG_CGROUPS, also outside the NAMESPACES menu)
- * get the same bookkeeping fallback if their respective config is off.
+ * isolation plus real IPC (SysV) plus NET bookkeeping for all of them — no
+ * separate code path needed. MNT (gated on CONFIG_NAMESPACES itself, as
+ * described above) and CGROUP (gated solely by CONFIG_CGROUPS, also outside
+ * the NAMESPACES menu) get the same bookkeeping fallback if their respective
+ * config is off.
  * unshare(2)/setns(2)/clone(2)/clone3(2) themselves have no CONFIG_NAMESPACES
  * guard either (always compiled in kernel/fork.c), so the syscalls are
  * always there for this module to hook.
@@ -214,6 +225,7 @@ bool shadow_ns_type_real(u32 type)
 	case SHADOW_NS_TYPE_UTS:
 	case SHADOW_NS_TYPE_PID:
 	case SHADOW_NS_TYPE_USER:
+	case SHADOW_NS_TYPE_IPC:
 		return true;
 	default:
 		return false;
@@ -298,14 +310,14 @@ int shadow_ns_init(void)
 	 * filtering /proc for a simulated PID namespace's own vpid<->rpid
 	 * mapping (only meaningful when CLONE_NEWPID is simulated), and
 	 * fabricating /proc/<pid>/ns/{user,ipc} (meaningful whenever USER,
-	 * PID or IPC is simulated -- IPC's own ns entry matters even though
-	 * IPC otherwise stays pure bookkeeping, because runc/containerd's
-	 * namespace-support probe stats every ns/ entry as one combined
-	 * check before issuing unshare()/clone3(): if ns/ipc looks absent,
-	 * the whole combined namespace setup is aborted, silently discarding
-	 * PID/USER simulation too). Install it whenever any of the three is
-	 * active; each hook internally no-ops the parts of its logic that
-	 * don't apply.
+	 * PID or IPC is simulated -- IPC's own ns entry matters both for its
+	 * own now-real SysV IPC isolation (see shadow_sysvipc/) and because
+	 * runc/containerd's namespace-support probe stats every ns/ entry as
+	 * one combined check before issuing unshare()/clone3(): if ns/ipc
+	 * looks absent, the whole combined namespace setup is aborted,
+	 * silently discarding PID/USER simulation too). Install it whenever
+	 * any of the three is active; each hook internally no-ops the parts
+	 * of its logic that don't apply.
 	 */
 	if (shadow_ns_clone_flags & (CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWIPC)) {
 		hooked = shadow_hook_install_all(shadow_ns_procfs_hooks, "shadow_ns_procfs");

@@ -4,12 +4,17 @@
 `lkm4ctr.ko` (see `../README.md` for the umbrella overview). It keeps enough
 SysV IPC bookkeeping alive on a kernel built **without `CONFIG_SYSVIPC`** for
 container runtimes to stop tripping over `-ENOSYS` on the resource-management
-syscalls.
+syscalls, and it gives `shadow_ns`'s simulated `CLONE_NEWIPC` namespaces
+(genuinely absent `CONFIG_IPC_NS`, see `../shadow_ns/README.md`) **real**
+per-namespace SysV IPC isolation even on a kernel where `CONFIG_SYSVIPC=y`
+natively works.
 
 It now works only through **transparent syscall hooks**: ftrace hooks hijack
 the real `msgget`/`msgctl`, `semget`/`semctl`, and `shmget`/`shmctl` syscall
-wrappers when the kernel's native implementation is missing, so **unmodified
-stock `containerd`/`runc`/`dockerd`** can keep calling the normal SysV IPC
+wrappers, routing to the shadow registry whenever the kernel's native
+implementation is missing *or* the calling task is a member of a simulated
+IPC namespace (see "Per-namespace scoping" below), so **unmodified stock
+`containerd`/`runc`/`dockerd`** can keep calling the normal SysV IPC
 syscalls.
 
 ## Why this exists
@@ -22,7 +27,10 @@ those pieces back on in full.
 
 So `shadow_sysvipc` does the limited thing a module *can* do safely: maintain a
 parallel registry of virtual SysV IPC objects with stable ids, key lookups, and
-lifecycle tracking.
+lifecycle tracking -- and, for tasks in a simulated IPC namespace, direct them
+to that private registry instead of the real kernel's single, un-partitioned
+`init_ipc_ns`, so different simulated namespaces cannot see or collide with
+each other's SysV IPC objects.
 
 ## Architecture
 
@@ -31,15 +39,18 @@ stock or patched userspace
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ msgget/msgctl/semget/semctl/shmget/shmctl syscalls                       │
 │        │                                                                  │
-│        ├── native CONFIG_SYSVIPC=y kernel ───────▶ real kernel SysV IPC  │
+│        ├── native CONFIG_SYSVIPC=y kernel, caller NOT in a            │
+│        │   simulated IPC namespace ───────────────▶ real kernel SysV IPC │
 │        │                                                                  │
-│        └── CONFIG_SYSVIPC=n kernel ──ftrace──▶ shadow_sysvipc hooks      │
+│        └── CONFIG_SYSVIPC=n kernel, OR caller IS a simulated IPC        │
+│            namespace member ──ftrace──▶ shadow_sysvipc hooks             │
 │                                                │                           │
 └───────────────────────────────────────────────────────────────────────────┘
                                                  │
                                                  ▼
                                  global svipc_resource registry
-                        (xarray id map + keyed hash + refcounted objects)
+                        (xarray id map + keyed hash + refcounted objects,
+                         key lookups scoped per simulated IPC namespace id)
                                                  │
                                                  ▼
                                           per-TGID refs
@@ -119,20 +130,40 @@ the common container use case of a plain read/write shared mapping.
 
 ### Per-namespace scoping
 
-`shadow_ns`'s `CLONE_NEWIPC` simulation is bookkeeping-only for the *actual*
-kernel IPC data path (see `../shadow_ns/README.md`): it does not create a
-functionally isolated IPC namespace, only a refcounted namespace-identity
-object. That object is nevertheless user-visible through the synthetic
-`/proc/<pid>/ns/ipc` id, and `shadow_sysvipc` consults the same id
-(`shadow_ns_current_ipc_ns_id()`, both subsystems link into the same
-`lkm4ctr.ko`) to scope **key-based** lookups
-(`svipc_find_key_locked()`) per simulated IPC namespace, mirroring the
-*shape* of real `ipc/namespace.c`'s per-namespace `copy_ipcs()`/`free_ipcs()`
-registries (not their storage, which is scaled down to shadow_ns's flat,
-single-level nesting). Resource **ids** returned to userspace remain a
-single global id space (like real SysV ids, which are also kernel-wide
-unique, not per-namespace), so this only affects which existing resource a
-non-`IPC_PRIVATE` key search matches.
+`shadow_ns`'s `CLONE_NEWIPC` simulation itself only ever creates a refcounted
+namespace-identity object -- an id/refcount, not a real kernel IPC data
+structure (see `../shadow_ns/README.md`). That object is nevertheless
+user-visible through the synthetic `/proc/<pid>/ns/ipc` id, and
+`shadow_sysvipc` consults the same id (`shadow_ns_current_ipc_ns_id()`, both
+subsystems link into the same `lkm4ctr.ko`) for two purposes together, which
+is what turns the pair into genuine functional isolation rather than mere
+bookkeeping:
+
+* **Routing.** Every `svipc_hook_*()` in `shadow_sysvipc_hooks.c` checks
+  whether the calling task currently belongs to a simulated IPC namespace
+  (`shadow_ns_current_ipc_ns_id() != 0`). If so, the real syscall is never
+  even called -- the request goes straight to the shadow registry, even on a
+  kernel with a fully native, working `CONFIG_SYSVIPC=y` implementation. This
+  is what closes the actual isolation gap: without it, two simulated IPC
+  namespaces on such a kernel would each successfully call the real
+  `msgget`/`semget`/`shmget` and transparently share one and the same
+  un-partitioned `init_ipc_ns`, making the namespace identity pure
+  bookkeeping no matter how the id itself was scoped. Tasks that were never
+  moved into a simulated IPC namespace are unaffected and keep using the real
+  syscalls exactly as before.
+* **Key scoping.** Within the shadow registry, non-`IPC_PRIVATE` key lookups
+  (`svipc_find_key_locked()`) are scoped per simulated IPC namespace id,
+  mirroring the *shape* of real `ipc/namespace.c`'s per-namespace
+  `copy_ipcs()`/`free_ipcs()` registries (not their storage, which is scaled
+  down to shadow_ns's flat, single-level nesting), so two different simulated
+  containers requesting the same key do not collide with each other's
+  resource. Resource **ids** returned to userspace remain a single global id
+  space (like real SysV ids, which are also kernel-wide unique, not
+  per-namespace), so namespace scoping only affects which existing resource a
+  non-`IPC_PRIVATE` key search matches.
+
+POSIX message queues (`mq_*`) are a separate subsystem (`shadow_mqueue/`) and
+are not scoped by the simulated IPC namespace id the way SysV IPC now is.
 
 ### `IPC_STAT` payloads
 

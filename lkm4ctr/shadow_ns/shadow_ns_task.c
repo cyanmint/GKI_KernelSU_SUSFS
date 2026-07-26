@@ -469,9 +469,9 @@ struct shadow_ns *shadow_ns_userns_for_tgid(pid_t rpid)
 
 /*
  * shadow_ns_current_ipc_ns_id() - the id of the calling task's simulated
- * IPC namespace (shadow_ns's own bookkeeping-only CLONE_NEWIPC object, see
- * shadow_ns_module.c), or 0 if the caller was never moved into one (i.e. it
- * is still using the real/ambient IPC namespace).
+ * IPC namespace (shadow_ns's own id/refcount bookkeeping CLONE_NEWIPC
+ * object, see shadow_ns_module.c), or 0 if the caller was never moved into
+ * one (i.e. it is still using the real/ambient IPC namespace).
  *
  * This is shadow_sysvipc's only coupling point with shadow_ns: both are
  * linked into the same lkm4ctr.ko (see ../Makefile), so a plain function
