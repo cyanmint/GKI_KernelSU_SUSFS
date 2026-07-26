@@ -131,6 +131,23 @@ lkm4ctr_init_2() {
 	echo "=== LKM4CTR_QEMU_TEST: running shared checker mode ==="
 	/system/bin/sh /second_init -t /lkm4ctr_checker /lkm4ctr.ko
 
+	# vendor_kernel's ipc/mqueue.c registers its POSIX mqueue filesystem type
+	# under the name "vendor_kernel_mqueue" (not "mqueue"), to avoid clashing
+	# with a real in-tree "mqueue" type on kernels that already have
+	# CONFIG_POSIX_MQUEUE=y. That means an unmodified runc/containerd, which
+	# always does mount("mqueue", "/dev/mqueue", "mqueue", ...) during
+	# container init, can never find a filesystem type literally named
+	# "mqueue" here and fails the whole `docker run` with "error mounting
+	# \"mqueue\" to rootfs at \"/dev/mqueue\": ... no such device". Just like
+	# shadow_mqueue's own proactive /dev/mqueue creation (see
+	# lkm4ctr/shadow_mqueue/README.md), do the working mount ourselves here in
+	# init instead of depending on a container-side "mqueue" mount ever
+	# succeeding: make sure /dev/mqueue exists and is a real, working
+	# mountpoint (native mqueue fs type if the kernel has one, tmpfs fallback
+	# otherwise) *before* dockerd starts.
+	mkdir -p /dev/mqueue
+	mount -t mqueue mqueue /dev/mqueue 2>/dev/null || mount -t tmpfs tmpfs /dev/mqueue
+
 	echo "=== LKM4CTR_QEMU_TEST: starting dockerd (daemon) ==="
 	dockerd &
 	for i in $(seq 1 30); do
@@ -138,9 +155,12 @@ lkm4ctr_init_2() {
 		sleep 1
 	done
 
+	# --ipc host makes runc/containerd bind-mount the already-working host
+	# /dev/mqueue prepared above into the container instead of trying (and
+	# failing) to mount a fresh "mqueue"-typed filesystem of its own.
 	echo "=== LKM4CTR_QEMU_TEST: docker run (test container sanity) ==="
-	docker run --privileged --rm --network host -i docker.io/arm64v8/alpine:latest ps -e
-	docker run --privileged --rm --network host -i docker.io/arm64v8/ubuntu:latest ps -e
+	docker run --privileged --rm --network host --ipc host -i docker.io/arm64v8/alpine:latest ps -e
+	docker run --privileged --rm --network host --ipc host -i docker.io/arm64v8/ubuntu:latest ps -e
 	pkill -2 dockerd
 	sleep 15
 
