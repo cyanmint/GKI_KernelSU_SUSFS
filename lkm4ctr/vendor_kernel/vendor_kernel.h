@@ -301,6 +301,7 @@ static inline struct ipc_namespace *vns_current_ipc_ns(void)
 
 extern struct shadow_hook *vendor_kernel_core_hooks[];
 extern struct shadow_hook *vendor_kernel_ipc_hooks[];
+extern struct shadow_hook *vendor_kernel_procfs_hooks[];
 
 /* compat layer (glue/vendor_kernel_compat.c) */
 extern struct ucounts vns_ucounts_stub;

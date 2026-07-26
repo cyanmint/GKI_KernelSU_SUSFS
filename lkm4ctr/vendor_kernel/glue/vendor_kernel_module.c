@@ -309,6 +309,21 @@ int vendor_kernel_init(void)
 		return hooked;
 	}
 
+	/*
+	 * Best-effort only: without these, /proc/<pid>/ns/ipc readlink(2)
+	 * simply stays -ENOENT on a kernel genuinely missing CONFIG_IPC_NS
+	 * (same as before this hook existed) instead of reflecting the real
+	 * vendored ipc_namespace vendor_kernel_hook_unshare() already
+	 * installs -- a missing observability nicety, not a functional
+	 * regression, so a failure to resolve readlink/readlinkat must not
+	 * abort the whole submodule's load.
+	 */
+	hooked = shadow_hook_install_all(vendor_kernel_procfs_hooks, "vendor_kernel_procfs");
+	if (hooked < 0)
+		LKM4CTR_WARN("vendor_kernel",
+			     "failed to install /proc/<pid>/ns/ipc readlink fabrication hooks (%d); ipc namespace isolation is still fully functional, only the /proc/<pid>/ns/ipc symlink observability is affected",
+			     hooked);
+
 	vendor_kernel_enabled = true;
 	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
 	if (!vns_pidns_runtime_supported)
@@ -322,6 +337,7 @@ void vendor_kernel_exit(void)
 	if (!vendor_kernel_enabled)
 		return;
 	vendor_kernel_enabled = false;
+	shadow_hook_remove_all(vendor_kernel_procfs_hooks);
 	shadow_hook_remove_all(vendor_kernel_ipc_hooks);
 	shadow_hook_remove_all(vendor_kernel_core_hooks);
 	vns_exit_hook_exit();

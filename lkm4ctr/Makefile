@@ -61,6 +61,7 @@ lkm4ctr-objs := \
 	vendor_kernel/kernel/time/namespace.o \
 	vendor_kernel/glue/vendor_kernel_module.o \
 	vendor_kernel/glue/vendor_kernel_syscalls.o \
+	vendor_kernel/glue/vendor_kernel_procfs.o \
 	vendor_kernel/glue/vendor_kernel_diag.o \
 	vendor_kernel/glue/vendor_kernel_compat.o
 

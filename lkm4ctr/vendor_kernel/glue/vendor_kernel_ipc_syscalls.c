@@ -93,6 +93,19 @@ int vns_ipc_default_init(void)
 
 	vns_sem_init_ns(&vns_default_ipc_ns);
 	vns_shm_init_ns(&vns_default_ipc_ns);
+
+	/*
+	 * Give the default namespace a real ns_common inode number too (same
+	 * vns_alloc_inum() used by create_ipc_ns() for an unshare(2)'d one),
+	 * so glue/vendor_kernel_procfs.c's fabricated /proc/<pid>/ns/ipc
+	 * readlink(2) text has something non-zero and self-consistent to
+	 * report for every task that never called unshare(CLONE_NEWIPC).
+	 * Not fatal if it fails (proc_alloc_inum() unresolved): the
+	 * fabricated text then reads "ipc:[0]" before any unshare(2), which
+	 * is still a valid, stable baseline for a before/after diff.
+	 */
+	vns_alloc_inum(&vns_default_ipc_ns.ns);
+	vns_default_ipc_ns.ns.ops = &vns_ipcns_operations;
 	return 0;
 
 fail_ipc_sysctls:
@@ -104,6 +117,7 @@ fail_mqueue:
 
 void vns_ipc_default_exit(void)
 {
+	vns_free_inum(&vns_default_ipc_ns.ns);
 	vns_retire_ipc_sysctls(&vns_default_ipc_ns);
 	vns_mqueue_fs_exit();
 }
