@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * vendor_kernel_procfs.c - fabricate /proc/<pid>/ns/ipc's readlink(2) target
- * on kernels genuinely missing CONFIG_IPC_NS.
+ * and stat(2)/lstat(2)/newfstatat(2) success on kernels genuinely missing
+ * CONFIG_IPC_NS.
  *
  * This is NEW code (not vendored from kernel-common).
  *
@@ -24,10 +25,13 @@
  * actually points to: readlink(2) on that path fails with plain -ENOENT.
  *
  * That breaks two independent things:
- *   - runc/containerd's own namespace-support probe, which stats
- *     /proc/<pid>/ns/{ipc,pid,user,uts,...} as part of a single combined
- *     check before issuing unshare()/clone3() (see shadow_ns_procfs.c's
- *     near-identical rationale for pid/pid_for_children/user).
+ *   - runc/containerd's own namespace-support probe (stat(2), not
+ *     readlink(2) -- see the stat(2)-family fabrication further down this
+ *     file), which checks /proc/<pid>/ns/{ipc,pid,user,uts,...} as part of a
+ *     single combined check before issuing unshare()/clone3(), and again
+ *     before `docker exec` joins a running container's namespaces (see
+ *     shadow_ns_procfs.c's near-identical rationale for pid/pid_for_children/
+ *     user).
  *   - any external tool (including lkm4ctr_checker) that verifies real
  *     namespace isolation by diffing /proc/self/ns/ipc's readlink(2) target
  *     before and after unshare(CLONE_NEWIPC): with no fabrication, the
@@ -35,11 +39,14 @@
  *     one, so the diff-based probe cannot observe vendor_kernel's real,
  *     already-working ipc_namespace isolation and reports a false STUB.
  *
- * This file closes that observability gap: hook readlink(2)/readlinkat(2),
- * let the real syscall run first, and only when it fails with -ENOENT for a
- * path unambiguously naming ".../ns/ipc" under a procfs-rooted pid
- * directory (".../<pid|self|thread-self>/ns/ipc", or a bare "ns/ipc"
- * resolved relative to a dfd whose superblock is procfs) do we fabricate the
+ * This file closes both observability gaps: hook readlink(2)/readlinkat(2)
+ * (for the first gap above) and stat(2)/lstat(2)/newfstatat(2) (for the
+ * runc/containerd probe -- see the block comment further down for how that
+ * one is implemented), let the real syscall run first, and only when it
+ * fails with -ENOENT for a path unambiguously naming ".../ns/ipc" under a
+ * procfs-rooted pid directory (".../<pid|self|thread-self>/ns/ipc", or a
+ * bare "ns/ipc" resolved relative to a dfd whose superblock is procfs) do we
+ * step in. For readlink(2)/readlinkat(2) that means fabricating the
  * "ipc:[<ino>]" text real readlink(2) would have produced, mirroring
  * fs/nsfs.c's ns_get_name() format exactly. Any other -ENOENT (including
  * every other ns/ entry) passes through untouched.
@@ -155,8 +162,15 @@ static pid_t vns_resolve_ns_ipc_pid(const char *comp)
  * ".../<piddir>/ns/ipc"? If so, resolves the owning task's real pid into
  * *rpid and returns true. Returns false otherwise (including on any parse
  * failure) -- callers must fall back to the real syscall unchanged.
+ *
+ * @out_len, if non-NULL, receives the total length (excluding the NUL
+ * terminator) of the user-supplied path string on a true return, so callers
+ * that need to locate the trailing "ipc" component's user address (see
+ * vns_ns_ipc_fstat_fallback() below) don't have to re-parse @upath a second
+ * time.
  */
-static bool vns_path_is_ns_ipc(int dfd, const char __user *upath, pid_t *rpid)
+static bool vns_path_is_ns_ipc(int dfd, const char __user *upath, pid_t *rpid,
+				long *out_len)
 {
 	char buf[192];
 	char *base, *slash1, *piddir;
@@ -192,7 +206,11 @@ static bool vns_path_is_ns_ipc(int dfd, const char __user *upath, pid_t *rpid)
 		return false;
 
 	*rpid = vns_resolve_ns_ipc_pid(piddir);
-	return *rpid > 0;
+	if (*rpid <= 0)
+		return false;
+	if (out_len)
+		*out_len = n;
+	return true;
 }
 
 /*
@@ -275,7 +293,7 @@ static long vendor_kernel_hook_readlinkat(const struct pt_regs *regs)
 	if (ret != -ENOENT)
 		return ret;
 
-	if (!vns_path_is_ns_ipc(dfd, upath, &rpid))
+	if (!vns_path_is_ns_ipc(dfd, upath, &rpid, NULL))
 		return ret;
 
 	return vns_ns_ipc_readlink(rpid, ubuf, bufsiz);
@@ -295,7 +313,7 @@ static long vendor_kernel_hook_readlink(const struct pt_regs *regs)
 	if (ret != -ENOENT)
 		return ret;
 
-	if (!vns_path_is_ns_ipc(AT_FDCWD, upath, &rpid))
+	if (!vns_path_is_ns_ipc(AT_FDCWD, upath, &rpid, NULL))
 		return ret;
 
 	return vns_ns_ipc_readlink(rpid, ubuf, bufsiz);
@@ -529,11 +547,153 @@ static struct shadow_hook vendor_kernel_readlink_hook =
 	SHADOW_HOOK(vendor_kernel_readlink_names, vendor_kernel_hook_readlink,
 		    &real_sys_readlink);
 
+/*
+ * stat(2)/lstat(2)/newfstatat(2) fabrication for /proc/<pid>/ns/ipc.
+ *
+ * readlink(2)/readlinkat(2) above only fixes tools that explicitly read the
+ * symlink *target* text. runc/containerd's actual namespace-support probe
+ * (libcontainer/configs.IsNamespaceSupported(), consulted both before
+ * `docker run` and before `docker exec` joins a running container's
+ * namespaces) never reads the target at all: it only calls stat(2) on the
+ * path and checks whether the call itself succeeds ("os.Stat(...);
+ * supported = err == nil"). Since fs/proc/namespaces.c's ns_entries[] table
+ * omits &ipcns_operations entirely #ifndef CONFIG_IPC_NS, that stat(2) call
+ * fails with plain -ENOENT regardless of the readlink(2) fabrication above,
+ * and runc reports "namespace NEWIPC is not supported" (surfacing as
+ * "OCI runtime exec failed: ... namespace NEWIPC is not supported" on
+ * `docker exec`).
+ *
+ * The stat(2) family has no equivalent "just fabricate the numbers" path
+ * here: struct stat's on-wire layout is architecture-specific (arm64 uses
+ * the asm-generic layout, x86_64 its own), and none of the kernel's own
+ * construction code (fs/stat.c's cp_new_stat() et al) is exported for
+ * reuse. Rather than hand-roll and risk getting either arch's field layout
+ * wrong, this reuses the real kernel's own (guaranteed ABI-correct)
+ * newfstatat(2)/stat(2)/lstat(2) implementation by transparently
+ * substituting the ".../ns/ipc" leaf for ".../ns/mnt" -- exactly the same
+ * length, so the substitution can be done in place on the caller's own path
+ * buffer with no reallocation -- before calling through to the real
+ * syscall. The mount namespace entry is the one /proc/<pid>/ns/ entry that
+ * is never Kconfig-gated (mount namespaces are core kernel functionality,
+ * not an optional CONFIG_*_NS symbol), so it is always present to redirect
+ * to. Every caller of this stat(2) family only cares whether the call
+ * succeeds or fails (see above), not which namespace's numbers come back,
+ * so borrowing the mnt namespace's stat(2) result is harmless. The path
+ * bytes are restored to "ipc" immediately afterwards so the caller's buffer
+ * is left exactly as it was.
+ */
+static bool vns_swap_ipc_to_mnt(const char __user *upath, long len)
+{
+	if (len < 3)
+		return false;
+	if (copy_to_user((char __user *)upath + len - 3, "mnt", 3))
+		return false;
+	return true;
+}
+
+static void vns_restore_mnt_to_ipc(const char __user *upath, long len)
+{
+	/* Best-effort: nothing sane to do if this copy fails. */
+	unsigned long unused = copy_to_user((char __user *)upath + len - 3,
+					     "ipc", 3);
+	(void)unused;
+}
+
+/*
+ * vns_ns_ipc_fstat_fallback() - shared -ENOENT fallback for
+ * newfstatat/stat/lstat: only reached once the real syscall already failed
+ * to stat the caller's original path. Returns @ret unchanged unless the
+ * path names ".../ns/ipc", in which case it retries the real syscall
+ * against ".../ns/mnt" instead (see the block comment above).
+ */
+static long vns_ns_ipc_fstat_fallback(int dfd, const char __user *upath,
+				       long ret,
+				       long (*real_stat_fn)(const struct pt_regs *),
+				       const struct pt_regs *regs)
+{
+	pid_t rpid;
+	long len;
+
+	if (ret != -ENOENT)
+		return ret;
+
+	if (!vns_path_is_ns_ipc(dfd, upath, &rpid, &len))
+		return ret;
+
+	if (!vns_swap_ipc_to_mnt(upath, len))
+		return ret;
+
+	ret = real_stat_fn(regs);
+	vns_restore_mnt_to_ipc(upath, len);
+	return ret;
+}
+
+static long (*real_sys_newfstatat)(const struct pt_regs *regs);
+static long (*real_sys_stat)(const struct pt_regs *regs);
+static long (*real_sys_lstat)(const struct pt_regs *regs);
+
+static long vendor_kernel_hook_newfstatat(const struct pt_regs *regs)
+{
+	int dfd = (int)vns_procfs_arg0(regs);
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg1(regs);
+	long ret = real_sys_newfstatat(regs);
+
+	return vns_ns_ipc_fstat_fallback(dfd, upath, ret, real_sys_newfstatat,
+					  regs);
+}
+
+static long vendor_kernel_hook_stat(const struct pt_regs *regs)
+{
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg0(regs);
+	long ret = real_sys_stat(regs);
+
+	return vns_ns_ipc_fstat_fallback(AT_FDCWD, upath, ret, real_sys_stat,
+					  regs);
+}
+
+static long vendor_kernel_hook_lstat(const struct pt_regs *regs)
+{
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg0(regs);
+	long ret = real_sys_lstat(regs);
+
+	return vns_ns_ipc_fstat_fallback(AT_FDCWD, upath, ret, real_sys_lstat,
+					  regs);
+}
+
+static const char * const vendor_kernel_newfstatat_names[] = {
+	"__arm64_sys_newfstatat", "__x64_sys_newfstatat", "sys_newfstatat",
+	NULL,
+};
+static const char * const vendor_kernel_stat_names[] = {
+	"__arm64_sys_stat", "__x64_sys_newstat", "__x64_sys_stat", "sys_stat",
+	NULL,
+};
+static const char * const vendor_kernel_lstat_names[] = {
+	"__arm64_sys_lstat", "__x64_sys_newlstat", "__x64_sys_lstat",
+	"sys_lstat", NULL,
+};
+
+static struct shadow_hook vendor_kernel_newfstatat_hook =
+	SHADOW_HOOK(vendor_kernel_newfstatat_names,
+		    vendor_kernel_hook_newfstatat, &real_sys_newfstatat);
+static struct shadow_hook vendor_kernel_stat_hook =
+	SHADOW_HOOK(vendor_kernel_stat_names, vendor_kernel_hook_stat,
+		    &real_sys_stat);
+static struct shadow_hook vendor_kernel_lstat_hook =
+	SHADOW_HOOK(vendor_kernel_lstat_names, vendor_kernel_hook_lstat,
+		    &real_sys_lstat);
+
 struct shadow_hook *vendor_kernel_procfs_hooks[] = {
 	&vendor_kernel_openat2_hook,
 	&vendor_kernel_openat_hook,
 	&vendor_kernel_open_hook,
 	&vendor_kernel_readlinkat_hook,
 	&vendor_kernel_readlink_hook,
+	&vendor_kernel_newfstatat_hook,
+	&vendor_kernel_stat_hook,
+	&vendor_kernel_lstat_hook,
 	NULL,
 };
