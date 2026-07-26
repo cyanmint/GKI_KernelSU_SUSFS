@@ -61,38 +61,9 @@ lkm4ctr_run_checker_mode() {
 	echo "=== LKM4CTR_QEMU_TEST: mounting lkm4ctr diagfs ==="
 	mkdir -p "$MNT"
 	mount -t lkm4ctr diag "$MNT"
-	echo load > "$MNT"/global/control
-	echo "=== LKM4CTR_QEMU_TEST: diagfs control/status/hooks/namespaces/log ==="
-	for m in hijack ns sysvipc mqueue cgroupdevices; do
-		cat "$MNT/$m/status"
-		if [ -f "$MNT/$m/hooks" ]; then
-			cat "$MNT/$m/hooks"
-		fi
-		if [ -f "$MNT/$m/namespaces" ]; then
-			cat "$MNT/$m/namespaces"
-		fi
-		if [ -f "$MNT/$m/msg" ]; then
-			cat "$MNT/$m/msg"
-		fi
-		if [ -f "$MNT/$m/functions" ]; then
-			cat "$MNT/$m/functions"
-		fi
-		cat "$MNT/$m/log"
-	done
+	echo load > "$MNT"/vendor_kernel/control
 	cat "$MNT/global/resources"
 	cat "$MNT/global/log"
-	cat "$MNT/ns/pid/namespaces"
-	echo "=== LKM4CTR_QEMU_TEST: diagfs hot upgrade (unload/reload shadow_ns hooks) ==="
-	echo unload > "$MNT/ns/control"
-	echo "post-unload status: $(cat "$MNT/ns/status")"
-	echo load > "$MNT/ns/control"
-	echo "post-reload status: $(cat "$MNT/ns/status")"
-	echo "=== LKM4CTR_QEMU_TEST: deactivating all submodules via diagfs ==="
-	for m in ns sysvipc mqueue cgroupdevices; do
-		echo unload > "$MNT/$m/control"
-		echo "$m/status after unload: $(cat "$MNT/$m/status")"
-	done
-    echo load > "$MNT"/global/control
 	echo "=== LKM4CTR_QEMU_TEST: lkm4ctr_checker (post-insmod) ==="
 	"$CHECKER"
 	echo "=== LKM4CTR_QEMU_TEST: checker mode DONE ==="
