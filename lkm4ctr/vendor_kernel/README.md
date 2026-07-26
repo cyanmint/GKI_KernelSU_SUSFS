@@ -116,6 +116,28 @@ still must be built with the remaining options for full namespace coverage:
 - `CONFIG_CGROUPS=y`
 - `CONFIG_TIME_NS=y`
 
+Of these, `CONFIG_IPC_NS=n` is the one exception that no longer needs a
+diagnostic caveat: `unshare(CLONE_NEWIPC)`/SysV IPC/mqueue syscalls have
+always performed genuine vendored isolation regardless of this option (see
+"Module-owned default namespace, always vendored" above), but until now
+external tools that verify isolation by diffing `readlink(2)` on
+`/proc/<pid>/ns/ipc` (including `lkm4ctr_checker`'s generic namespace test)
+could not observe it: `fs/proc/namespaces.c`'s `ns_entries[]` table only
+registers that procfs entry `#ifdef CONFIG_IPC_NS`, a decision baked into
+the running `vmlinux` that no syscall hook can undo. `glue/vendor_kernel_procfs.c`
+closes this observability gap by hooking `readlink(2)`/`readlinkat(2)`:
+the real syscall always runs first, and only on its `-ENOENT` for a path
+unambiguously naming `.../<pid|self|thread-self>/ns/ipc` is the
+`"ipc:[<inum>]"` text fabricated, using the same `vns_task_ipc_ns()`
+namespace object the real SysV/mqueue syscalls already act on. This hook
+group is installed best-effort/non-fatal (a resolution failure only logs a
+warning): it is purely an observability enhancement, so it never blocks
+`vendor_kernel`'s core namespace functionality from loading. `NET`/`MNT`/
+`CGROUP` are deliberately **not** given the same treatment: unlike IPC,
+`vendor_kernel` has no real per-task namespace object backing those on a
+kernel missing the corresponding `CONFIG_*_NS`, so fabricating their
+`/proc/<pid>/ns/*` entries would misreport nonexistent isolation as real.
+
 `lkm4ctr/Kconfig`'s `LKM4CTR_VENDOR_KERNEL` option `select`s `CONFIG_UTS_NS`,
 `CONFIG_PID_NS`, and `CONFIG_USER_NS` too (along with the rest), so any
 future in-tree build sourcing that file still forces them on for

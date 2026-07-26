@@ -220,13 +220,33 @@ static long vns_ns_ipc_readlink(pid_t rpid, char __user *ubuf, int bufsiz)
 	if (!task)
 		return -ENOENT;
 
+	/*
+	 * vns_task_ipc_ns() returns a borrowed pointer into
+	 * task->nsproxy->ipc_ns with no reference of its own, and reads
+	 * task->nsproxy without task_lock(). Both the pointer read and the
+	 * ref-get must happen under task_lock(task), the same lock every
+	 * nsproxy-swapping path (vns_task_exit_cleanup(), unshare(2), setns(2))
+	 * takes before replacing/freeing task->nsproxy -- otherwise @task
+	 * could swap/free its nsproxy concurrently between the lookup above
+	 * and the vns_ipc_get_ref() below, leaving @ns dangling. The real
+	 * kernel's get_ipc_ns()/put_ipc_ns() are also no-ops when
+	 * CONFIG_IPC_NS=n (see <linux/ipc_namespace.h>) -- exactly the config
+	 * this whole file exists for -- so vns_ipc_get_ref()/vns_put_ipc_ns()
+	 * (the same refcount vendor_kernel's own put path already maintains
+	 * unconditionally) must be used instead.
+	 */
+	task_lock(task);
 	ns = vns_task_ipc_ns(task);
+	if (ns)
+		vns_ipc_get_ref(ns);
+	task_unlock(task);
 	put_task_struct(task);
 	if (!ns)
 		return -ENOENT;
 
 	n = snprintf(name, sizeof(name), "%s:[%u]", VNS_PROC_NS_IPC_NAME,
 		     ns->ns.inum);
+	vns_put_ipc_ns(ns);
 	if (n < 0)
 		return -ENOENT;
 

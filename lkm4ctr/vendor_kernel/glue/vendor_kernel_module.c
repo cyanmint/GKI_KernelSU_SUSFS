@@ -217,6 +217,7 @@ static void vns_resolve_symbols(void)
 int vendor_kernel_init(void)
 {
 	int hooked;
+	int total_hooked;
 
 	if (vendor_kernel_enabled)
 		return 0;
@@ -308,6 +309,7 @@ int vendor_kernel_init(void)
 		vns_ipc_default_exit();
 		return hooked;
 	}
+	total_hooked = hooked;
 
 	/*
 	 * Best-effort only: without these, /proc/<pid>/ns/ipc readlink(2)
@@ -323,9 +325,11 @@ int vendor_kernel_init(void)
 		LKM4CTR_WARN("vendor_kernel",
 			     "failed to install /proc/<pid>/ns/ipc readlink fabrication hooks (%d); ipc namespace isolation is still fully functional, only the /proc/<pid>/ns/ipc symlink observability is affected",
 			     hooked);
+	else
+		total_hooked += hooked;
 
 	vendor_kernel_enabled = true;
-	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", hooked);
+	LKM4CTR_INFO("vendor_kernel", "loaded (%d hook(s) installed)", total_hooked);
 	if (!vns_pidns_runtime_supported)
 		LKM4CTR_INFO("vendor_kernel",
 			     "running kernel lacks real pid namespace core; CLONE_NEWPID/setns(pid) still perform real pid namespace isolation, with the CONFIG_PID_NS=n zap_pid_ns_processes() BUG defused at exit time (see vns_task_exit_cleanup)");
