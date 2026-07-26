@@ -145,6 +145,28 @@ consistency and for any code elsewhere in the kernel that assumes them, but
 `vendor_kernel` itself does not require any of the three any more for its
 own uts/pid/user namespace support.
 
+`glue/vendor_kernel_procfs.c` also fabricates `/proc/<pid>/setgroups` on a
+kernel genuinely missing `CONFIG_USER_NS`, mirroring
+`shadow_ns/shadow_ns_procfs.c`'s identical fabrication: `fs/proc/base.c`
+only wires up that per-pid dentry `#ifdef CONFIG_USER_NS`, so modern
+`runc`/`containerd`'s unconditional `open()`/`openat2()` sanity-check of
+`self/setgroups` (part of its "is this really an unrestricted procfs"
+probe, run independent of whether the container itself asked for a new
+user namespace) fails with plain `-ENOENT` and aborts container creation
+with `"unsafe procfs detected ... setgroups: no such file or directory"`.
+`open`/`openat`/`openat2` are hooked to let the real syscall run first and
+only fabricate a descriptor once it has already failed with `-ENOENT` for a
+path unambiguously naming a `"setgroups"` leaf under a procfs-rooted pid
+directory. Like `shadow_ns`, the fabricated descriptor is a simple one-way
+`"allow"` -> `"deny"` latch on its own private inode (via
+`anon_inode_getfd_secure()`, resolved through `shadow_hook_resolve()`)
+rather than being wired to `vendor_kernel`'s own real per-task
+`user_namespace` (`kernel/user_namespace.c`'s
+`vns_proc_setgroups_show()`/`_write()`) — reproducing the exact
+allow/deny/gid-map-set interactions real `setgroups(7)` has with a
+specific `unshare(CLONE_NEWUSER)`'d namespace is unnecessary complexity for
+what every observed caller only ever treats as a one-shot defensive probe.
+
 ## SysV IPC and POSIX mqueue (real isolation, not bookkeeping)
 
 The vendored SysV IPC (`ipc/msg.c`, `ipc/sem.c`, `ipc/shm.c`, `ipc/util.c`, `ipc/msgutil.c`, `ipc/compat.c`) and POSIX message-queue (`ipc/mqueue.c`) implementations are compiled into `lkm4ctr.ko` and hooked to their syscalls by `glue/vendor_kernel_ipc_syscalls.c`, mirroring the `SHADOW_HOOK()` pattern used for `unshare`/`setns`/`clone` in `glue/vendor_kernel_syscalls.c`. All twelve SysV syscalls (`msgget`/`msgsnd`/`msgrcv`/`msgctl`, `semget`/`semop`/`semtimedop`/`semctl`, `shmget`/`shmat`/`shmdt`/`shmctl`) and all six mqueue syscalls (`mq_open`/`mq_unlink`/`mq_timedsend`/`mq_timedreceive`/`mq_notify`/`mq_getsetattr`) are redirected to their `vns_*` handlers.

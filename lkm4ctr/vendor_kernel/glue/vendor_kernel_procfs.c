@@ -301,6 +301,219 @@ static long vendor_kernel_hook_readlink(const struct pt_regs *regs)
 	return vns_ns_ipc_readlink(rpid, ubuf, bufsiz);
 }
 
+/*
+ * /proc/<pid>/setgroups fabrication on kernels genuinely missing
+ * CONFIG_USER_NS -- mirrors shadow_ns_procfs.c's identical fabrication
+ * almost verbatim (see that file's header comment for the full rationale:
+ * fs/proc/base.c only wires up the "setgroups" per-pid dentry
+ * "#ifdef CONFIG_USER_NS", so modern runc/containerd's unconditional
+ * open()/openat2() sanity-check of "self/setgroups" as part of its "is this
+ * really an unrestricted procfs" probe fails with plain -ENOENT and aborts
+ * container creation with "unsafe procfs detected", independent of whether
+ * the container itself asked for a new user namespace).
+ *
+ * Just like shadow_ns, the fabricated descriptor stores a simple one-way
+ * "allow" -> "deny" latch on its own private inode (via
+ * anon_inode_getfd_secure(), resolved through shadow_hook_resolve() for the
+ * same CONFIG_TRIM_UNUSED_KSYMS reasons as shadow_ns_procfs.c), rather than
+ * being wired to vendor_kernel's own real per-task user_namespace
+ * (kernel/user_namespace.c's vns_proc_setgroups_show()/_write(), reachable
+ * via current_cred()->user_ns) -- reproducing the exact allow/deny/
+ * gid-map-set interactions real setgroups(7) has with a specific
+ * unshare(CLONE_NEWUSER)'d namespace is unnecessary complexity for what
+ * every observed caller only ever treats as a one-shot defensive probe.
+ */
+static ssize_t vns_setgroups_read(struct file *file, char __user *ubuf,
+				   size_t count, loff_t *ppos)
+{
+	bool deny = !!file_inode(file)->i_private;
+	const char *str = deny ? "deny\n" : "allow\n";
+
+	return simple_read_from_buffer(ubuf, count, ppos, str, strlen(str));
+}
+
+static ssize_t vns_setgroups_write(struct file *file, const char __user *ubuf,
+				    size_t count, loff_t *ppos)
+{
+	struct inode *inode = file_inode(file);
+	char kbuf[8];
+	size_t n = min(count, sizeof(kbuf) - 1);
+
+	if (copy_from_user(kbuf, ubuf, n))
+		return -EFAULT;
+	kbuf[n] = '\0';
+	if (n && kbuf[n - 1] == '\n')
+		kbuf[n - 1] = '\0';
+
+	/*
+	 * Real setgroups(7): "allow" is only a no-op re-affirmation of the
+	 * default, "deny" latches permanently (a later "allow" is rejected
+	 * once denied). No other value is accepted.
+	 */
+	if (!strcmp(kbuf, "deny")) {
+		inode->i_private = (void *)1UL;
+	} else if (strcmp(kbuf, "allow") || inode->i_private) {
+		return -EINVAL;
+	}
+
+	*ppos += count;
+	return count;
+}
+
+/*
+ * Only ever invoked when this inode is opened a *second* time, through the
+ * "/proc/thread-self/fd/<n>" magic-link reopen every modern
+ * runc/containerd performs on a freshly-opened procfs fd -- see
+ * vns_setgroups_create_fd() below for why this callback needs to exist at
+ * all.
+ */
+static int vns_setgroups_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static const struct file_operations vns_setgroups_fops = {
+	.owner		= THIS_MODULE,
+	.open		= vns_setgroups_open,
+	.read		= vns_setgroups_read,
+	.write		= vns_setgroups_write,
+	.llseek		= default_llseek,
+};
+
+typedef int (*vns_anon_inode_getfd_secure_fn)(const char *,
+					       const struct file_operations *,
+					       void *, int,
+					       const struct inode *);
+
+static long vns_setgroups_create_fd(void)
+{
+	vns_anon_inode_getfd_secure_fn anon_inode_getfd_secure_fn;
+	struct file *file;
+	int fd;
+
+	/*
+	 * anon_inode_getfd_secure() (not the plain, shared-singleton-inode
+	 * anon_inode_getfd()) is required here so the magic-link reopen
+	 * above succeeds -- see shadow_ns_procfs.c's shadow_ns_setgroups_create_fd()
+	 * for the full explanation of both that and why the symbol must be
+	 * resolved via shadow_hook_resolve() rather than called directly.
+	 */
+	anon_inode_getfd_secure_fn = (vns_anon_inode_getfd_secure_fn)
+		shadow_hook_resolve("anon_inode_getfd_secure");
+	if (!anon_inode_getfd_secure_fn)
+		return -ENOENT;
+
+	fd = anon_inode_getfd_secure_fn("[vns_setgroups]", &vns_setgroups_fops,
+					 NULL, O_RDWR | O_CLOEXEC, NULL);
+	if (fd < 0)
+		return fd;
+
+	file = fget(fd);
+	if (file) {
+		file_inode(file)->i_fop = &vns_setgroups_fops;
+		fput(file);
+	}
+
+	return fd;
+}
+
+static bool vns_path_wants_setgroups(int dfd, const char __user *upath)
+{
+	char buf[192];
+	long n;
+	char *slash, *base, *dir_last;
+
+	if (!upath)
+		return false;
+
+	n = strncpy_from_user(buf, upath, sizeof(buf));
+	if (n <= 0 || n >= sizeof(buf))
+		return false;
+
+	slash = strrchr(buf, '/');
+	base = slash ? slash + 1 : buf;
+	if (strcmp(base, "setgroups"))
+		return false;
+
+	if (!slash)
+		return vns_dfd_is_procfs(dfd);
+
+	*slash = '\0';
+	dir_last = strrchr(buf, '/');
+	dir_last = dir_last ? dir_last + 1 : buf;
+	return vns_component_is_pid_dir(dir_last);
+}
+
+static long (*real_sys_openat2)(const struct pt_regs *regs);
+static long (*real_sys_openat)(const struct pt_regs *regs);
+static long (*real_sys_open)(const struct pt_regs *regs);
+
+/*
+ * vns_open_fallback() - shared -ENOENT fallback for openat2/openat/open:
+ * only reached once the real syscall has already failed to open the path.
+ * Fabricates the "setgroups" leaf when the path matches; returns @ret
+ * unchanged otherwise.
+ */
+static long vns_open_fallback(int dfd, const char __user *upath, long ret)
+{
+	if (ret != -ENOENT)
+		return ret;
+
+	if (vns_path_wants_setgroups(dfd, upath))
+		return vns_setgroups_create_fd();
+
+	return ret;
+}
+
+static long vendor_kernel_hook_openat2(const struct pt_regs *regs)
+{
+	int dfd = (int)vns_procfs_arg0(regs);
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg1(regs);
+	long ret = real_sys_openat2(regs);
+
+	return vns_open_fallback(dfd, upath, ret);
+}
+
+static long vendor_kernel_hook_openat(const struct pt_regs *regs)
+{
+	int dfd = (int)vns_procfs_arg0(regs);
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg1(regs);
+	long ret = real_sys_openat(regs);
+
+	return vns_open_fallback(dfd, upath, ret);
+}
+
+static long vendor_kernel_hook_open(const struct pt_regs *regs)
+{
+	const char __user *upath =
+		(const char __user *)(uintptr_t)vns_procfs_arg0(regs);
+	long ret = real_sys_open(regs);
+
+	return vns_open_fallback(AT_FDCWD, upath, ret);
+}
+
+static const char * const vendor_kernel_openat2_names[] = {
+	"__arm64_sys_openat2", "__x64_sys_openat2", "sys_openat2", NULL,
+};
+static const char * const vendor_kernel_openat_names[] = {
+	"__arm64_sys_openat", "__x64_sys_openat", "sys_openat", NULL,
+};
+static const char * const vendor_kernel_open_names[] = {
+	"__arm64_sys_open", "__x64_sys_open", "sys_open", NULL,
+};
+
+static struct shadow_hook vendor_kernel_openat2_hook =
+	SHADOW_HOOK(vendor_kernel_openat2_names, vendor_kernel_hook_openat2,
+		    &real_sys_openat2);
+static struct shadow_hook vendor_kernel_openat_hook =
+	SHADOW_HOOK(vendor_kernel_openat_names, vendor_kernel_hook_openat,
+		    &real_sys_openat);
+static struct shadow_hook vendor_kernel_open_hook =
+	SHADOW_HOOK(vendor_kernel_open_names, vendor_kernel_hook_open,
+		    &real_sys_open);
+
 static const char * const vendor_kernel_readlinkat_names[] = {
 	"__arm64_sys_readlinkat", "__x64_sys_readlinkat", "sys_readlinkat",
 	NULL,
@@ -317,6 +530,9 @@ static struct shadow_hook vendor_kernel_readlink_hook =
 		    &real_sys_readlink);
 
 struct shadow_hook *vendor_kernel_procfs_hooks[] = {
+	&vendor_kernel_openat2_hook,
+	&vendor_kernel_openat_hook,
+	&vendor_kernel_open_hook,
 	&vendor_kernel_readlinkat_hook,
 	&vendor_kernel_readlink_hook,
 	NULL,
