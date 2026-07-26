@@ -1135,7 +1135,6 @@ static void shadow_checker_pid_signal(void)
 		close(gpipe[1]);
 		{
 			struct shadow_checker_msg gmsg;
-			pid_t vpid;
 
 			if (!shadow_checker_read_msg(gpipe[0], &gmsg) ||
 			    !gmsg.ok) {
@@ -1144,9 +1143,29 @@ static void shadow_checker_pid_signal(void)
 				waitpid(grandchild, NULL, 0);
 				_exit(0);
 			}
-			vpid = (pid_t)atoi(gmsg.payload);
-
-			if (kill(vpid, SIGUSR1)) {
+			/* gmsg's payload is the grandchild's *own* getpid(),
+			 * i.e. its namespace-local vpid (always 1, since it
+			 * is pid 1 of the new namespace it just unshared
+			 * into) -- meaningless as a kill(2) target from here.
+			 * unshare(CLONE_NEWPID) only ever affects *future*
+			 * children, never the calling task itself, so this
+			 * "child" process (the one about to call kill())
+			 * was never moved into that namespace and remains in
+			 * the same (ambient) pid namespace it already shares
+			 * with grandchild -- `grandchild`, fork()'s own
+			 * return value above, is already the correct,
+			 * real/ambient-namespace pid to target. Using the
+			 * reported vpid=1 instead would send SIGUSR1 to
+			 * whatever real process happens to be pid 1 in this
+			 * task's own ambient namespace rather than to
+			 * grandchild, leaving grandchild's pause() loop
+			 * below waiting for a signal that never arrives --
+			 * and, being pid 1 of its own new namespace, immune
+			 * to being torn down by any subsequent unhandled
+			 * signal, permanently hanging this test (and every
+			 * waitpid() after it).
+			 */
+			if (kill(grandchild, SIGUSR1)) {
 				shadow_checker_send_err(pipefd[1], errno);
 				close(gpipe[0]);
 				waitpid(grandchild, NULL, 0);
