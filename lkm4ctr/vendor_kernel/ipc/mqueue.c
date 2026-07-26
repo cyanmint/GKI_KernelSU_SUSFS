@@ -1704,11 +1704,24 @@ static const struct fs_context_operations mqueue_fs_context_ops = {
 };
 
 static struct file_system_type mqueue_fs_type = {
-	.name			= "vendor_kernel_mqueue",
+	.name			= "mqueue",
 	.init_fs_context	= mqueue_init_fs_context,
 	.kill_sb		= kill_litter_super,
 	.fs_flags		= FS_USERNS_MOUNT,
 };
+
+/*
+ * Whether register_filesystem(&mqueue_fs_type) below actually linked this
+ * struct into the kernel's global file_systems list. mq_create_mount()
+ * itself never depends on this: it calls fs_context_for_mount(&mqueue_fs_type,
+ * SB_KERNMOUNT) with the local struct pointer directly, bypassing the
+ * name-based file_systems lookup entirely, so vendor_kernel's own internal
+ * ipc_namespace bookkeeping (mq_init_ns()) always works regardless of this
+ * flag. It only gates whether unregister_filesystem() is safe/meaningful to
+ * call later (see vns_mqueue_fs_exit()) and lets init_mqueue_fs() tell a
+ * genuine registration failure apart from an expected name collision.
+ */
+static bool mqueue_fs_type_registered;
 
 int mq_init_ns(struct ipc_namespace *ns)
 {
@@ -1757,8 +1770,26 @@ static int init_mqueue_fs(void)
 	}
 
 	error = register_filesystem(&mqueue_fs_type);
-	if (error)
+	if (!error) {
+		mqueue_fs_type_registered = true;
+	} else if (error == -EBUSY) {
+		/*
+		 * Name already taken -- almost certainly the real kernel's own
+		 * in-tree "mqueue" filesystem (CONFIG_POSIX_MQUEUE=y), which
+		 * already serves userspace's mount("mqueue", "/dev/mqueue",
+		 * "mqueue", ...) calls (the vendor_kernel non-target caveat
+		 * documented in ../README.md). There is nothing to fix in
+		 * that case: leave the real registration alone and keep going
+		 * with our own vendored ipc_namespace bookkeeping below, which
+		 * never depends on this name lookup succeeding (see
+		 * mqueue_fs_type_registered's comment above mqueue_fs_type).
+		 */
+		LKM4CTR_WARN("vendor_kernel",
+			"mqueue: filesystem type \"mqueue\" already registered (real kernel POSIX_MQUEUE?); "
+			"userspace mount(\"mqueue\", ...) will use that real filesystem instead");
+	} else {
 		goto out_sysctl;
+	}
 
 	spin_lock_init(&mq_lock);
 
@@ -1769,7 +1800,10 @@ static int init_mqueue_fs(void)
 	return 0;
 
 out_filesystem:
-	unregister_filesystem(&mqueue_fs_type);
+	if (mqueue_fs_type_registered) {
+		unregister_filesystem(&mqueue_fs_type);
+		mqueue_fs_type_registered = false;
+	}
 out_sysctl:
 	retire_mq_sysctls(&init_ipc_ns);
 out_kmem:
@@ -1788,7 +1822,10 @@ void vns_mqueue_fs_exit(void)
 		kern_unmount(init_ipc_ns.mq_mnt);
 		init_ipc_ns.mq_mnt = NULL;
 	}
-	unregister_filesystem(&mqueue_fs_type);
+	if (mqueue_fs_type_registered) {
+		unregister_filesystem(&mqueue_fs_type);
+		mqueue_fs_type_registered = false;
+	}
 	retire_mq_sysctls(&init_ipc_ns);
 	if (mqueue_inode_cachep) {
 		kmem_cache_destroy(mqueue_inode_cachep);

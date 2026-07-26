@@ -106,6 +106,17 @@ int vns_ipc_default_init(void)
 	 */
 	vns_alloc_inum(&vns_default_ipc_ns.ns);
 	vns_default_ipc_ns.ns.ops = &vns_ipcns_operations;
+
+	/*
+	 * Best-effort, mirroring shadow_mqueue's own proactive /dev/mqueue
+	 * creation: make sure /dev/mqueue is already a working mountpoint by
+	 * the time this returns, instead of only reacting to a container's
+	 * own mount(2) call that init.rc's boot-time attempt may already have
+	 * failed before this (typically late-loaded) module was ever
+	 * inserted. See glue/vendor_kernel_ipc_mount.c for the full
+	 * rationale. Never allowed to fail vns_ipc_default_init() itself.
+	 */
+	vns_mqueue_dev_ensure();
 	return 0;
 
 fail_ipc_sysctls:

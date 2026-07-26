@@ -55,6 +55,7 @@ lkm4ctr-objs := \
 	vendor_kernel/ipc/mqueue.o \
 	vendor_kernel/ipc/compat.o \
 	vendor_kernel/glue/vendor_kernel_ipc_syscalls.o \
+	vendor_kernel/glue/vendor_kernel_ipc_mount.o \
 	vendor_kernel/glue/vendor_kernel_ipc_compat.o \
 	vendor_kernel/fs/nsfs.o \
 	vendor_kernel/kernel/cgroup/namespace.o \
