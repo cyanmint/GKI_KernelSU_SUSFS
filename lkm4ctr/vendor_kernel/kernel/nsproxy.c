@@ -233,15 +233,45 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 		goto out_cgroup;
 	}
 
-	/* [BUILD-COMPAT] copy_net_ns is resolved lazily for vendor_kernel. */
+	/*
+	 * [BUILD-COMPAT] copy_net_ns is resolved lazily for vendor_kernel, and
+	 * CLONE_NEWNET is deliberately masked out of the flags passed to it:
+	 * the real kernel's copy_net_ns()/setup_net() path (net_alloc() ->
+	 * ops_init() -> every registered pernet_operations, including
+	 * xfrm4_net_init()'s __percpu_counter_init()) has been observed to
+	 * corrupt the kernel-wide percpu_counters list ("list_add corruption
+	 * ... kernel BUG at lib/list_debug.c:29", Call trace through
+	 * xfrm4_net_init -> __percpu_counter_init -> ops_init -> setup_net ->
+	 * copy_net_ns -> create_new_namespaces [lkm4ctr]) the first time it is
+	 * asked to actually build a brand-new struct net from this call site,
+	 * even though every other vendored namespace type built alongside it
+	 * here (UTS/IPC/PID/CGROUP/TIME) is unaffected. Until that is fully
+	 * root-caused, always take copy_net_ns()'s own safe "just grab another
+	 * reference" fast path (the same one already exercised, without
+	 * incident, by every unshare() call that does *not* request
+	 * CLONE_NEWNET) instead of risking this crash -- i.e. CLONE_NEWNET is
+	 * bookkeeping-only here, matching the checker's STUB result for it and
+	 * the same safety-over-completeness posture already documented for
+	 * MNT_NS in vendor_kernel/README.md.
+	 */
 	if (vns_copy_net_ns_fn) {
-		new_nsp->net_ns = vns_copy_net_ns_fn(flags, user_ns, tsk->nsproxy->net_ns);
+		new_nsp->net_ns = vns_copy_net_ns_fn(flags & ~CLONE_NEWNET, user_ns,
+						      tsk->nsproxy->net_ns);
 		if (IS_ERR(new_nsp->net_ns)) {
 			err = PTR_ERR(new_nsp->net_ns);
 			goto out_net;
 		}
 	} else {
-		new_nsp->net_ns = NULL;
+		/*
+		 * [BUILD-COMPAT] copy_net_ns unresolved (e.g. target kernel
+		 * built with CONFIG_NET_NS=n, so it has no standalone exported
+		 * symbol): net_ns must still never be NULL on a CONFIG_NET=y
+		 * kernel (real kernel code unconditionally dereferences
+		 * nsproxy->net_ns), so just keep sharing the task's existing
+		 * net_ns exactly like the real kernel's own inline fallback
+		 * would.
+		 */
+		new_nsp->net_ns = get_net(tsk->nsproxy->net_ns);
 	}
 
 	new_nsp->time_ns_for_children = vns_copy_time_ns(flags, user_ns, /* [RENAME] */
