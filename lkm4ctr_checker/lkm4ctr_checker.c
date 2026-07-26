@@ -47,6 +47,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -56,7 +57,11 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/msg.h>
+#include <sys/ptrace.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <time.h>
@@ -66,6 +71,10 @@
 #if __has_include(<mqueue.h>)
 #include <mqueue.h>
 #define SHADOW_CHECKER_HAVE_MQUEUE 1
+#endif
+
+#ifndef SYS_pidfd_open
+#define SYS_pidfd_open 434
 #endif
 
 #ifndef HOST_NAME_MAX
@@ -97,7 +106,7 @@
 #define CLONE_NEWCGROUP 0x02000000
 #endif
 
-#define LKM4CTR_CHECKER_VERSION "3.0"
+#define LKM4CTR_CHECKER_VERSION "4.0"
 
 enum shadow_checker_result {
 	SHADOW_CHECKER_PASS = 0,
@@ -898,6 +907,899 @@ static void shadow_checker_overlay(void)
 				      "mount(): %s", strerror(msg.err));
 }
 
+/*
+ * ---------------------------------------------------------------------
+ * USER namespace id mapping: getuid/geteuid/getgid/getegid/getresuid/
+ * getresgid (shadow_ns_user.c's dedicated hooks) after an explicit
+ * "0 <real> 1" uid_map/gid_map write - exactly what every container
+ * runtime (runc, crun, ...) does before entering the mapped identity, and
+ * a strictly stronger check than shadow_checker_user()'s "did the id
+ * merely change" test above: this confirms the *entire* getresuid/
+ * getresgid family, not just geteuid(), observes the mapped value.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_user_idmap(void)
+{
+	uid_t before = getuid();
+	gid_t gbefore = getgid();
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (before == 0) {
+		shadow_checker_report("ns_user (id mapping)", SHADOW_CHECKER_SKIP,
+				      "running as uid 0; test needs a non-root uid to be conclusive");
+		return;
+	}
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_user (id mapping)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_user (id mapping)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		char buf[64];
+		int fd;
+		uid_t ruid, euid, suid;
+		gid_t rgid, egid, sgid;
+
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWUSER)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		/* Deny setgroups(2) before writing gid_map, as every
+		 * runtime does since CVE-2014-8989; harmless no-op if the
+		 * fallback ignores it.
+		 */
+		fd = open("/proc/self/setgroups", O_WRONLY);
+		if (fd >= 0) {
+			ssize_t ignored = write(fd, "deny", 4);
+
+			(void)ignored;
+			close(fd);
+		}
+
+		fd = open("/proc/self/uid_map", O_WRONLY);
+		if (fd < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		snprintf(buf, sizeof(buf), "0 %d 1\n", (int)before);
+		if (write(fd, buf, strlen(buf)) < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			close(fd);
+			_exit(0);
+		}
+		close(fd);
+
+		fd = open("/proc/self/gid_map", O_WRONLY);
+		if (fd < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		snprintf(buf, sizeof(buf), "0 %d 1\n", (int)gbefore);
+		if (write(fd, buf, strlen(buf)) < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			close(fd);
+			_exit(0);
+		}
+		close(fd);
+
+		if (getresuid(&ruid, &euid, &suid) ||
+		    getresgid(&rgid, &egid, &sgid)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		shadow_checker_send_ok(pipefd[1], "%d;%d;%d;%d;%d;%d;%d;%d",
+				       (int)getuid(), (int)ruid, (int)euid,
+				       (int)suid, (int)getgid(), (int)rgid,
+				       (int)egid, (int)sgid);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_user (id mapping)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		if (msg.err == ENOENT)
+			shadow_checker_report("ns_user (id mapping)",
+					      SHADOW_CHECKER_STUB,
+					      "no /proc/self/uid_map or gid_map (no real user namespace object was created)");
+		else
+			shadow_checker_report("ns_user (id mapping)",
+					      SHADOW_CHECKER_FAIL,
+					      "uid_map/gid_map setup: %s",
+					      strerror(msg.err));
+		return;
+	}
+
+	{
+		int uid, ruid, euid, suid, gid, rgid, egid, sgid;
+
+		if (sscanf(msg.payload, "%d;%d;%d;%d;%d;%d;%d;%d", &uid,
+			   &ruid, &euid, &suid, &gid, &rgid, &egid,
+			   &sgid) != 8) {
+			shadow_checker_report("ns_user (id mapping)",
+					      SHADOW_CHECKER_SKIP,
+					      "unparsable child result");
+			return;
+		}
+
+		if (!uid && !ruid && !euid && !suid && !gid && !rgid &&
+		    !egid && !sgid)
+			shadow_checker_report("ns_user (id mapping)",
+					      SHADOW_CHECKER_PASS,
+					      "getuid/getgid/getresuid/getresgid all report mapped id 0 (real %u/%u)",
+					      before, gbefore);
+		else
+			shadow_checker_report("ns_user (id mapping)",
+					      SHADOW_CHECKER_STUB,
+					      "uid_map/gid_map write succeeded but ids unmapped (uid=%d ruid=%d euid=%d suid=%d gid=%d rgid=%d egid=%d sgid=%d)",
+					      uid, ruid, euid, suid, gid, rgid,
+					      egid, sgid);
+	}
+}
+
+static volatile sig_atomic_t g_checker_got_signal;
+
+static void shadow_checker_sigusr1_handler(int sig)
+{
+	(void)sig;
+	g_checker_got_signal = 1;
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * PID namespace signal delivery: kill(2) (shadow_ns_pid.c's kill/tgkill/
+ * tkill hooks translate a virtual target pid to the real task) must still
+ * deliver a real signal, not just return 0. A grandchild inside the new
+ * pid namespace announces its own (namespace-local) pid and blocks for
+ * the signal; the namespace's "init" targets that exact pid with kill(2).
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_pid_signal(void)
+{
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		pid_t grandchild;
+		int gpipe[2];
+
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWPID)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (pipe(gpipe)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		grandchild = fork();
+		if (grandchild < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (grandchild == 0) {
+			struct sigaction sa;
+
+			close(gpipe[0]);
+			memset(&sa, 0, sizeof(sa));
+			sa.sa_handler = shadow_checker_sigusr1_handler;
+			sigemptyset(&sa.sa_mask);
+			sigaction(SIGUSR1, &sa, NULL);
+			shadow_checker_send_ok(gpipe[1], "%d", (int)getpid());
+			while (!g_checker_got_signal)
+				pause();
+			shadow_checker_send_ok(gpipe[1], "received");
+			_exit(0);
+		}
+
+		close(gpipe[1]);
+		{
+			struct shadow_checker_msg gmsg;
+			pid_t vpid;
+
+			if (!shadow_checker_read_msg(gpipe[0], &gmsg) ||
+			    !gmsg.ok) {
+				shadow_checker_send_err(pipefd[1], EIO);
+				close(gpipe[0]);
+				waitpid(grandchild, NULL, 0);
+				_exit(0);
+			}
+			vpid = (pid_t)atoi(gmsg.payload);
+
+			if (kill(vpid, SIGUSR1)) {
+				shadow_checker_send_err(pipefd[1], errno);
+				close(gpipe[0]);
+				waitpid(grandchild, NULL, 0);
+				_exit(0);
+			}
+
+			if (!shadow_checker_read_msg(gpipe[0], &gmsg) ||
+			    !gmsg.ok || strcmp(gmsg.payload, "received"))
+				shadow_checker_send_ok(pipefd[1],
+						       "not-delivered");
+			else
+				shadow_checker_send_ok(pipefd[1], "delivered");
+		}
+		close(gpipe[0]);
+		waitpid(grandchild, NULL, 0);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_FAIL,
+				      "unshare(CLONE_NEWPID)/kill(): %s",
+				      strerror(msg.err));
+		return;
+	}
+
+	if (!strcmp(msg.payload, "delivered"))
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_PASS,
+				      "kill(2) targeting a namespace-local pid delivered SIGUSR1 correctly");
+	else
+		shadow_checker_report("ns_pid (kill)", SHADOW_CHECKER_FAIL,
+				      "kill(2) accepted the pid but the signal was never delivered");
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * PID namespace process-group/session hooks: setpgid/getpgid/getsid
+ * (shadow_ns_pid.c) exercised from the namespace's own pid-1 task, whose
+ * own pid/pgid/sid should all be self-consistent (namespace-local 1)
+ * exactly like shadow_checker_pid()'s getpid() check above.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_pid_pgrp(void)
+{
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_pid (pgid/session)", SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_pid (pgid/session)", SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		pid_t leader;
+
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWPID)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		leader = fork();
+		if (leader < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (leader == 0) {
+			pid_t self = getpid();
+			pid_t pgid = getpgid(0);
+			pid_t sid = getsid(0);
+
+			if (setpgid(0, 0)) {
+				shadow_checker_send_err(pipefd[1], errno);
+				_exit(0);
+			}
+			shadow_checker_send_ok(pipefd[1], "%d;%d;%d",
+					       (int)self, (int)pgid,
+					       (int)sid);
+			_exit(0);
+		}
+		waitpid(leader, NULL, 0);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_pid (pgid/session)", SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report("ns_pid (pgid/session)", SHADOW_CHECKER_FAIL,
+				      "setpgid/getpgid/getsid: %s",
+				      strerror(msg.err));
+		return;
+	}
+
+	{
+		int self, pgid, sid;
+
+		if (sscanf(msg.payload, "%d;%d;%d", &self, &pgid, &sid) != 3) {
+			shadow_checker_report("ns_pid (pgid/session)",
+					      SHADOW_CHECKER_SKIP,
+					      "unparsable child result");
+			return;
+		}
+
+		if (self == 1 && pgid == 1 && sid == 1)
+			shadow_checker_report("ns_pid (pgid/session)",
+					      SHADOW_CHECKER_PASS,
+					      "pid/pgid/sid of the namespace's own init all report 1");
+		else
+			shadow_checker_report("ns_pid (pgid/session)",
+					      SHADOW_CHECKER_STUB,
+					      "no vpid remap (pid=%d pgid=%d sid=%d)",
+					      self, pgid, sid);
+	}
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * PID namespace /proc content rewriting: shadow_ns_procfs.c's read(2)/
+ * pread64(2) hooks rewrite /proc/<pid>/stat's pid/ppid/pgrp/session
+ * fields and /proc/<pid>/status's Pid:/PPid: lines from real to
+ * namespace-local virtual values (needed for e.g. `ps` to work correctly
+ * inside a container). shadow_checker_pid()'s "/proc isolation" test
+ * above only checks whether entries exist/are hidden; this test reads
+ * the actual file content of the namespace's own init and confirms every
+ * one of those fields reports the virtualized values (pid=1, ppid=0,
+ * pgrp=1, session=1), not the real host values.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_pid_procfs_content(void)
+{
+	int pipefd[2];
+	pid_t pid;
+	struct shadow_checker_msg msg;
+
+	if (pipe(pipefd)) {
+		shadow_checker_report("ns_pid (/proc stat content)",
+				      SHADOW_CHECKER_SKIP,
+				       "pipe() failed: %s", strerror(errno));
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ns_pid (/proc stat content)",
+				      SHADOW_CHECKER_SKIP,
+				       "fork() failed: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return;
+	}
+
+	if (pid == 0) {
+		pid_t grandchild;
+
+		close(pipefd[0]);
+		if (unshare(CLONE_NEWPID)) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+
+		grandchild = fork();
+		if (grandchild < 0) {
+			shadow_checker_send_err(pipefd[1], errno);
+			_exit(0);
+		}
+		if (grandchild == 0) {
+			char stat_buf[256] = "";
+			char status_buf[1024] = "";
+			int stat_fd, status_fd;
+			ssize_t n;
+			int have_fresh_proc;
+			int pid_f = -1, ppid_f = -1, pgrp_f = -1, sess_f = -1;
+			int status_pid = -1, status_ppid = -1;
+			char *line, *saveptr;
+
+			/* Same private-/proc-remount technique as
+			 * shadow_checker_pid(): on a genuine kernel this is
+			 * required for /proc to reflect the new pid
+			 * namespace at all; shadow_ns's own read()/pread64()
+			 * translation hooks work independent of which mount
+			 * instance backs /proc, so this remount is a
+			 * harmless no-op from their point of view.
+			 */
+			have_fresh_proc =
+				(unshare(CLONE_NEWNS) == 0 &&
+				 mount(NULL, "/", NULL,
+				       MS_REC | MS_PRIVATE, NULL) == 0 &&
+				 mount("proc", "/proc", "proc", 0, NULL) == 0);
+
+			if (!have_fresh_proc) {
+				shadow_checker_send_ok(pipefd[1], "nofresh");
+				_exit(0);
+			}
+
+			stat_fd = open("/proc/self/stat", O_RDONLY);
+			if (stat_fd >= 0) {
+				n = read(stat_fd, stat_buf,
+					 sizeof(stat_buf) - 1);
+				if (n > 0)
+					stat_buf[n] = '\0';
+				close(stat_fd);
+			}
+
+			status_fd = open("/proc/self/status", O_RDONLY);
+			if (status_fd >= 0) {
+				n = read(status_fd, status_buf,
+					 sizeof(status_buf) - 1);
+				if (n > 0)
+					status_buf[n] = '\0';
+				close(status_fd);
+			}
+
+			/* /proc/<pid>/stat: "pid (comm) state ppid pgrp
+			 * session ...". The comm field is parenthesized and
+			 * may itself contain spaces, so start parsing after
+			 * the last ')'.
+			 */
+			{
+				char *rparen = strrchr(stat_buf, ')');
+
+				if (rparen)
+					sscanf(rparen + 1, " %*c %d %d %d",
+					       &ppid_f, &pgrp_f, &sess_f);
+				sscanf(stat_buf, "%d", &pid_f);
+			}
+
+			for (line = strtok_r(status_buf, "\n", &saveptr);
+			     line; line = strtok_r(NULL, "\n", &saveptr)) {
+				if (!strncmp(line, "Pid:", 4))
+					sscanf(line + 4, "%d", &status_pid);
+				else if (!strncmp(line, "PPid:", 5))
+					sscanf(line + 5, "%d", &status_ppid);
+			}
+
+			shadow_checker_send_ok(pipefd[1],
+					       "%d;%d;%d;%d;%d;%d",
+					       pid_f, ppid_f, pgrp_f, sess_f,
+					       status_pid, status_ppid);
+			_exit(0);
+		}
+		waitpid(grandchild, NULL, 0);
+		_exit(0);
+	}
+
+	close(pipefd[1]);
+	if (!shadow_checker_read_msg(pipefd[0], &msg)) {
+		shadow_checker_report("ns_pid (/proc stat content)",
+				      SHADOW_CHECKER_SKIP,
+				       "child produced no result");
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+
+	if (!msg.ok) {
+		shadow_checker_report("ns_pid (/proc stat content)",
+				      SHADOW_CHECKER_FAIL,
+				      "unshare(CLONE_NEWPID): %s",
+				      strerror(msg.err));
+		return;
+	}
+
+	if (!strcmp(msg.payload, "nofresh")) {
+		shadow_checker_report("ns_pid (/proc stat content)",
+				      SHADOW_CHECKER_SKIP,
+				      "couldn't mount a fresh /proc to test (needs CAP_SYS_ADMIN)");
+		return;
+	}
+
+	{
+		int pid_f, ppid_f, pgrp_f, sess_f, status_pid, status_ppid;
+
+		if (sscanf(msg.payload, "%d;%d;%d;%d;%d;%d", &pid_f, &ppid_f,
+			   &pgrp_f, &sess_f, &status_pid,
+			   &status_ppid) != 6) {
+			shadow_checker_report("ns_pid (/proc stat content)",
+					      SHADOW_CHECKER_SKIP,
+					      "unparsable /proc content");
+			return;
+		}
+
+		if (pid_f == 1 && ppid_f == 0 && pgrp_f == 1 && sess_f == 1 &&
+		    status_pid == 1 && status_ppid == 0)
+			shadow_checker_report("ns_pid (/proc stat content)",
+					      SHADOW_CHECKER_PASS,
+					      "/proc/self/stat and /proc/self/status both report virtualized pid=1 ppid=0 pgrp=1 session=1");
+		else
+			shadow_checker_report("ns_pid (/proc stat content)",
+					      SHADOW_CHECKER_STUB,
+					      "/proc content not rewritten to namespace-local values (stat: pid=%d ppid=%d pgrp=%d session=%d; status: Pid=%d PPid=%d)",
+					      pid_f, ppid_f, pgrp_f, sess_f,
+					      status_pid, status_ppid);
+	}
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * pidfd_open(2): create a pidfd for a real child and confirm it becomes
+ * readable (POLLIN) when that child exits, exactly as a container
+ * supervisor waiting on a pidfd instead of polling wait4() would expect.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_pidfd(void)
+{
+	pid_t pid;
+	int pidfd;
+	struct pollfd pfd;
+	int r;
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("pidfd_open", SHADOW_CHECKER_SKIP,
+				      "fork() failed: %s", strerror(errno));
+		return;
+	}
+	if (pid == 0) {
+		/* Give the parent a moment to pidfd_open() us before we
+		 * exit, so the test targets a still-running process.
+		 */
+		usleep(50000);
+		_exit(0);
+	}
+
+	pidfd = (int)syscall(SYS_pidfd_open, pid, 0);
+	if (pidfd < 0) {
+		shadow_checker_report("pidfd_open", SHADOW_CHECKER_FAIL,
+				      "pidfd_open(): %s", strerror(errno));
+		waitpid(pid, NULL, 0);
+		return;
+	}
+
+	pfd.fd = pidfd;
+	pfd.events = POLLIN;
+	pfd.revents = 0;
+	r = poll(&pfd, 1, 2000);
+	close(pidfd);
+	waitpid(pid, NULL, 0);
+
+	if (r > 0 && (pfd.revents & POLLIN))
+		shadow_checker_report("pidfd_open", SHADOW_CHECKER_PASS,
+				      "pidfd became readable on child exit");
+	else
+		shadow_checker_report("pidfd_open", SHADOW_CHECKER_STUB,
+				      "pidfd_open() succeeded but never signalled child exit (poll() = %d)",
+				      r);
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * ptrace(2): PTRACE_TRACEME + PTRACE_CONT round trip, matching shadow_ns_
+ * pid.c's ptrace hook (which translates a virtual target pid before
+ * forwarding to the real syscall).
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_ptrace(void)
+{
+	pid_t pid;
+	int status;
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("ptrace", SHADOW_CHECKER_SKIP,
+				      "fork() failed: %s", strerror(errno));
+		return;
+	}
+	if (pid == 0) {
+		if (ptrace(PTRACE_TRACEME, 0, NULL, NULL))
+			_exit(1);
+		raise(SIGSTOP);
+		_exit(0);
+	}
+
+	if (waitpid(pid, &status, 0) < 0 || !WIFSTOPPED(status)) {
+		shadow_checker_report("ptrace", SHADOW_CHECKER_FAIL,
+				      "child never reached the expected PTRACE_TRACEME stop");
+		kill(pid, SIGKILL);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+
+	if (ptrace(PTRACE_CONT, pid, NULL, NULL)) {
+		shadow_checker_report("ptrace", SHADOW_CHECKER_FAIL,
+				      "PTRACE_CONT: %s", strerror(errno));
+		kill(pid, SIGKILL);
+		waitpid(pid, NULL, 0);
+		return;
+	}
+
+	waitpid(pid, NULL, 0);
+	shadow_checker_report("ptrace", SHADOW_CHECKER_PASS,
+			      "PTRACE_TRACEME/PTRACE_CONT round-tripped successfully");
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * wait4(2)/waitid(2): confirm both reaping paths hooked by shadow_ns_
+ * pid.c report the correct pid and exit status, not just success/0.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_wait(void)
+{
+	pid_t pid;
+	int status = 0;
+	siginfo_t info;
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_SKIP,
+				      "fork() failed: %s", strerror(errno));
+		return;
+	}
+	if (pid == 0)
+		_exit(42);
+
+	if (wait4(pid, &status, 0, NULL) != pid) {
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_FAIL,
+				      "wait4(): %s", strerror(errno));
+		return;
+	}
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 42) {
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_STUB,
+				      "wait4() reaped the pid but exit status was wrong");
+		return;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_SKIP,
+				      "fork() failed: %s", strerror(errno));
+		return;
+	}
+	if (pid == 0)
+		_exit(43);
+
+	memset(&info, 0, sizeof(info));
+	if (waitid(P_PID, pid, &info, WEXITED)) {
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_FAIL,
+				      "waitid(): %s", strerror(errno));
+		return;
+	}
+
+	if (info.si_pid == pid && info.si_status == 43)
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_PASS,
+				      "wait4() and waitid() both correctly reaped pid/exit status");
+	else
+		shadow_checker_report("wait4/waitid", SHADOW_CHECKER_STUB,
+				      "waitid() returned but si_pid/si_status mismatched (si_pid=%d si_status=%d)",
+				      (int)info.si_pid, info.si_status);
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * System V semaphores: semget/semctl(SETVAL,GETVAL)/semop, matching
+ * shadow_sysvipc_hooks.c's semget/semctl/semop/semtimedop hooks.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_sysv_sem(void)
+{
+	int id;
+	struct sembuf op = { .sem_num = 0, .sem_op = -1, .sem_flg = 0 };
+	int val;
+
+	id = semget(IPC_PRIVATE, 1, IPC_CREAT | 0600);
+	if (id < 0) {
+		shadow_checker_report("sysvipc (SysV sem)", SHADOW_CHECKER_FAIL,
+				      "semget(): %s", strerror(errno));
+		return;
+	}
+
+	if (semctl(id, 0, SETVAL, 1) < 0) {
+		shadow_checker_report("sysvipc (SysV sem)", SHADOW_CHECKER_FAIL,
+				      "semctl(SETVAL): %s", strerror(errno));
+		semctl(id, 0, IPC_RMID);
+		return;
+	}
+
+	if (semop(id, &op, 1)) {
+		shadow_checker_report("sysvipc (SysV sem)", SHADOW_CHECKER_FAIL,
+				      "semop(): %s", strerror(errno));
+		semctl(id, 0, IPC_RMID);
+		return;
+	}
+
+	val = semctl(id, 0, GETVAL);
+	semctl(id, 0, IPC_RMID);
+
+	if (val == 0)
+		shadow_checker_report("sysvipc (SysV sem)", SHADOW_CHECKER_PASS,
+				      "semget/semctl(SETVAL,GETVAL)/semop round-tripped a decrement");
+	else
+		shadow_checker_report("sysvipc (SysV sem)", SHADOW_CHECKER_STUB,
+				      "semop() accepted but value not updated (got %d, want 0)",
+				      val);
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * System V shared memory: shmget/shmat/shmdt, matching shadow_sysvipc_
+ * hooks.c's shmget/shmat/shmdt/shmctl hooks.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_sysv_shm(void)
+{
+	int id;
+	void *addr;
+	static const char payload[] = "shadowchk-shm";
+	char buf[32] = "";
+
+	id = shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0600);
+	if (id < 0) {
+		shadow_checker_report("sysvipc (SysV shm)", SHADOW_CHECKER_FAIL,
+				      "shmget(): %s", strerror(errno));
+		return;
+	}
+
+	addr = shmat(id, NULL, 0);
+	if (addr == (void *)-1) {
+		shadow_checker_report("sysvipc (SysV shm)", SHADOW_CHECKER_FAIL,
+				      "shmat(): %s", strerror(errno));
+		shmctl(id, IPC_RMID, NULL);
+		return;
+	}
+
+	memcpy(addr, payload, sizeof(payload));
+	memcpy(buf, addr, sizeof(payload));
+
+	if (shmdt(addr))
+		fprintf(stderr,
+			"lkm4ctr_checker: warning: shmdt() failed: %s\n",
+			strerror(errno));
+	shmctl(id, IPC_RMID, NULL);
+
+	if (!strcmp(buf, payload))
+		shadow_checker_report("sysvipc (SysV shm)", SHADOW_CHECKER_PASS,
+				      "shmget/shmat/shmdt round-tripped a write through shared memory");
+	else
+		shadow_checker_report("sysvipc (SysV shm)", SHADOW_CHECKER_STUB,
+				      "shmat() succeeded but readback mismatched");
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * POSIX mqueue attribute get/set: mq_getattr/mq_setattr, matching
+ * shadow_mqueue_hooks.c's mq_getsetattr hook.
+ * ---------------------------------------------------------------------
+ */
+static void shadow_checker_mqueue_attr(void)
+{
+#ifdef SHADOW_CHECKER_HAVE_MQUEUE
+	char name[64];
+	mqd_t mq;
+	struct mq_attr attr = { .mq_maxmsg = 4, .mq_msgsize = 16 };
+	struct mq_attr newattr;
+	struct mq_attr oldattr;
+	struct mq_attr got;
+	int nonblock_ok;
+
+	shadow_checker_unique_name(name, sizeof(name), "/shadowchk-mqattr");
+	mq_unlink(name);
+
+	mq = mq_open(name, O_CREAT | O_RDWR | O_EXCL, 0600, &attr);
+	if (mq == (mqd_t)-1) {
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_FAIL, "mq_open(): %s",
+				      strerror(errno));
+		return;
+	}
+
+	memset(&got, 0, sizeof(got));
+	if (mq_getattr(mq, &got)) {
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_FAIL, "mq_getattr(): %s",
+				      strerror(errno));
+		mq_close(mq);
+		mq_unlink(name);
+		return;
+	}
+
+	newattr = got;
+	newattr.mq_flags = O_NONBLOCK;
+	memset(&oldattr, 0, sizeof(oldattr));
+	if (mq_setattr(mq, &newattr, &oldattr)) {
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_FAIL, "mq_setattr(): %s",
+				      strerror(errno));
+		mq_close(mq);
+		mq_unlink(name);
+		return;
+	}
+
+	memset(&got, 0, sizeof(got));
+	if (mq_getattr(mq, &got)) {
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_FAIL,
+				      "mq_getattr() after set: %s",
+				      strerror(errno));
+		mq_close(mq);
+		mq_unlink(name);
+		return;
+	}
+
+	nonblock_ok = (got.mq_flags & O_NONBLOCK) != 0;
+	mq_close(mq);
+	mq_unlink(name);
+
+	if (got.mq_maxmsg == attr.mq_maxmsg && nonblock_ok)
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_PASS,
+				      "mq_getattr/mq_setattr round-tripped maxmsg=%ld and O_NONBLOCK",
+				      (long)got.mq_maxmsg);
+	else
+		shadow_checker_report("mqueue (mq_getsetattr)",
+				      SHADOW_CHECKER_STUB,
+				      "mq_setattr() accepted but attributes not reflected back (maxmsg=%ld nonblock=%d)",
+				      (long)got.mq_maxmsg, nonblock_ok);
+#else
+	shadow_checker_report("mqueue (mq_getsetattr)", SHADOW_CHECKER_SKIP,
+			      "<mqueue.h> unavailable in this libc");
+#endif
+}
+
 static void shadow_checker_usage(const char *argv0)
 {
 	fprintf(stderr,
@@ -930,13 +1832,23 @@ int main(int argc, char **argv)
 
 	shadow_checker_uts();
 	shadow_checker_pid();
+	shadow_checker_pid_procfs_content();
+	shadow_checker_pid_signal();
+	shadow_checker_pid_pgrp();
+	shadow_checker_pidfd();
+	shadow_checker_ptrace();
+	shadow_checker_wait();
 	shadow_checker_user();
+	shadow_checker_user_idmap();
 	shadow_checker_generic_ns("ns_ipc (IPC)", "ipc", CLONE_NEWIPC);
 	shadow_checker_generic_ns("ns_net (NET)", "net", CLONE_NEWNET);
 	shadow_checker_generic_ns("ns_mnt (MNT)", "mnt", CLONE_NEWNS);
 	shadow_checker_generic_ns("ns_cgroup (CGROUP)", "cgroup", CLONE_NEWCGROUP);
 	shadow_checker_mqueue();
+	shadow_checker_mqueue_attr();
 	shadow_checker_sysvipc();
+	shadow_checker_sysv_sem();
+	shadow_checker_sysv_shm();
 	shadow_checker_overlay();
 
 	if (!g_quiet) {

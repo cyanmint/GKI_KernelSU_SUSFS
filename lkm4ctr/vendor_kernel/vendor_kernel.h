@@ -66,6 +66,16 @@ extern void (*vns_proc_free_inum_fn)(unsigned int);
 extern struct mnt_namespace *(*vns_copy_mnt_ns_fn)(unsigned long, struct mnt_namespace *, struct user_namespace *, struct fs_struct *);
 extern void (*vns_put_mnt_ns_fn)(struct mnt_namespace *);
 extern struct net *(*vns_copy_net_ns_fn)(unsigned long, struct user_namespace *, struct net *);
+/*
+ * [BUILD-COMPAT] Real kernel's own (non-exported, non-static) free_nsproxy(),
+ * resolved by name so a *foreign* (non-module-owned) struct nsproxy * whose
+ * refcount we drop to zero (see vns_switch_task_namespaces() in
+ * kernel/nsproxy.c) can be torn down through the real kernel's own path
+ * instead of vendor_kernel's vns_free_nsproxy(), which assumes the object was
+ * allocated from vns_nsproxy_cachep and would otherwise kmem_cache_free() a
+ * real nsproxy_cachep object into the wrong cache (heap corruption).
+ */
+extern void (*vns_real_free_nsproxy_fn)(struct nsproxy *);
 extern bool vendor_kernel_enabled;
 extern bool vns_pidns_runtime_supported;
 

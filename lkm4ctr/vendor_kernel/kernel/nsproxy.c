@@ -340,6 +340,39 @@ void vns_free_nsproxy(struct nsproxy *ns) /* [RENAME] */
 }
 
 /*
+ * [BUILD-COMPAT] Drop a reference to a *foreign* struct nsproxy * -- i.e. one
+ * vendor_kernel did not itself allocate from vns_nsproxy_cachep (tracked via
+ * vns_nsproxy_set_add()/vns_nsproxy_set_contains()). The very first time a
+ * task calls unshare()/setns() through vendor_kernel's hooks, its existing
+ * tsk->nsproxy is still whatever the real kernel installed (its own
+ * init_nsproxy, or a real nsproxy previously built by the real kernel's own,
+ * unhooked create_new_namespaces()); vns_switch_task_namespaces() below must
+ * still release that task's one reference to it, but MUST NOT run it through
+ * vendor_kernel's own vns_free_nsproxy() if the refcount reaches zero: that
+ * function unconditionally ends with
+ * kmem_cache_free(vns_nsproxy_cachep, ns), which for a real, kernel-allocated
+ * nsproxy is a free into the *wrong* kmem_cache and corrupts the slab
+ * allocator (observed as unrelated-looking "list_del corruption"/kernel BUG
+ * crashes much later, e.g. in cleanup_net()'s xfrm4_net_exit ->
+ * percpu_counter_destroy()). Route the real free through the real kernel's
+ * own (resolved-by-name) free_nsproxy() instead; if that could not be
+ * resolved, leak the reference rather than risk corrupting memory.
+ */
+static void vns_put_foreign_nsproxy(struct nsproxy *ns)
+{
+	if (!vns_put_count(&ns->count))
+		return;
+	if (vns_real_free_nsproxy_fn) {
+		vns_real_free_nsproxy_fn(ns);
+		return;
+	}
+	LKM4CTR_WARN(VENDOR_KERNEL_TAG,
+		"vns_put_foreign_nsproxy: free_nsproxy unresolved, leaking foreign nsproxy %p",
+		ns);
+}
+
+
+/*
  * Called from unshare. Unshare all the namespaces part of nsproxy.
  * On success, returns the new nsproxy.
  */
@@ -380,8 +413,21 @@ void vns_switch_task_namespaces(struct task_struct *p, struct nsproxy *new) /* [
 	p->nsproxy = new;
 	task_unlock(p);
 
-	if (ns)
+	if (!ns)
+		return;
+	/*
+	 * [BUILD-COMPAT] ns may be a module-owned object from a previous
+	 * vendor_kernel unshare()/setns()/clone(), or -- on the very first
+	 * call for this task -- still the real kernel's own nsproxy (its
+	 * shared init_nsproxy, or one the real, unhooked kernel created
+	 * earlier). Route the release accordingly; see
+	 * vns_put_foreign_nsproxy()'s comment above for why this distinction
+	 * is safety-critical.
+	 */
+	if (vns_nsproxy_set_contains(ns))
 		vns_put_nsproxy(ns); /* [RENAME] */
+	else
+		vns_put_foreign_nsproxy(ns);
 }
 
 void vns_exit_task_namespaces(struct task_struct *p) /* [RENAME] */
