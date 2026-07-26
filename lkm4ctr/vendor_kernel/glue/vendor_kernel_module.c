@@ -11,7 +11,6 @@
 #include <linux/atomic.h>
 
 #include "../vendor_kernel.h"
-#include "../../shadow_ns/shadow_ns_internal.h"
 #include "../../../common/shadow_hook.h"
 #include "../../../common/lkm4ctr_log.h"
 

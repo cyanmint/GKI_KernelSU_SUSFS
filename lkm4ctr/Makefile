@@ -2,9 +2,9 @@
 #
 # Unified kbuild Makefile for the merged lkm4ctr out-of-tree module.
 #
-# Builds a single lkm4ctr.ko that links the former shadow_hijack,
-# shadow_ns, shadow_sysvipc, shadow_mqueue and shadow_cgdevices subsystem
-# sources together, plus lkm4ctr_main.c for the module entry/exit sequence.
+# Builds a single lkm4ctr.ko that links the shadow_hijack, vendor_kernel
+# and shadow_cgdevices subsystem sources together, plus lkm4ctr_main.c for
+# the module entry/exit sequence.
 
 ifneq ($(KERNELRELEASE),)
 
@@ -21,26 +21,6 @@ lkm4ctr-objs := \
 	helper.sh.o \
 	readme.txt.o \
 	shadow_hijack/shadow_hijack.o \
-	shadow_ns/shadow_ns_base.o \
-	shadow_ns/shadow_ns_task.o \
-	shadow_ns/shadow_ns_core.o \
-	shadow_ns/shadow_ns_uts.o \
-	shadow_ns/shadow_ns_pid.o \
-	shadow_ns/shadow_ns_user.o \
-	shadow_ns/shadow_ns_idmap.o \
-	shadow_ns/shadow_ns_procfs.o \
-	shadow_ns/shadow_ns_module.o \
-	shadow_ns/shadow_ns_diag.o \
-	shadow_sysvipc/shadow_sysvipc_registry.o \
-	shadow_sysvipc/shadow_sysvipc_tgid.o \
-	shadow_sysvipc/shadow_sysvipc_hooks.o \
-	shadow_sysvipc/shadow_sysvipc_msgq.o \
-	shadow_sysvipc/shadow_sysvipc_sem.o \
-	shadow_sysvipc/shadow_sysvipc_shm.o \
-	shadow_mqueue/shadow_mqueue_core.o \
-	shadow_mqueue/shadow_mqueue_io.o \
-	shadow_mqueue/shadow_mqueue_hooks.o \
-	shadow_mqueue/shadow_mqueue_mount.o \
 	shadow_cgdevices/shadow_cgdevices.o \
 	vendor_kernel/kernel/utsname.o \
 	vendor_kernel/kernel/nsproxy.o \

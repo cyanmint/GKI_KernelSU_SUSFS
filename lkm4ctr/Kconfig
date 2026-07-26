@@ -58,7 +58,7 @@ config LKM4CTR_VENDOR_KERNEL
 	help
 	  Vendor the entire Linux kernel namespace subsystem as a parallel
 	  in-module implementation. Hooks all namespace syscalls unconditionally.
-	  Mutually exclusive with shadow_ns at runtime.
+	  Auto-loads at insmod time.
 
 	  vendor_kernel resolves several running kernel's namespace-private
 	  symbols (e.g. pid_ns_cachep, init_ipc_ns) by name at module load
